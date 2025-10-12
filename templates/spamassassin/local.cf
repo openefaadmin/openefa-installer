@@ -1,0 +1,193 @@
+##############################################################################
+# SpamAssassin Configuration File (local.cf) - ALL NON-SPACY RULES
+# Last Updated: 2025-08-06
+# Purpose: Core SpamAssassin settings and rules NOT related to SpaCy processing
+# FIXED: Corrected syntax errors
+##############################################################################
+
+# =====================================
+# General SpamAssassin Settings
+# =====================================
+required_score 5.4
+report_safe 0
+rewrite_header Subject [SPAM]
+ok_languages en
+ok_locales all
+dns_available yes
+lock_method flock
+loadplugin Mail::SpamAssassin::Plugin::DKIM
+
+# DNS Settings
+dns_options rotate
+dkim_timeout 10
+
+# =====================================
+# Bayes Database Configuration
+# =====================================
+use_bayes 1
+bayes_auto_learn 1
+bayes_auto_learn_threshold_spam 8.0
+bayes_auto_learn_threshold_nonspam -2.0
+bayes_path /var/spool/MailScanner/spamassassin/bayes
+bayes_file_mode 0600
+bayes_journal_max_size 102400
+bayes_expiry_max_db_size 150000
+bayes_auto_expire 1
+
+# =====================================
+# Authentication Scoring - STANDARD
+# These are the BASE scores that spacy_rules.cf will neutralize
+# =====================================
+score SPF_NONE 2.5
+score SPF_PASS -0.3
+score SPF_FAIL 7.0
+score SPF_HELO_NONE 0.3
+score DMARC_MISSING 1.5
+score DMARC_PASS -0.5
+score DMARC_FAIL 3.0
+score DMARC_REJECT 1.8
+score DKIM_INVALID 1.0
+score DKIM_VALID -0.5
+score DKIM_VALID_AU -0.5
+score DKIM_VALID_EF -0.1
+
+# =====================================
+# Domain Protection - HIGH PRIORITY
+# =====================================
+header FORGED_COVEREDDATA_DOMAIN From =~ /\@covereddata\.com$/i
+score FORGED_COVEREDDATA_DOMAIN 8.0
+describe FORGED_COVEREDDATA_DOMAIN Message attempts to spoof our domain
+
+header ZIMBRA_ADMIN_SPOOF From =~ /(?:zimbra|admin|contact).*\@covereddata\.com$/i
+score ZIMBRA_ADMIN_SPOOF 10.0
+describe ZIMBRA_ADMIN_SPOOF Attempts to spoof admin/zimbra address
+
+# =====================================
+# Marketing and Sales Spam
+# =====================================
+header MARKETING_SUBJECT Subject =~ /(?:marketing|SEO|leads|traffic|ranking|promotion)/i
+body MARKETING_BODY /(?:increase.*(?:sales|traffic|revenue)|top.*ranking|SEO.*(?:service|expert)|lead.*generat)/i
+meta MARKETING_COMBO (MARKETING_SUBJECT && MARKETING_BODY)
+score MARKETING_COMBO 3.5
+describe MARKETING_COMBO Marketing spam indicators
+
+header SALES_PITCH Subject =~ /(?:special.*offer|limited.*time|act.*now|exclusive.*deal)/i
+score SALES_PITCH 2.0
+describe SALES_PITCH Sales pitch language
+
+body MARKETING_PATTERN /(?:click.*here|unsubscribe|remove.*me|opt.?out|view.*online|email.*campaign)/i
+score MARKETING_PATTERN 1.5
+describe MARKETING_PATTERN Marketing email patterns
+
+# =====================================
+# Suspicious Patterns
+# =====================================
+header EXCESSIVE_RECIPIENTS ToCc =~ /(?:undisclosed|recipients|unlisted)/i
+score EXCESSIVE_RECIPIENTS 2.0
+describe EXCESSIVE_RECIPIENTS Hidden or undisclosed recipients
+
+header SUSPICIOUS_URGENCY Subject =~ /(?:urgent|immediate.*action|expires.*(?:today|tonight|soon))/i
+score SUSPICIOUS_URGENCY 2.5
+describe SUSPICIOUS_URGENCY Suspicious urgency in subject
+
+body SUSPICIOUS_LINK_TEXT /(?:verify.*account|confirm.*identity|update.*payment|suspended.*account)/i
+score SUSPICIOUS_LINK_TEXT 3.0
+describe SUSPICIOUS_LINK_TEXT Suspicious link text patterns
+
+# =====================================
+# Unicode and Encoding Tricks
+# =====================================
+header UNICODE_OBFU_SUBJ Subject =~ /[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{FEFF}]/
+score UNICODE_OBFU_SUBJ 4.0
+describe UNICODE_OBFU_SUBJ Unicode obfuscation in subject
+
+body UNICODE_OBFU_BODY /[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{FEFF}]/
+score UNICODE_OBFU_BODY 3.5
+describe UNICODE_OBFU_BODY Unicode obfuscation in body
+
+header HOMOGRAPH_ATTACK From =~ /[а-яА-Я]/
+score HOMOGRAPH_ATTACK 5.0
+describe HOMOGRAPH_ATTACK Possible homograph attack using Cyrillic
+
+# =====================================
+# Content Quality Checks
+# =====================================
+body POOR_GRAMMAR /(?:recieve|loose.*money|congradulations|buisness|occured)/i
+score POOR_GRAMMAR 1.5
+describe POOR_GRAMMAR Poor grammar or spelling
+
+body ALL_CAPS_BODY /^[A-Z\s\!\.\,]{100,}/m
+score ALL_CAPS_BODY 2.0
+describe ALL_CAPS_BODY Excessive use of capital letters
+
+# Fixed: Removed /gi flags and use proper SpamAssassin syntax
+#rawbody EXCESSIVE_IMGS /<img\s+[^>]*>/i
+#tflags EXCESSIVE_IMGS multiple maxhits=10
+#score EXCESSIVE_IMGS 1.5
+#describe EXCESSIVE_IMGS Too many images in email
+
+# =====================================
+# Cryptocurrency Scams
+# =====================================
+header CRYPTO_SUBJECT Subject =~ /(?:bitcoin|crypto|ethereum|blockchain.*(?:invest|opportunity))/i
+body CRYPTO_SCAM /(?:crypto.*(?:trading|investment)|bitcoin.*(?:profit|double)|guaranteed.*return)/i
+meta CRYPTO_COMBO (CRYPTO_SUBJECT && CRYPTO_SCAM)
+score CRYPTO_COMBO 4.0
+describe CRYPTO_COMBO Cryptocurrency scam indicators
+
+# =====================================
+# Advanced Phishing Detection
+# =====================================
+header LOOKALIKE_DOMAIN From =~ /(?:arnazon|app1e|ricrosoft|paypaI|goog1e)/i
+score LOOKALIKE_DOMAIN 6.0
+describe LOOKALIKE_DOMAIN Lookalike domain attempting impersonation
+
+uri SUSPICIOUS_TLD /(?:\.tk|\.ml|\.ga|\.cf)(?:\/|$)/i
+score SUSPICIOUS_TLD 3.0
+describe SUSPICIOUS_TLD Suspicious top-level domain
+
+uri URL_SHORTENER /(?:bit\.ly|tinyurl|goo\.gl|ow\.ly|short\.link)/i
+score URL_SHORTENER 2.0
+describe URL_SHORTENER URL shortener service used
+
+# =====================================
+# Reply-To Mismatch - SIMPLIFIED
+# Can't do direct comparison in SpamAssassin, so we check for existence
+# =====================================
+header __HAS_REPLY_TO exists:Reply-To
+header __REPLY_TO_NOT_FROM Reply-To !~ /\@covereddata\.com$/i
+meta REPLY_TO_EXTERNAL (__HAS_REPLY_TO && __REPLY_TO_NOT_FROM)
+score REPLY_TO_EXTERNAL 2.5
+describe REPLY_TO_EXTERNAL Reply-To points to external domain
+
+# =====================================
+# Time-based Rules
+# =====================================
+header ODD_TIME_SENT Date =~ /0[0-4]:\d{2}:\d{2}/
+score ODD_TIME_SENT 1.0
+describe ODD_TIME_SENT Email sent at unusual hour
+
+# =====================================
+# Custom Blacklists
+# =====================================
+header CUSTOM_BLACKLIST_FROM From =~ /\@(?:spamdomain\.com|scammer\.net)/i
+score CUSTOM_BLACKLIST_FROM 10.0
+describe CUSTOM_BLACKLIST_FROM Known spam domain
+
+# =====================================
+# NOTE: Partner-specific and bulk email rules moved to spacy_rules.cf
+# to avoid conflicts with SpaCy authentication handling
+# =====================================
+
+# Temporary Bayes score reduction while retraining
+# Added: $(date)
+score BAYES_99  2.0   # Reduced from 3.5
+score BAYES_999 0.1   # Reduced from 0.2
+score BAYES_95  1.0   # Reduced if present
+score BAYES_80  0.5   # Reduced if present
+
+# Boost legitimate service indicators
+header __DKIM_VALID_SERVICE DKIM_VALID_AU =~ /slack|github|amazon|google|microsoft/i
+meta TRUSTED_SERVICE __DKIM_VALID_SERVICE && (DKIM_VALID_AU && SPF_PASS)
+score TRUSTED_SERVICE -2.0
+describe TRUSTED_SERVICE Known service with valid DKIM and SPF

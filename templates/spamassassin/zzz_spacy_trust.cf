@@ -1,0 +1,123 @@
+# SpaCy Trust Configuration for MailGuard
+# Place this file in /etc/spamassassin/ on MailGuard (192.168.50.37)
+# This config makes MailGuard fully trust SpaCy's authentication
+#
+# Created: 2025-08-27
+# Purpose: Eliminate double authentication checks and trust SpaCy completely
+
+# ===========================================================================
+# DISABLE ALL LOCAL AUTHENTICATION CHECKS
+# ===========================================================================
+
+# Disable SPF checks (SpaCy handles these)
+score SPF_PASS 0
+score SPF_FAIL 0
+score SPF_SOFTFAIL 0
+score SPF_NONE 0
+score SPF_HELO_PASS 0
+score SPF_HELO_FAIL 0
+score SPF_HELO_SOFTFAIL 0
+score SPF_HELO_NONE 0
+score SPF_HELO_TEMPERROR 0
+score SPF_TEMPERROR 0
+
+# Disable DKIM checks (SpaCy handles these)
+score DKIM_VALID 0
+score DKIM_VALID_AU 0
+score DKIM_VALID_EF 0
+score DKIM_INVALID 0
+score DKIM_SIGNED 0
+score DKIM_ADSP_ALL 0
+score DKIM_ADSP_DISCARD 0
+score DKIM_ADSP_NXDOMAIN 0
+score DKIM_ADSP_CUSTOM_MED 0
+score NML_ADSP_CUSTOM_MED 0
+
+# Disable DMARC checks (SpaCy handles these)
+score DMARC_PASS 0
+score DMARC_FAIL 0
+score DMARC_NONE 0
+score DMARC_QUAR 0
+score DMARC_REJECT 0
+score DMARC_MISSING 0
+score DMARC_REJ 0
+
+# Disable ARC checks if present
+score ARC_SIGNED 0
+score ARC_VALID 0
+score ARC_INVALID 0
+score ARC_NA 0
+
+# ===========================================================================
+# TRUST SPACY AUTHENTICATION SCORING
+# ===========================================================================
+
+# Read SpaCy's authentication score and apply it
+header SPACY_AUTH_HIGH_PASS X-SpaCy-Auth-Score =~ /^1[0-9]|^[2-9][0-9]/
+describe SPACY_AUTH_HIGH_PASS Strong authentication pass from SpaCy (10+)
+score SPACY_AUTH_HIGH_PASS -5.0
+
+header SPACY_AUTH_PASS X-SpaCy-Auth-Score =~ /^[5-9](\.\d+)?$/
+describe SPACY_AUTH_PASS Authentication pass from SpaCy (5-9)
+score SPACY_AUTH_PASS -3.0
+
+header SPACY_AUTH_NEUTRAL X-SpaCy-Auth-Score =~ /^[0-4](\.\d+)?$/
+describe SPACY_AUTH_NEUTRAL Neutral authentication from SpaCy (0-4)
+score SPACY_AUTH_NEUTRAL 0
+
+header SPACY_AUTH_FAIL X-SpaCy-Auth-Score =~ /^-[1-4](\.\d+)?$/
+describe SPACY_AUTH_FAIL Authentication concerns from SpaCy (-1 to -4)
+score SPACY_AUTH_FAIL 2.0
+
+header SPACY_AUTH_HIGH_FAIL X-SpaCy-Auth-Score =~ /^-[5-9](\.\d+)?$|^-[1-9][0-9]/
+describe SPACY_AUTH_HIGH_FAIL Strong authentication failure from SpaCy (-5 or less)
+score SPACY_AUTH_HIGH_FAIL 5.0
+
+# ===========================================================================
+# TRUST SPACY'S OTHER ANALYSIS
+# ===========================================================================
+
+# SpaCy spam scoring
+header SPACY_SPAM_HIGH X-SpaCy-Spam-Score =~ /^[5-9](\.\d+)?$|^[1-9][0-9]/
+describe SPACY_SPAM_HIGH SpaCy detected high spam probability
+score SPACY_SPAM_HIGH 3.0
+
+header SPACY_SPAM_LOW X-SpaCy-Spam-Score =~ /^[1-4](\.\d+)?$/
+describe SPACY_SPAM_LOW SpaCy detected low spam probability
+score SPACY_SPAM_LOW 1.0
+
+# SpaCy special detections
+header SPACY_BEC_DETECTED X-BEC-Detected =~ /true/i
+describe SPACY_BEC_DETECTED SpaCy detected Business Email Compromise
+score SPACY_BEC_DETECTED 10.0
+
+header SPACY_KNOWN_SCAMMER X-Known-Scammer =~ /true/i
+describe SPACY_KNOWN_SCAMMER SpaCy identified known scammer
+score SPACY_KNOWN_SCAMMER 20.0
+
+header SPACY_AUTH_ABUSE X-Auth-Abuse-Score =~ /^[5-9]|^[1-9][0-9]/
+describe SPACY_AUTH_ABUSE SpaCy detected authentication abuse
+score SPACY_AUTH_ABUSE 5.0
+
+# ===========================================================================
+# NETWORK TRUST SETTINGS
+# ===========================================================================
+
+# Trust SpaCy server as internal
+trusted_networks 192.168.50.89
+internal_networks 192.168.50.89
+
+# Don't check SpaCy's relay for RBLs
+whitelist_from_rcvd *@* spacy.covereddata.com
+
+# ===========================================================================
+# REMOVE COMPENSATION RULES (NO LONGER NEEDED)
+# ===========================================================================
+
+# These old rules are no longer needed since we're not checking auth locally
+score SPACY_ZERO_SPF_FAIL 0
+score SPACY_ZERO_SPF_HELO_NONE 0
+score SPACY_ZERO_DKIM_INVALID 0
+score SPACY_ZERO_DMARC_FAIL 0
+
+# End of SpaCy Trust Configuration

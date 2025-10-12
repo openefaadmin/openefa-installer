@@ -1,0 +1,304 @@
+##############################################################################
+# SpaCy Integration Rules for SpamAssassin (spacy_rules.cf)
+# Last Updated: 2025-08-07
+# Purpose: ALL rules related to SpaCy email processing, analysis, and authentication preservation
+# FIXED: Corrected header detection for SpaCy authentication
+##############################################################################
+
+# =====================================
+# SpaCy Processing Detection
+# =====================================
+header __FROM_SPACY_RELAY Received =~ /from spacy\.covereddata\.com/i
+header __SPACY_PROCESSED exists:X-SpaCy-Processed
+header __ORIGINAL_AUTH_RESULTS X-Original-Authentication-Results =~ /\w/
+
+# =====================================
+# SpaCy Real Authentication Headers (Enhanced Filter)
+# =====================================
+header __SPACY_SPF_PASS       X-SpaCy-Auth-SPF =~ /^pass$/i
+header __SPACY_SPF_FAIL       X-SpaCy-Auth-SPF =~ /^fail$/i
+header __SPACY_SPF_SOFTFAIL   X-SpaCy-Auth-SPF =~ /^softfail$/i
+header __SPACY_SPF_NEUTRAL    X-SpaCy-Auth-SPF =~ /^neutral$/i
+header __SPACY_SPF_TEMPERROR  X-SpaCy-Auth-SPF =~ /^temperror$/i
+
+header __SPACY_DKIM_PASS      X-SpaCy-Auth-DKIM =~ /^pass$/i
+header __SPACY_DKIM_FAIL      X-SpaCy-Auth-DKIM =~ /^fail$/i
+
+header __SPACY_DMARC_PASS     X-SpaCy-Auth-DMARC =~ /^pass$/i
+header __SPACY_DMARC_FAIL     X-SpaCy-Auth-DMARC =~ /^fail$/i
+
+# =====================================
+# FIXED: CLEAN AUTHENTICATION NEUTRALIZATION
+# Now looks for the headers SpaCy actually adds
+# =====================================
+
+# FIX: Look for headers that SpaCy actually adds
+header __SPACY_HAS_AUTH_RESULTS exists:X-SpaCy-Auth-Results
+header __SPACY_HAS_PROCESSED exists:X-SpaCy-Processed
+
+# Use either detection method
+meta __SPACY_CHECKED_AUTH ((__SPACY_HAS_AUTH_RESULTS || __SPACY_HAS_PROCESSED) && __FROM_SPACY_RELAY)
+
+# SPF Failures - Zero them out
+meta SPACY_ZERO_SPF_FAIL (SPF_FAIL && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_SPF_FAIL -7.0
+describe SPACY_ZERO_SPF_FAIL SpaCy handled auth - zero out SPF_FAIL
+
+meta SPACY_ZERO_FORGED_SPF (FORGED_SPF_HELO && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_FORGED_SPF -1.0
+describe SPACY_ZERO_FORGED_SPF SpaCy handled auth - zero out FORGED_SPF_HELO
+
+meta SPACY_ZERO_SPF_NONE (SPF_NONE && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_SPF_NONE -2.5
+describe SPACY_ZERO_SPF_NONE SpaCy handled auth - zero out SPF_NONE
+
+meta SPACY_ZERO_SPF_HELO_NONE (SPF_HELO_NONE && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_SPF_HELO_NONE -0.3
+describe SPACY_ZERO_SPF_HELO_NONE SpaCy handled auth - zero out SPF_HELO_NONE
+
+# DMARC Failures - Zero them out
+meta SPACY_ZERO_DMARC_FAIL (DMARC_FAIL && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DMARC_FAIL -3.0
+describe SPACY_ZERO_DMARC_FAIL SpaCy handled auth - zero out DMARC_FAIL
+
+meta SPACY_ZERO_DMARC_REJECT (DMARC_REJECT && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DMARC_REJECT -1.8
+describe SPACY_ZERO_DMARC_REJECT SpaCy handled auth - zero out DMARC_REJECT
+
+meta SPACY_ZERO_DMARC_MISSING (DMARC_MISSING && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DMARC_MISSING -1.5
+describe SPACY_ZERO_DMARC_MISSING SpaCy handled auth - zero out DMARC_MISSING
+
+# DKIM Failures - Zero them out
+meta SPACY_ZERO_DKIM_INVALID (DKIM_INVALID && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DKIM_INVALID -1.0
+describe SPACY_ZERO_DKIM_INVALID SpaCy handled auth - zero out DKIM_INVALID
+
+# Remove Authentication Bonuses - We want true ZERO
+meta SPACY_ZERO_DKIM_VALID (DKIM_VALID && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DKIM_VALID 0.5
+describe SPACY_ZERO_DKIM_VALID SpaCy handled auth - remove DKIM_VALID bonus
+
+meta SPACY_ZERO_DKIM_VALID_AU (DKIM_VALID_AU && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DKIM_VALID_AU 0.5
+describe SPACY_ZERO_DKIM_VALID_AU SpaCy handled auth - remove DKIM_VALID_AU bonus
+
+meta SPACY_ZERO_DKIM_VALID_EF (DKIM_VALID_EF && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DKIM_VALID_EF 0.1
+describe SPACY_ZERO_DKIM_VALID_EF SpaCy handled auth - remove DKIM_VALID_EF bonus
+
+meta SPACY_ZERO_DMARC_PASS (DMARC_PASS && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_DMARC_PASS 0.5
+describe SPACY_ZERO_DMARC_PASS SpaCy handled auth - remove DMARC_PASS bonus
+
+meta SPACY_ZERO_SPF_PASS (SPF_PASS && __SPACY_CHECKED_AUTH)
+score SPACY_ZERO_SPF_PASS 0.3
+describe SPACY_ZERO_SPF_PASS SpaCy handled auth - remove SPF_PASS bonus
+
+# =====================================
+# SpaCy Authentication Status Rules
+# These evaluate SpaCy's authentication verdict
+# =====================================
+
+# Perfect Triple Authentication: SPF + DKIM + DMARC all pass
+meta SPACY_AUTH_PERFECT (__SPACY_SPF_PASS && __SPACY_DKIM_PASS && __SPACY_DMARC_PASS && __SPACY_PROCESSED)
+score SPACY_AUTH_PERFECT -6.0
+describe SPACY_AUTH_PERFECT SpaCy validated perfect authentication (SPF+DKIM+DMARC all pass)
+
+# Excellent Authentication: SPF + DKIM pass BUT DMARC does NOT pass
+meta SPACY_AUTH_EXCELLENT (__SPACY_SPF_PASS && __SPACY_DKIM_PASS && !__SPACY_DMARC_PASS && __SPACY_PROCESSED)
+score SPACY_AUTH_EXCELLENT -5.0
+describe SPACY_AUTH_EXCELLENT SpaCy validated excellent authentication (SPF+DKIM pass, DMARC fail/none)
+
+# DMARC pass alone: DMARC passes but either SPF or DKIM fails
+meta SPACY_DMARC_VALIDATED (__SPACY_DMARC_PASS && (!__SPACY_SPF_PASS || !__SPACY_DKIM_PASS) && __SPACY_PROCESSED)
+score SPACY_DMARC_VALIDATED -3.0
+describe SPACY_DMARC_VALIDATED SpaCy validated DMARC pass (SPF or DKIM issues)
+
+# Good Authentication: Only DKIM passes, SPF doesn't fail, DMARC doesn't pass
+meta SPACY_AUTH_GOOD (__SPACY_DKIM_PASS && !__SPACY_SPF_PASS && !__SPACY_DMARC_PASS && !__SPACY_SPF_FAIL && __SPACY_PROCESSED)
+score SPACY_AUTH_GOOD -2.0
+describe SPACY_AUTH_GOOD SpaCy validated good authentication (DKIM only, SPF neutral)
+
+# SPF pass alone: Only SPF passes, DKIM doesn't pass
+meta SPACY_SPF_VALIDATED (__SPACY_SPF_PASS && !__SPACY_DKIM_PASS && !__SPACY_DMARC_PASS && __SPACY_PROCESSED)
+score SPACY_SPF_VALIDATED -1.0
+describe SPACY_SPF_VALIDATED SpaCy validated SPF pass (standalone only)
+
+# =====================================
+# URGENT: AUTHENTICATION BYPASS PREVENTION FOR KNOWN SCAMMERS
+# =====================================
+
+# CRITICAL: Block Victoria Chavez authentication bypass
+header __VICTORIA_CHAVEZ_SENDER From =~ /v\.?chavez\@.*freshf.*partners?\.com$/i
+header __FRESHFINS_DOMAIN From =~ /\@freshfinspartners\.com$/i
+header __PD25_SCAMMER_DOMAIN From =~ /bounce.*\@.*pd25\.com$/i
+
+# CRITICAL: Known scammer authentication override
+meta KNOWN_SCAMMER_AUTH_BYPASS ((__VICTORIA_CHAVEZ_SENDER || __FRESHFINS_DOMAIN || __PD25_SCAMMER_DOMAIN) && (SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT))
+score KNOWN_SCAMMER_AUTH_BYPASS 20.0
+describe KNOWN_SCAMMER_AUTH_BYPASS CRITICAL: Known scammer bypassing authentication - block regardless
+
+# URGENT: Victoria Chavez specific override
+meta VICTORIA_CHAVEZ_AUTH_OVERRIDE (__VICTORIA_CHAVEZ_SENDER && (SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT))
+score VICTORIA_CHAVEZ_AUTH_OVERRIDE 25.0
+describe VICTORIA_CHAVEZ_AUTH_OVERRIDE Victoria Chavez with good auth - MAXIMUM BLOCK
+
+# URGENT: pd25.com financial scam override
+meta PD25_FINANCIAL_AUTH_OVERRIDE (__PD25_SCAMMER_DOMAIN && (WORKING_CAPITAL_SCAM || OPERATIONAL_FUNDS_SUBJECT) && (SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT))
+score PD25_FINANCIAL_AUTH_OVERRIDE 20.0
+describe PD25_FINANCIAL_AUTH_OVERRIDE pd25.com financial scam with good auth - BLOCK
+
+# =====================================
+# Domain-Specific Authentication Rules
+# =====================================
+
+# Gmail Authentication (only when not perfect/excellent)
+header __GMAIL_DOMAIN         From =~ /\@gmail\.com$/i
+meta SPACY_GMAIL_AUTH (__GMAIL_DOMAIN && __SPACY_DKIM_PASS && !(SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT) && __SPACY_PROCESSED)
+score SPACY_GMAIL_AUTH -2.0
+describe SPACY_GMAIL_AUTH SpaCy validated Gmail authentication (DKIM-based, not perfect)
+
+# Datto Authentication (only when not perfect/excellent)
+header __DATTO_DOMAIN         From =~ /\@(?:datto\.com|dattobackup\.com)$/i
+meta SPACY_DATTO_AUTH (__DATTO_DOMAIN && (__SPACY_SPF_PASS || __SPACY_DKIM_PASS) && !(SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT) && __SPACY_PROCESSED)
+score SPACY_DATTO_AUTH -3.0
+describe SPACY_DATTO_AUTH SpaCy validated Datto authentication (not perfect)
+
+# Microsoft/Office 365 Authentication (only when not perfect/excellent)
+header __MICROSOFT_DOMAIN     From =~ /\@(?:outlook\.com|hotmail\.com|live\.com|microsoftonline\.com)$/i
+meta SPACY_MICROSOFT_AUTH (__MICROSOFT_DOMAIN && (__SPACY_SPF_PASS || __SPACY_DKIM_PASS) && !(SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT) && __SPACY_PROCESSED)
+score SPACY_MICROSOFT_AUTH -2.0
+describe SPACY_MICROSOFT_AUTH SpaCy validated Microsoft/Office365 authentication (not perfect)
+
+# Google Workspace domains (only when not perfect/excellent)
+header __GOOGLE_WORKSPACE     From =~ /\@[^@]+\.google\.com$/i
+meta SPACY_GOOGLE_AUTH (__GOOGLE_WORKSPACE && __SPACY_DKIM_PASS && !(SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT) && __SPACY_PROCESSED)
+score SPACY_GOOGLE_AUTH -3.0
+describe SPACY_GOOGLE_AUTH SpaCy validated Google Workspace authentication (not perfect)
+
+# =====================================
+# Authentication Failure Penalties
+# =====================================
+
+# Severe penalty for total authentication failure from trusted domains
+meta SPACY_AUTH_TOTAL_FAIL (__SPACY_SPF_FAIL && __SPACY_DKIM_FAIL && (__GMAIL_DOMAIN || __MICROSOFT_DOMAIN || __DATTO_DOMAIN) && __SPACY_PROCESSED)
+score SPACY_AUTH_TOTAL_FAIL 8.0
+describe SPACY_AUTH_TOTAL_FAIL SpaCy detected total authentication failure from trusted domain (likely spoofed)
+
+# Moderate penalty for partial authentication failure
+meta SPACY_AUTH_PARTIAL_FAIL ((__SPACY_SPF_FAIL || __SPACY_DKIM_FAIL) && (__GMAIL_DOMAIN || __MICROSOFT_DOMAIN || __DATTO_DOMAIN) && __SPACY_PROCESSED && !SPACY_AUTH_TOTAL_FAIL)
+score SPACY_AUTH_PARTIAL_FAIL 3.0
+describe SPACY_AUTH_PARTIAL_FAIL SpaCy detected partial authentication failure from trusted domain
+
+# =====================================
+# LEGACY: Original Authentication Header Detection (KEPT FOR COMPATIBILITY)
+# =====================================
+header __ORIGINAL_SPF_PASS X-Original-SPF =~ /pass/i
+header __ORIGINAL_SPF_NONE X-Original-SPF =~ /none/i
+header __ORIGINAL_SPF_FAIL X-Original-SPF =~ /fail/i
+header __ORIGINAL_SPF_TEMPERROR X-Original-SPF =~ /temperror/i
+header __ORIGINAL_DKIM_PASS X-Original-DKIM =~ /pass/i
+header __ORIGINAL_DKIM_NONE X-Original-DKIM =~ /none/i
+header __ORIGINAL_DKIM_FAIL X-Original-DKIM =~ /fail/i
+header __ORIGINAL_DMARC_PASS X-Original-DMARC =~ /pass/i
+header __ORIGINAL_DMARC_NONE X-Original-DMARC =~ /none/i
+header __ORIGINAL_DMARC_FAIL X-Original-DMARC =~ /fail/i
+
+# =====================================
+# LEGACY: Authentication Status Definitions (KEPT FOR COMPATIBILITY)
+# =====================================
+meta __STRONG_ORIGINAL_AUTH (__ORIGINAL_DKIM_PASS && !__ORIGINAL_SPF_NONE)
+meta __PERFECT_ORIGINAL_AUTH (__ORIGINAL_SPF_PASS && __ORIGINAL_DKIM_PASS && __ORIGINAL_DMARC_PASS)
+meta __POOR_ORIGINAL_AUTH (__ORIGINAL_SPF_NONE && __ORIGINAL_DKIM_NONE && __ORIGINAL_DMARC_NONE)
+meta __FAILED_ORIGINAL_AUTH (__ORIGINAL_SPF_FAIL || __ORIGINAL_DKIM_FAIL || __ORIGINAL_DMARC_FAIL)
+
+# =====================================
+# Suspicious Relay Patterns
+# =====================================
+
+# PENALTY for emails that had auth problems BEFORE relay (suspicious evasion pattern)
+meta SPACY_RELAY_BAD_AUTH_PATTERN (SPF_FAIL && __FROM_SPACY_RELAY && (__POOR_ORIGINAL_AUTH || __FAILED_ORIGINAL_AUTH) && !(SPACY_AUTH_PERFECT || SPACY_AUTH_EXCELLENT))
+score SPACY_RELAY_BAD_AUTH_PATTERN 2.0
+describe SPACY_RELAY_BAD_AUTH_PATTERN SUSPICIOUS: Auth problems before relay (evasion pattern)
+
+# Additional penalty for obviously malicious emails using relay evasion
+meta SPACY_MALICIOUS_RELAY_EVASION (SPACY_RELAY_BAD_AUTH_PATTERN && (UNICODE_OBFU_ASC || UNICODE_OBFU_ZW || PYZOR_CHECK))
+score SPACY_MALICIOUS_RELAY_EVASION 3.0
+describe SPACY_MALICIOUS_RELAY_EVASION Malicious email using relay for auth evasion
+
+# =====================================
+# VENDOR WHITELIST DETECTION
+# =====================================
+
+# SpaCy trust level detection (keep these - they're referenced elsewhere)
+header __SPACY_VERY_LOW_SCORE    X-SpaCy-Spam-Score =~ /^0\.[0-3]/     # 0.0-0.3 = strongly trusted
+header __SPACY_LOW_SCORE         X-SpaCy-Spam-Score =~ /^0\.[0-5]/     # 0.0-0.5 = trusted  
+
+# Trusted vendor domains (when SpaCy detects known good vendors)
+header __TRUSTED_VENDOR_PATTERN From =~ /\@(?:dattobackup\.com|datto\.com|pax8\.com|kaseya\.com|unitrends\.com)$/i
+meta SPACY_VENDOR_WHITELIST (__TRUSTED_VENDOR_PATTERN && __SPACY_LOW_SCORE && __SPACY_PROCESSED)
+score SPACY_VENDOR_WHITELIST -1.5
+describe SPACY_VENDOR_WHITELIST SpaCy trusted vendor whitelist detected
+
+# Automated/system emails (when SpaCy detects legitimate automated senders)
+header __AUTOMATED_SENDER_PATTERN From =~ /(?:noreply|no-reply|donotreply|notifications?|updates?|alerts?|system|automated|mailer-daemon)/i
+meta SPACY_AUTOMATED_SENDER (__AUTOMATED_SENDER_PATTERN && __SPACY_LOW_SCORE && __SPACY_PROCESSED)
+score SPACY_AUTOMATED_SENDER -0.5
+describe SPACY_AUTOMATED_SENDER SpaCy validated automated sender
+
+# Clean trust bonus (excluding scammers)
+meta SPACY_CLEAN_TRUST_BONUS (__SPACY_VERY_LOW_SCORE && __SPACY_PROCESSED && !(__VICTORIA_CHAVEZ_SENDER || __FRESHFINS_DOMAIN || __PD25_SCAMMER_DOMAIN))
+score SPACY_CLEAN_TRUST_BONUS -0.5
+describe SPACY_CLEAN_TRUST_BONUS Clean trust bonus for SpaCy verified email (excluding scammers)
+
+# =====================================
+# SpaCy Financial Scam Detection
+# =====================================
+
+# Working capital / operational funds scam subjects
+header WORKING_CAPITAL_SCAM Subject =~ /(?:working.*capital|business.*capital|capital.*offer|capital.*solutions?|capital.*funding)/i
+score WORKING_CAPITAL_SCAM 5.0
+describe WORKING_CAPITAL_SCAM Working capital scam subject pattern
+
+header OPERATIONAL_FUNDS_SUBJECT Subject =~ /(?:operational.*fund|operating.*capital|business.*fund|immediate.*capital|quick.*fund)/i
+score OPERATIONAL_FUNDS_SUBJECT 5.0
+describe OPERATIONAL_FUNDS_SUBJECT Operational funds scam subject
+
+# Nigeria 419 scam patterns
+body NIGERIA_419_PATTERNS /(?:nigerian?.*prince|inheritance.*claim|beneficiary.*fund)/i
+score NIGERIA_419_PATTERNS 6.0
+describe NIGERIA_419_PATTERNS Common 419 scam patterns
+
+# Financial fraud patterns
+body FINANCIAL_FRAUD /(?:transfer.*fund|claim.*money|urgent.*business|confidential.*deal|business.*proposal.*million|wire.*transfer.*urgent)/i
+score FINANCIAL_FRAUD 4.0
+describe FINANCIAL_FRAUD Financial fraud language patterns
+
+# Romance scam patterns
+body ROMANCE_SCAM /(?:lonely.*widow|military.*deployment|overseas.*contract|love.*first.*sight|god.*fearing|honest.*relationship)/i
+score ROMANCE_SCAM 4.5
+describe ROMANCE_SCAM Romance scam language patterns
+
+# =====================================
+# Debug Rules (Zero Score)
+# =====================================
+
+# Track when SpaCy real authentication is being used
+meta SPACY_REAL_AUTH_PROCESSED (__SPACY_SPF_PASS || __SPACY_SPF_FAIL || __SPACY_DKIM_PASS || __SPACY_DKIM_FAIL || __SPACY_DMARC_PASS || __SPACY_DMARC_FAIL)
+score SPACY_REAL_AUTH_PROCESSED 0.0
+describe SPACY_REAL_AUTH_PROCESSED SpaCy real authentication headers present
+
+# Track authentication combinations
+meta SPACY_AUTH_COMBO_TRIPLE (SPACY_AUTH_PERFECT && __SPACY_PROCESSED)
+score SPACY_AUTH_COMBO_TRIPLE 0.0
+describe SPACY_AUTH_COMBO_TRIPLE SpaCy: SPF+DKIM+DMARC all pass
+
+meta SPACY_AUTH_COMBO_DOUBLE (SPACY_AUTH_EXCELLENT && __SPACY_PROCESSED)
+score SPACY_AUTH_COMBO_DOUBLE 0.0
+describe SPACY_AUTH_COMBO_DOUBLE SpaCy: SPF+DKIM pass, DMARC none/fail
+
+# Track if neutralization is working
+meta DEBUG_AUTH_NEUTRALIZED (SPF_FAIL && __SPACY_CHECKED_AUTH)
+score DEBUG_AUTH_NEUTRALIZED 0.0
+describe DEBUG_AUTH_NEUTRALIZED SpaCy auth neutralization should be active
