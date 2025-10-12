@@ -8,13 +8,19 @@ OpenEFA is a modern, open-source email security appliance that combines advanced
 
 **One-Line Install** (Recommended):
 ```bash
-curl -sSL https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/bootstrap.sh | sudo bash
 ```
 
 **Or download and review first**:
 ```bash
-wget https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/install.sh
-chmod +x install.sh
+# Download the installer
+git clone https://github.com/openefaadmin/openefa-installer.git
+cd openefa-installer
+
+# Review the code
+cat install.sh
+
+# Run the installer
 sudo ./install.sh
 ```
 
