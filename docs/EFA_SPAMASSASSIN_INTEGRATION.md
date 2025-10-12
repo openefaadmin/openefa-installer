@@ -106,12 +106,12 @@ If your MailGuard/EFA server is accessible and you have SSH access:
 cd /opt/spacyserver/config/spamassassin_cf
 
 # Copy files to MailGuard/EFA server
-scp spacy_rules.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp local.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp zzz_spacy_trust.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+scp spacy_rules.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp local.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp zzz_spacy_trust.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
 
 # SSH into MailGuard and restart SpamAssassin
-ssh root@YOUR_MAILGUARD_IP
+ssh root@YOUR_EFA_SERVER_IP
 spamassassin --lint    # Test configuration for syntax errors
 systemctl restart mailscanner  # Or: service mailscanner restart
 ```
@@ -121,7 +121,7 @@ systemctl restart mailscanner  # Or: service mailscanner restart
 OpenEFA includes an automated deployment tool (requires SSH key setup):
 
 ```bash
-sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_MAILGUARD_IP
+sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_EFA_SERVER_IP
 ```
 
 This script will:
@@ -493,7 +493,7 @@ curl -X POST http://YOUR_OPENEFA_IP:5003/api/block \
 
 **Weekly**: Check rule deployment status
 ```bash
-ssh root@YOUR_MAILGUARD_IP "ls -l /etc/mail/spamassassin/spacy*.cf"
+ssh root@YOUR_EFA_SERVER_IP "ls -l /etc/mail/spamassassin/spacy*.cf"
 ```
 
 **Monthly**: Review scoring effectiveness
@@ -504,7 +504,7 @@ grep "X-Spam-Status" /var/log/maillog | awk '{print $NF}' | sort | uniq -c
 
 **After OpenEFA Updates**: Redeploy rules if updated
 ```bash
-sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_MAILGUARD_IP
+sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_EFA_SERVER_IP
 ```
 
 ### Log Monitoring

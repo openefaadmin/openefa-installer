@@ -143,12 +143,12 @@ All features including AI/NLP models:
 cd /opt/spacyserver/installer/templates/spamassassin
 
 # Copy to MailGuard/EFA server
-scp spacy_rules.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp local.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp zzz_spacy_trust.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+scp spacy_rules.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp local.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp zzz_spacy_trust.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
 
 # On MailGuard server, verify and restart
-ssh root@YOUR_MAILGUARD_IP "spamassassin --lint && systemctl restart mailscanner"
+ssh root@YOUR_EFA_SERVER_IP "spamassassin --lint && systemctl restart mailscanner"
 ```
 
 **Full Documentation**: See `/opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md` or `docs/EFA_SPAMASSASSIN_INTEGRATION.md` in this repository.

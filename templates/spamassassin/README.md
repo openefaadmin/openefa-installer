@@ -50,12 +50,12 @@ These SpamAssassin configuration files enable your downstream MailGuard or EFA s
 # From your OpenEFA server
 cd /opt/spacyserver/installer/templates/spamassassin
 
-scp spacy_rules.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp local.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-scp zzz_spacy_trust.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+scp spacy_rules.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp local.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+scp zzz_spacy_trust.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
 
 # SSH into MailGuard and restart
-ssh root@YOUR_MAILGUARD_IP
+ssh root@YOUR_EFA_SERVER_IP
 spamassassin --lint
 systemctl restart mailscanner
 ```
@@ -63,7 +63,7 @@ systemctl restart mailscanner
 ### Method 2: Automated Tool
 
 ```bash
-sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_MAILGUARD_IP
+sudo /opt/spacyserver/tools/deploy_spamassassin_rules.sh YOUR_EFA_SERVER_IP
 ```
 
 ## Verification

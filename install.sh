@@ -141,8 +141,8 @@ ${COLOR_RED}⚠️  CRITICAL - If using MailGuard/EFA downstream:${COLOR_RESET}
   ${COLOR_YELLOW}Deploy SpamAssassin rules to your MailGuard/EFA server:${COLOR_RESET}
 
   cd /opt/spacyserver/installer/templates/spamassassin
-  scp *.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
-  ssh root@YOUR_MAILGUARD_IP "spamassassin --lint && systemctl restart mailscanner"
+  scp *.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
+  ssh root@YOUR_EFA_SERVER_IP "spamassassin --lint && systemctl restart mailscanner"
 
   ${COLOR_WHITE}Without this, MailGuard will IGNORE OpenEFA's analysis!${COLOR_RESET}
   See: /opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md
