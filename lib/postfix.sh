@@ -100,7 +100,11 @@ EOTRANSPORT
 
     # Hash the transport map
     if run_cmd "postmap ${transport_file}" "Failed to hash transport map"; then
-        success "Transport map configured for ${#INSTALL_DOMAINS[@]:-1} domain(s)"
+        local domain_count=1
+        if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+            domain_count=${#INSTALL_DOMAINS[@]}
+        fi
+        success "Transport map configured for ${domain_count} domain(s)"
         return 0
     else
         return 1
