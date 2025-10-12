@@ -305,14 +305,8 @@ Choose the module tier to install:
 
   2) Tier 2 - Standard (Recommended)
      Includes Tier 1 + BEC detection, typosquatting, DNS reputation,
-     obfuscation detector, marketing filter
+     obfuscation detector, marketing filter, PDF analyzer, URL reputation
      Recommended for: Most installations, balanced performance
-
-  3) Tier 3 - Advanced (Full Stack)
-     Includes Tier 2 + NER (AI entity extraction), thread awareness,
-     conversation learning, behavioral baseline, PDF analyzer
-     Recommended for: High-security needs, sufficient resources
-     Note: Requires ~500MB additional disk space for AI models
 
 EOF
 
@@ -321,12 +315,12 @@ EOF
         MODULE_TIER="${MODULE_TIER:-2}"
 
         case "${MODULE_TIER}" in
-            1|2|3)
+            1|2)
                 export MODULE_TIER
                 break
                 ;;
             *)
-                error "Invalid selection. Please choose 1, 2, or 3"
+                error "Invalid selection. Please choose 1 or 2"
                 ;;
         esac
     done
@@ -334,7 +328,6 @@ EOF
     case "${MODULE_TIER}" in
         1) success "Selected: Tier 1 - Core Only" ;;
         2) success "Selected: Tier 2 - Standard (Recommended)" ;;
-        3) success "Selected: Tier 3 - Advanced (Full Stack)" ;;
     esac
 }
 
