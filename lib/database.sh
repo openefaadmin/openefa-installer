@@ -120,21 +120,41 @@ EOMYCNF
 # Insert initial domain into client_domains table
 #
 insert_initial_domain() {
-    info "Adding initial domain: ${INSTALL_DOMAIN}"
+    # Insert multiple domains if array is populated
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        info "Adding ${#INSTALL_DOMAINS[@]} domain(s) to database..."
 
-    mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
+INSERT INTO client_domains (domain, client_name, active, created_at)
+VALUES ('${domain}', '${domain}', 1, NOW())
+ON DUPLICATE KEY UPDATE active = 1;
+EOSQL
+
+            if [[ $? -eq 0 ]]; then
+                success "Added domain: ${domain}"
+            else
+                warn "Failed to add domain: ${domain} (may need manual addition)"
+            fi
+        done
+    else
+        # Fallback to single domain
+        info "Adding initial domain: ${INSTALL_DOMAIN}"
+
+        mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
 INSERT INTO client_domains (domain, client_name, active, created_at)
 VALUES ('${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', 1, NOW())
 ON DUPLICATE KEY UPDATE active = 1;
 EOSQL
 
-    if [[ $? -eq 0 ]]; then
-        success "Initial domain added"
-        return 0
-    else
-        warn "Failed to add initial domain (may need manual addition)"
-        return 0  # Non-fatal
+        if [[ $? -eq 0 ]]; then
+            success "Initial domain added"
+        else
+            warn "Failed to add initial domain (may need manual addition)"
+        fi
     fi
+
+    return 0  # Non-fatal
 }
 
 #

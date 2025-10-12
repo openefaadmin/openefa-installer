@@ -81,16 +81,26 @@ configure_transport_maps() {
 
     local transport_file="/etc/postfix/transport"
 
+    # Start transport file with header
     cat > "${transport_file}" << EOTRANSPORT
 # OpenEFA Transport Map
-# Routes ${INSTALL_DOMAIN} to relay server
+# Routes configured domains to relay server
 
-${INSTALL_DOMAIN}    smtp:[${RELAY_SERVER_IP}]:${RELAY_SERVER_PORT}
 EOTRANSPORT
+
+    # Add transport entry for each domain
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            echo "${domain}    smtp:[${RELAY_SERVER_IP}]:${RELAY_SERVER_PORT}" >> "${transport_file}"
+        done
+    else
+        # Fallback to single domain if array not set
+        echo "${INSTALL_DOMAIN}    smtp:[${RELAY_SERVER_IP}]:${RELAY_SERVER_PORT}" >> "${transport_file}"
+    fi
 
     # Hash the transport map
     if run_cmd "postmap ${transport_file}" "Failed to hash transport map"; then
-        success "Transport map configured"
+        success "Transport map configured for ${#INSTALL_DOMAINS[@]:-1} domain(s)"
         return 0
     else
         return 1
@@ -105,13 +115,25 @@ configure_virtual_domains() {
 
     local virtual_file="/etc/postfix/virtual"
 
+    # Start virtual file with header
     cat > "${virtual_file}" << EOVIRTUAL
 # OpenEFA Virtual Domains
 # Domain aliases and catch-all configuration
 
-# Accept all mail for ${INSTALL_DOMAIN}
-@${INSTALL_DOMAIN}  @${INSTALL_DOMAIN}
 EOVIRTUAL
+
+    # Add virtual domain entry for each domain
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            echo "# Accept all mail for ${domain}" >> "${virtual_file}"
+            echo "@${domain}  @${domain}" >> "${virtual_file}"
+            echo "" >> "${virtual_file}"
+        done
+    else
+        # Fallback to single domain if array not set
+        echo "# Accept all mail for ${INSTALL_DOMAIN}" >> "${virtual_file}"
+        echo "@${INSTALL_DOMAIN}  @${INSTALL_DOMAIN}" >> "${virtual_file}"
+    fi
 
     # Hash the virtual map
     if run_cmd "postmap ${virtual_file}" "Failed to hash virtual map"; then
@@ -167,7 +189,14 @@ set_postfix_parameters() {
     postconf -e "myhostname=$(hostname -f)"
     postconf -e "mydestination=localhost"
     postconf -e "mynetworks=127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128"
-    postconf -e "relay_domains=${INSTALL_DOMAIN}"
+
+    # Set relay_domains (supports multiple domains)
+    if [[ -n "${INSTALL_DOMAINS_LIST}" ]]; then
+        postconf -e "relay_domains=${INSTALL_DOMAINS_LIST}"
+    else
+        postconf -e "relay_domains=${INSTALL_DOMAIN}"
+    fi
+
     postconf -e "transport_maps=hash:/etc/postfix/transport"
     postconf -e "virtual_alias_maps=hash:/etc/postfix/virtual"
     postconf -e "smtpd_recipient_restrictions=permit_mynetworks,reject_unauth_destination"

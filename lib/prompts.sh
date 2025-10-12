@@ -93,6 +93,10 @@ validate_password() {
 prompt_domain() {
     section "Domain Configuration"
 
+    # Initialize domains array
+    INSTALL_DOMAINS=()
+
+    # Get primary domain
     while true; do
         read -p "Enter the primary domain to protect (e.g., example.com): " INSTALL_DOMAIN
 
@@ -108,10 +112,65 @@ prompt_domain() {
 
         info "Primary domain: ${INSTALL_DOMAIN}"
         if confirm "Is this correct?"; then
+            INSTALL_DOMAINS+=("${INSTALL_DOMAIN}")
             export INSTALL_DOMAIN
             break
         fi
     done
+
+    # Prompt for additional domains
+    echo ""
+    info "You can add additional domains to protect now, or add them later via SpacyWeb."
+    echo ""
+
+    while true; do
+        if ! confirm "Add another domain?"; then
+            break
+        fi
+
+        read -p "Enter domain name: " ADDITIONAL_DOMAIN
+
+        if [[ -z "${ADDITIONAL_DOMAIN}" ]]; then
+            warn "Domain cannot be empty, skipping"
+            continue
+        fi
+
+        if ! validate_domain "${ADDITIONAL_DOMAIN}"; then
+            error "Invalid domain format: ${ADDITIONAL_DOMAIN}"
+            continue
+        fi
+
+        # Check for duplicates
+        local duplicate=false
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            if [[ "${domain}" == "${ADDITIONAL_DOMAIN}" ]]; then
+                warn "Domain ${ADDITIONAL_DOMAIN} already added, skipping"
+                duplicate=true
+                break
+            fi
+        done
+
+        if [[ "${duplicate}" == "false" ]]; then
+            INSTALL_DOMAINS+=("${ADDITIONAL_DOMAIN}")
+            success "Added ${ADDITIONAL_DOMAIN}"
+        fi
+    done
+
+    # Export domains as comma-separated list for use in other scripts
+    export INSTALL_DOMAINS_LIST=$(IFS=,; echo "${INSTALL_DOMAINS[*]}")
+    export INSTALL_DOMAINS
+
+    # Display summary
+    echo ""
+    if [[ ${#INSTALL_DOMAINS[@]} -eq 1 ]]; then
+        info "Domain to configure: ${INSTALL_DOMAINS[0]}"
+    else
+        info "Domains to configure (${#INSTALL_DOMAINS[@]} total):"
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            echo "  • ${domain}"
+        done
+    fi
+    echo ""
 }
 
 #

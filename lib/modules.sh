@@ -125,6 +125,47 @@ install_module_configs() {
 }
 
 #
+# Update HOSTED_DOMAINS in SpacyWeb app.py
+#
+update_hosted_domains() {
+    info "Configuring HOSTED_DOMAINS in SpacyWeb..."
+
+    local app_file="/opt/spacyserver/web/app.py"
+
+    if [[ ! -f "${app_file}" ]]; then
+        warn "app.py not found, skipping HOSTED_DOMAINS update"
+        return 0
+    fi
+
+    # Build Python list from domains array
+    local domains_python="["
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        local first=true
+        for domain in "${INSTALL_DOMAINS[@]}"; do
+            if [[ "${first}" == "true" ]]; then
+                domains_python+="'${domain}'"
+                first=false
+            else
+                domains_python+=", '${domain}'"
+            fi
+        done
+    else
+        domains_python+="'${INSTALL_DOMAIN}'"
+    fi
+    domains_python+="]"
+
+    # Update HOSTED_DOMAINS line in app.py
+    if grep -q "^HOSTED_DOMAINS = " "${app_file}"; then
+        sed -i "s/^HOSTED_DOMAINS = .*/HOSTED_DOMAINS = ${domains_python}/" "${app_file}"
+        success "HOSTED_DOMAINS updated with ${#INSTALL_DOMAINS[@]:-1} domain(s)"
+    else
+        warn "HOSTED_DOMAINS not found in app.py, may need manual configuration"
+    fi
+
+    return 0
+}
+
+#
 # Configure modules based on selected tier
 #
 configure_module_tier() {
@@ -191,6 +232,7 @@ install_modules() {
 
     copy_module_files || return 1
     install_module_configs || return 1
+    update_hosted_domains || return 1
     configure_module_tier || return 1
     configure_module_logging || return 1
 
@@ -200,5 +242,5 @@ install_modules() {
 }
 
 # Export functions
-export -f copy_module_files install_module_configs configure_module_tier
-export -f configure_module_logging install_modules
+export -f copy_module_files install_module_configs update_hosted_domains
+export -f configure_module_tier configure_module_logging install_modules
