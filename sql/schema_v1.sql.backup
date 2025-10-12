@@ -1,0 +1,741 @@
+
+DROP TABLE IF EXISTS `audit_log`;
+CREATE TABLE `audit_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) DEFAULT NULL,
+  `action` varchar(100) NOT NULL,
+  `details` text DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_log_user_id` (`user_id`),
+  KEY `idx_audit_log_created_at` (`created_at`),
+  CONSTRAINT `audit_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `behavioral_anomalies`;
+CREATE TABLE `behavioral_anomalies` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_email` varchar(255) NOT NULL,
+  `recipient_email` varchar(255) DEFAULT NULL,
+  `message_id` varchar(255) DEFAULT NULL,
+  `anomaly_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `anomaly_type` enum('time','volume','recipient','content','location','pattern') NOT NULL,
+  `anomaly_severity` enum('low','medium','high','critical') NOT NULL,
+  `anomaly_score` float DEFAULT 0,
+  `expected_value` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'What was expected based on baseline' CHECK (json_valid(`expected_value`)),
+  `actual_value` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'What actually occurred' CHECK (json_valid(`actual_value`)),
+  `deviation_percentage` float DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `was_blocked` tinyint(1) DEFAULT 0,
+  `was_false_positive` tinyint(1) DEFAULT 0,
+  `action_taken` enum('none','logged','flagged','quarantined','blocked') DEFAULT 'logged',
+  `admin_reviewed` tinyint(1) DEFAULT 0,
+  `admin_notes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_email`),
+  KEY `idx_timestamp` (`anomaly_timestamp`),
+  KEY `idx_severity` (`anomaly_severity`),
+  KEY `idx_type` (`anomaly_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `behavioral_config`;
+CREATE TABLE `behavioral_config` (
+  `config_key` varchar(100) NOT NULL,
+  `config_value` varchar(255) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  PRIMARY KEY (`config_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `blocked_attempts`;
+CREATE TABLE `blocked_attempts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain_id` int(11) NOT NULL,
+  `timestamp` datetime DEFAULT NULL,
+  `sender_address` varchar(255) DEFAULT NULL,
+  `sender_domain` varchar(255) DEFAULT NULL,
+  `sender_ip` varchar(45) DEFAULT NULL,
+  `sender_country` varchar(2) DEFAULT NULL,
+  `rule_matched` varchar(255) DEFAULT NULL,
+  `rule_type` varchar(50) DEFAULT NULL,
+  `smtp_session_id` varchar(100) DEFAULT NULL,
+  `message_id` varchar(255) DEFAULT NULL,
+  `subject` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_blocked_attempts_timestamp` (`timestamp`),
+  KEY `idx_blocked_attempts_sender` (`sender_domain`,`timestamp`),
+  KEY `ix_blocked_attempts_sender_domain` (`sender_domain`),
+  KEY `idx_blocked_attempts_reporting` (`client_domain_id`,`timestamp`),
+  CONSTRAINT `blocked_attempts_ibfk_1` FOREIGN KEY (`client_domain_id`) REFERENCES `client_domains` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `blocking_rules`;
+CREATE TABLE `blocking_rules` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain_id` int(11) NOT NULL,
+  `rule_type` varchar(50) NOT NULL,
+  `rule_value` varchar(255) NOT NULL,
+  `rule_pattern` varchar(50) DEFAULT NULL,
+  `recipient_pattern` varchar(255) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `created_at` datetime DEFAULT NULL,
+  `created_by` varchar(100) DEFAULT NULL,
+  `active` tinyint(1) DEFAULT NULL,
+  `priority` int(11) DEFAULT NULL,
+  `whitelist` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_blocking_rules_lookup` (`client_domain_id`,`rule_type`,`active`),
+  KEY `idx_blocking_rules_priority` (`priority`),
+  CONSTRAINT `blocking_rules_ibfk_1` FOREIGN KEY (`client_domain_id`) REFERENCES `client_domains` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `client_domains`;
+CREATE TABLE `client_domains` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `domain` varchar(255) NOT NULL,
+  `client_name` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  `active` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ix_client_domains_domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `client_modules`;
+CREATE TABLE `client_modules` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain` varchar(255) NOT NULL,
+  `module_name` varchar(100) NOT NULL,
+  `enabled` tinyint(1) DEFAULT 0,
+  `subscription_start` date DEFAULT NULL,
+  `subscription_end` date DEFAULT NULL,
+  `config` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`config`)),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_client_module` (`client_domain`,`module_name`),
+  KEY `idx_client_domain` (`client_domain`),
+  KEY `idx_module_enabled` (`module_name`,`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `compliance_entities`;
+CREATE TABLE `compliance_entities` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `email_id` int(11) DEFAULT NULL,
+  `client_domain` varchar(255) DEFAULT NULL,
+  `entity_type` varchar(50) DEFAULT NULL,
+  `entity_value` text DEFAULT NULL,
+  `entity_context` text DEFAULT NULL,
+  `confidence_score` float DEFAULT NULL,
+  `extracted_date` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_email_entities` (`email_id`),
+  KEY `idx_client_entities` (`client_domain`,`entity_type`),
+  CONSTRAINT `compliance_entities_ibfk_1` FOREIGN KEY (`email_id`) REFERENCES `email_analysis` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `compromise_indicators`;
+CREATE TABLE `compromise_indicators` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_email` varchar(255) NOT NULL,
+  `indicator_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `sudden_volume_spike` tinyint(1) DEFAULT 0,
+  `unusual_send_time` tinyint(1) DEFAULT 0,
+  `new_recipient_pattern` tinyint(1) DEFAULT 0,
+  `suspicious_content_change` tinyint(1) DEFAULT 0,
+  `geographic_anomaly` tinyint(1) DEFAULT 0,
+  `authentication_downgrade` tinyint(1) DEFAULT 0,
+  `total_indicators` int(11) DEFAULT 0,
+  `risk_score` float DEFAULT 0,
+  `details` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`details`)),
+  `requires_review` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_email`),
+  KEY `idx_timestamp` (`indicator_timestamp`),
+  KEY `idx_risk` (`risk_score`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_domain_stats`;
+CREATE TABLE `conversation_domain_stats` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `domain` varchar(255) NOT NULL,
+  `total_messages` int(11) DEFAULT 0,
+  `avg_message_length` int(11) DEFAULT 0,
+  `avg_spam_score` float DEFAULT 0,
+  `common_topics` text DEFAULT NULL,
+  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `domain` (`domain`),
+  KEY `idx_domain` (`domain`),
+  KEY `idx_total_messages` (`total_messages`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_learning_config`;
+CREATE TABLE `conversation_learning_config` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `config_key` varchar(50) NOT NULL,
+  `config_value` varchar(255) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `config_key` (`config_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_learning_progress`;
+CREATE TABLE `conversation_learning_progress` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `date` date NOT NULL,
+  `patterns_learned` int(11) DEFAULT 0,
+  `relationships_formed` int(11) DEFAULT 0,
+  `phrases_identified` int(11) DEFAULT 0,
+  `emails_processed` int(11) DEFAULT 0,
+  `avg_confidence` float DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `date` (`date`),
+  KEY `idx_date` (`date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_learning_stats`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8mb4;
+ 1 AS `vocabulary_count`,
+  1 AS `relationship_count`,
+  1 AS `phrase_count`,
+  1 AS `domain_count`,
+  1 AS `new_patterns_24h`,
+  1 AS `new_patterns_7d`,
+  1 AS `avg_legitimate_score` */;
+SET character_set_client = @saved_cs_client;
+DROP TABLE IF EXISTS `conversation_phrases`;
+CREATE TABLE `conversation_phrases` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `phrase` varchar(100) NOT NULL,
+  `frequency` int(11) DEFAULT 1,
+  `avg_spam_score` float DEFAULT 0,
+  `last_seen` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `phrase` (`phrase`),
+  KEY `idx_frequency` (`frequency`),
+  KEY `idx_phrase` (`phrase`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_relationships`;
+CREATE TABLE `conversation_relationships` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_domain` varchar(255) NOT NULL,
+  `recipient_domain` varchar(255) NOT NULL,
+  `message_count` int(11) DEFAULT 1,
+  `avg_spam_score` float DEFAULT 0,
+  `last_communication` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_relationship` (`sender_domain`,`recipient_domain`),
+  KEY `idx_message_count` (`message_count`),
+  KEY `idx_domains` (`sender_domain`,`recipient_domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `conversation_vocabulary`;
+CREATE TABLE `conversation_vocabulary` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `word_hash` varchar(32) NOT NULL,
+  `frequency` int(11) DEFAULT 1,
+  `last_seen` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `word_hash` (`word_hash`),
+  KEY `idx_frequency` (`frequency`),
+  KEY `idx_last_seen` (`last_seen`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `current_effectiveness`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8mb4;
+ 1 AS `id`,
+  1 AS `metric_date`,
+  1 AS `total_emails`,
+  1 AS `spam_caught`,
+  1 AS `clean_passed`,
+  1 AS `gray_area`,
+  1 AS `false_positives`,
+  1 AS `false_negatives`,
+  1 AS `avg_spam_score`,
+  1 AS `detection_rate`,
+  1 AS `false_positive_rate`,
+  1 AS `true_positive_rate`,
+  1 AS `precision_score`,
+  1 AS `recall_score`,
+  1 AS `f1_score`,
+  1 AS `effectiveness_score`,
+  1 AS `auto_whitelists_added`,
+  1 AS `unique_senders_released`,
+  1 AS `learning_rate`,
+  1 AS `created_at`,
+  1 AS `performance_rating`,
+  1 AS `accuracy_percentage` */;
+SET character_set_client = @saved_cs_client;
+DROP TABLE IF EXISTS `effectiveness_metrics`;
+CREATE TABLE `effectiveness_metrics` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `metric_date` date NOT NULL,
+  `total_emails` int(11) DEFAULT 0,
+  `spam_caught` int(11) DEFAULT 0,
+  `clean_passed` int(11) DEFAULT 0,
+  `gray_area` int(11) DEFAULT 0,
+  `false_positives` int(11) DEFAULT 0,
+  `false_negatives` int(11) DEFAULT 0,
+  `avg_spam_score` float DEFAULT 0,
+  `detection_rate` float DEFAULT 0,
+  `false_positive_rate` float DEFAULT 0,
+  `true_positive_rate` float DEFAULT 0,
+  `precision_score` float DEFAULT 0,
+  `recall_score` float DEFAULT 0,
+  `f1_score` float DEFAULT 0,
+  `effectiveness_score` float DEFAULT 0,
+  `auto_whitelists_added` int(11) DEFAULT 0,
+  `unique_senders_released` int(11) DEFAULT 0,
+  `learning_rate` float DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `metric_date` (`metric_date`),
+  KEY `idx_metric_date` (`metric_date`),
+  KEY `idx_effectiveness` (`effectiveness_score`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `effectiveness_trends`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8mb4;
+ 1 AS `metric_date`,
+  1 AS `effectiveness_score`,
+  1 AS `false_positive_rate`,
+  1 AS `detection_rate`,
+  1 AS `learning_rate`,
+  1 AS `week_avg`,
+  1 AS `month_avg` */;
+SET character_set_client = @saved_cs_client;
+DROP TABLE IF EXISTS `effectiveness_weekly_summary`;
+CREATE TABLE `effectiveness_weekly_summary` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `week_start` date NOT NULL,
+  `week_end` date NOT NULL,
+  `avg_effectiveness` float DEFAULT 0,
+  `total_emails` int(11) DEFAULT 0,
+  `total_spam_caught` int(11) DEFAULT 0,
+  `total_false_positives` int(11) DEFAULT 0,
+  `improvement_from_previous` float DEFAULT NULL,
+  `best_day_effectiveness` float DEFAULT 0,
+  `worst_day_effectiveness` float DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `week_start` (`week_start`),
+  KEY `idx_week` (`week_start`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `email_analysis`;
+CREATE TABLE `email_analysis` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) DEFAULT NULL,
+  `timestamp` datetime DEFAULT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `recipients` text DEFAULT NULL,
+  `subject` text DEFAULT NULL,
+  `spam_score` float DEFAULT NULL,
+  `entities` text DEFAULT NULL,
+  `all_links_count` int(11) DEFAULT NULL,
+  `suspicious_links` text DEFAULT NULL,
+  `model_name` varchar(50) DEFAULT NULL,
+  `raw_text_length` int(11) DEFAULT NULL,
+  `urgency_score` float DEFAULT NULL,
+  `entity_combos` text DEFAULT NULL,
+  `sentiment_score` float DEFAULT NULL,
+  `email_category` varchar(50) DEFAULT NULL,
+  `email_topics` text DEFAULT NULL,
+  `content_summary` text DEFAULT NULL,
+  `detected_language` varchar(10) DEFAULT NULL,
+  `language_confidence` float DEFAULT NULL,
+  `sentiment_polarity` float DEFAULT NULL,
+  `sentiment_subjectivity` float DEFAULT NULL,
+  `sentiment_extremity` float DEFAULT NULL,
+  `sentiment_manipulation` float DEFAULT NULL,
+  `manipulation_indicators` text DEFAULT NULL,
+  `category_confidence` float DEFAULT NULL,
+  `secondary_categories` text DEFAULT NULL,
+  `classification_scores` text DEFAULT NULL,
+  `has_attachments` int(11) DEFAULT NULL,
+  `text_formatting_score` float DEFAULT NULL,
+  `sender_reputation` float DEFAULT NULL,
+  `training_data_saved` int(11) DEFAULT NULL,
+  `spoofing_score` float DEFAULT 0,
+  `spoofed_domains` text DEFAULT NULL,
+  `spoofing_risk_level` varchar(10) DEFAULT NULL,
+  `spoofing_patterns` text DEFAULT NULL,
+  `is_government` tinyint(1) DEFAULT 0,
+  `government_confidence` float DEFAULT 0,
+  `government_method` text DEFAULT NULL,
+  `original_spf` varchar(20) DEFAULT NULL,
+  `original_dkim` varchar(20) DEFAULT NULL,
+  `original_dmarc` varchar(20) DEFAULT NULL,
+  `original_sender_ip` varchar(45) DEFAULT NULL,
+  `pii_detected` tinyint(1) DEFAULT 0,
+  `pii_types` text DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `email_threads`;
+CREATE TABLE `email_threads` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `thread_id` varchar(32) NOT NULL,
+  `participants` text DEFAULT NULL,
+  `first_seen` datetime DEFAULT NULL,
+  `last_seen` datetime DEFAULT NULL,
+  `message_count` int(11) DEFAULT NULL,
+  `trust_score` float DEFAULT NULL,
+  `business_indicators` text DEFAULT NULL,
+  `authentication_history` text DEFAULT NULL,
+  `subject_pattern` varchar(255) DEFAULT NULL,
+  `domain_reputation` float DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ix_email_threads_thread_id` (`thread_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `emails`;
+CREATE TABLE `emails` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) NOT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `recipients` text DEFAULT NULL,
+  `subject` varchar(500) DEFAULT NULL,
+  `body` text DEFAULT NULL,
+  `raw_email` longtext DEFAULT NULL,
+  `received_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `processed` tinyint(1) DEFAULT 0,
+  `spam_score` float DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `message_id` (`message_id`),
+  KEY `idx_message_id` (`message_id`),
+  KEY `idx_sender` (`sender`),
+  KEY `idx_received_at` (`received_at`),
+  KEY `idx_processed` (`processed`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `false_positive_tracking`;
+CREATE TABLE `false_positive_tracking` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) DEFAULT NULL,
+  `sender_email` varchar(255) DEFAULT NULL,
+  `recipient_email` varchar(255) DEFAULT NULL,
+  `original_spam_score` float DEFAULT NULL,
+  `release_timestamp` datetime DEFAULT NULL,
+  `release_count` int(11) DEFAULT 1,
+  `auto_whitelisted` tinyint(1) DEFAULT 0,
+  `domain` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_email`),
+  KEY `idx_domain` (`domain`),
+  KEY `idx_release_date` (`release_timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `hosted_domains`;
+CREATE TABLE `hosted_domains` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `domain` varchar(100) NOT NULL,
+  `company_name` varchar(200) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `module_alerts`;
+CREATE TABLE `module_alerts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain` varchar(255) NOT NULL,
+  `alert_type` varchar(100) NOT NULL,
+  `alert_name` varchar(255) DEFAULT NULL,
+  `entity_pattern` varchar(500) DEFAULT NULL,
+  `entity_type` varchar(50) DEFAULT NULL,
+  `keywords` text DEFAULT NULL,
+  `notification_emails` text DEFAULT NULL,
+  `webhook_url` varchar(500) DEFAULT NULL,
+  `active` tinyint(1) DEFAULT 1,
+  `priority` enum('low','medium','high','critical') DEFAULT 'medium',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_client_alerts` (`client_domain`,`active`),
+  KEY `idx_alert_type` (`alert_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `module_effectiveness`;
+CREATE TABLE `module_effectiveness` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `module_name` varchar(100) NOT NULL,
+  `metric_date` date NOT NULL,
+  `triggers` int(11) DEFAULT 0,
+  `true_positives` int(11) DEFAULT 0,
+  `false_positives` int(11) DEFAULT 0,
+  `accuracy` float DEFAULT 0,
+  `avg_score_contribution` float DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_module_date` (`module_name`,`metric_date`),
+  KEY `idx_module` (`module_name`),
+  KEY `idx_date` (`metric_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `module_usage_stats`;
+CREATE TABLE `module_usage_stats` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain` varchar(255) NOT NULL,
+  `module_name` varchar(100) NOT NULL,
+  `usage_date` date NOT NULL,
+  `usage_count` int(11) DEFAULT 0,
+  `entities_extracted` int(11) DEFAULT 0,
+  `alerts_triggered` int(11) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_usage_day` (`client_domain`,`module_name`,`usage_date`),
+  KEY `idx_usage_date` (`client_domain`,`usage_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `ner_entities`;
+CREATE TABLE `ner_entities` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `entity_text` varchar(255) NOT NULL,
+  `entity_type` varchar(50) NOT NULL,
+  `message_id` varchar(255) DEFAULT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `confidence` float DEFAULT NULL,
+  `context` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_entity_text` (`entity_text`),
+  KEY `idx_entity_type` (`entity_type`),
+  KEY `idx_message_id` (`message_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `password_reset_tokens`;
+CREATE TABLE `password_reset_tokens` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `token` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `expires_at` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `used` tinyint(1) DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `user_id` (`user_id`),
+  KEY `idx_reset_tokens_token` (`token`),
+  CONSTRAINT `password_reset_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `quarantine_releases`;
+CREATE TABLE `quarantine_releases` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(100) DEFAULT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `recipient` varchar(255) DEFAULT NULL,
+  `subject` varchar(500) DEFAULT NULL,
+  `original_spam_score` float DEFAULT NULL,
+  `release_time` datetime DEFAULT NULL,
+  `release_user` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender`),
+  KEY `idx_time` (`release_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `sender_anomaly_status`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8mb4;
+ 1 AS `sender_email`,
+  1 AS `sender_domain`,
+  1 AS `total_emails_analyzed`,
+  1 AS `learning_confidence`,
+  1 AS `anomaly_count`,
+  1 AS `last_anomaly_date`,
+  1 AS `recent_anomalies_7d`,
+  1 AS `highest_severity_7d`,
+  1 AS `baseline_status` */;
+SET character_set_client = @saved_cs_client;
+DROP TABLE IF EXISTS `sender_behavior_baseline`;
+CREATE TABLE `sender_behavior_baseline` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_email` varchar(255) NOT NULL,
+  `sender_domain` varchar(255) NOT NULL,
+  `typical_send_hours` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of hours [0-23] when typically sends' CHECK (json_valid(`typical_send_hours`)),
+  `typical_send_days` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of days [0-6] when typically sends' CHECK (json_valid(`typical_send_days`)),
+  `timezone_estimate` varchar(50) DEFAULT NULL,
+  `avg_daily_volume` float DEFAULT 0,
+  `max_daily_volume` int(11) DEFAULT 0,
+  `avg_recipients_per_email` float DEFAULT 0,
+  `max_recipients_per_email` int(11) DEFAULT 0,
+  `typical_recipient_domains` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Top recipient domains with percentages' CHECK (json_valid(`typical_recipient_domains`)),
+  `internal_vs_external_ratio` float DEFAULT 0.5,
+  `new_recipient_frequency` float DEFAULT 0 COMMENT 'How often sends to new recipients',
+  `avg_email_length` int(11) DEFAULT 0,
+  `typical_attachment_types` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Common attachment extensions' CHECK (json_valid(`typical_attachment_types`)),
+  `uses_html_frequency` float DEFAULT 0,
+  `typical_subject_patterns` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Common subject keywords' CHECK (json_valid(`typical_subject_patterns`)),
+  `consistency_score` float DEFAULT 0 COMMENT 'How consistent the behavior is',
+  `last_anomaly_date` timestamp NULL DEFAULT NULL,
+  `anomaly_count` int(11) DEFAULT 0,
+  `total_emails_analyzed` int(11) DEFAULT 0,
+  `learning_confidence` float DEFAULT 0,
+  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_email`),
+  KEY `idx_domain` (`sender_domain`),
+  KEY `idx_confidence` (`learning_confidence`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `sending_patterns`;
+CREATE TABLE `sending_patterns` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_email` varchar(255) NOT NULL,
+  `pattern_date` date NOT NULL,
+  `hour_0` int(11) DEFAULT 0,
+  `hour_1` int(11) DEFAULT 0,
+  `hour_2` int(11) DEFAULT 0,
+  `hour_3` int(11) DEFAULT 0,
+  `hour_4` int(11) DEFAULT 0,
+  `hour_5` int(11) DEFAULT 0,
+  `hour_6` int(11) DEFAULT 0,
+  `hour_7` int(11) DEFAULT 0,
+  `hour_8` int(11) DEFAULT 0,
+  `hour_9` int(11) DEFAULT 0,
+  `hour_10` int(11) DEFAULT 0,
+  `hour_11` int(11) DEFAULT 0,
+  `hour_12` int(11) DEFAULT 0,
+  `hour_13` int(11) DEFAULT 0,
+  `hour_14` int(11) DEFAULT 0,
+  `hour_15` int(11) DEFAULT 0,
+  `hour_16` int(11) DEFAULT 0,
+  `hour_17` int(11) DEFAULT 0,
+  `hour_18` int(11) DEFAULT 0,
+  `hour_19` int(11) DEFAULT 0,
+  `hour_20` int(11) DEFAULT 0,
+  `hour_21` int(11) DEFAULT 0,
+  `hour_22` int(11) DEFAULT 0,
+  `hour_23` int(11) DEFAULT 0,
+  `total_day` int(11) DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_sender_date` (`sender_email`,`pattern_date`),
+  KEY `idx_date` (`pattern_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `spacy_analysis`;
+CREATE TABLE `spacy_analysis` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `timestamp` datetime DEFAULT NULL,
+  `message_id` varchar(255) NOT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `recipients` text DEFAULT NULL,
+  `subject` varchar(500) DEFAULT NULL,
+  `spam_score` float DEFAULT NULL,
+  `entities` text DEFAULT NULL,
+  `all_links_count` int(11) DEFAULT NULL,
+  `suspicious_links` text DEFAULT NULL,
+  `model_name` varchar(100) DEFAULT NULL,
+  `raw_text_length` int(11) DEFAULT NULL,
+  `urgency_score` float DEFAULT NULL,
+  `entity_combos` text DEFAULT NULL,
+  `sentiment_score` float DEFAULT NULL,
+  `email_category` varchar(100) DEFAULT NULL,
+  `email_topics` text DEFAULT NULL,
+  `content_summary` text DEFAULT NULL,
+  `detected_language` varchar(10) DEFAULT NULL,
+  `language_confidence` float DEFAULT NULL,
+  `sentiment_polarity` float DEFAULT NULL,
+  `sentiment_subjectivity` float DEFAULT NULL,
+  `sentiment_extremity` float DEFAULT NULL,
+  `sentiment_manipulation` float DEFAULT NULL,
+  `manipulation_indicators` text DEFAULT NULL,
+  `category_confidence` float DEFAULT NULL,
+  `secondary_categories` text DEFAULT NULL,
+  `classification_scores` text DEFAULT NULL,
+  `has_attachments` tinyint(1) DEFAULT NULL,
+  `training_data_saved` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `thread_messages`;
+CREATE TABLE `thread_messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `thread_id` varchar(32) DEFAULT NULL,
+  `message_id` varchar(255) DEFAULT NULL,
+  `sender` varchar(255) DEFAULT NULL,
+  `timestamp` datetime DEFAULT NULL,
+  `authentication_status` varchar(255) DEFAULT NULL,
+  `content_hash` varchar(32) DEFAULT NULL,
+  `business_score` float DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_thread_messages_thread_id` (`thread_id`),
+  KEY `ix_thread_messages_timestamp` (`timestamp`),
+  KEY `idx_thread_messages_sender` (`sender`),
+  CONSTRAINT `thread_messages_ibfk_1` FOREIGN KEY (`thread_id`) REFERENCES `email_threads` (`thread_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `true_positive_validation`;
+CREATE TABLE `true_positive_validation` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) DEFAULT NULL,
+  `sender_email` varchar(255) DEFAULT NULL,
+  `spam_score` float DEFAULT NULL,
+  `detection_method` varchar(100) DEFAULT NULL,
+  `validation_source` varchar(50) DEFAULT 'automatic',
+  `validation_timestamp` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_validation_date` (`validation_timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+DROP TABLE IF EXISTS `trusted_senders`;
+CREATE TABLE `trusted_senders` (
+  `sender_email` varchar(255) NOT NULL,
+  `trust_score` int(11) DEFAULT 5,
+  `release_count` int(11) DEFAULT 1,
+  `first_seen` datetime DEFAULT NULL,
+  `last_released` datetime DEFAULT NULL,
+  `last_subject` varchar(500) DEFAULT NULL,
+  PRIMARY KEY (`sender_email`),
+  KEY `idx_trust` (`trust_score`),
+  KEY `idx_releases` (`release_count`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `user_sessions`;
+CREATE TABLE `user_sessions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `session_token` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `expires_at` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `is_active` tinyint(1) DEFAULT 1,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `session_token` (`session_token`),
+  KEY `idx_sessions_user_id` (`user_id`),
+  KEY `idx_sessions_token` (`session_token`),
+  CONSTRAINT `user_sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `email` varchar(255) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `domain` varchar(100) NOT NULL,
+  `authorized_domains` text DEFAULT NULL,
+  `role` varchar(20) DEFAULT 'client',
+  `first_name` varchar(100) DEFAULT NULL,
+  `last_name` varchar(100) DEFAULT NULL,
+  `company_name` varchar(200) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `email_verified` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `last_login` timestamp NULL DEFAULT NULL,
+  `failed_login_attempts` int(11) DEFAULT 0,
+  `locked_until` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`),
+  KEY `idx_users_email` (`email`),
+  KEY `idx_users_domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `whitelist_requests`;
+CREATE TABLE `whitelist_requests` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_email` varchar(255) DEFAULT NULL,
+  `recipient_email` varchar(255) DEFAULT NULL,
+  `requested_by` varchar(255) DEFAULT NULL,
+  `message_id` varchar(100) DEFAULT NULL,
+  `subject` varchar(500) DEFAULT NULL,
+  `reason` varchar(500) DEFAULT NULL,
+  `request_time` datetime DEFAULT NULL,
+  `status` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_email`),
+  KEY `idx_recipient` (`recipient_email`),
+  KEY `idx_time` (`request_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+-- Schema version tracking table
+CREATE TABLE IF NOT EXISTS `schema_version` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `version` varchar(20) NOT NULL,
+  `description` text DEFAULT NULL,
+  `applied_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_version` (`version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

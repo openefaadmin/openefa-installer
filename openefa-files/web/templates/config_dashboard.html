@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block title %}System Configuration - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+        height: 100%;
+    }
+
+    .config-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }
+
+    .config-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .config-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .feature-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 0.75rem;
+    }
+
+    .config-section {
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Configuration Header -->
+<div class="config-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="fas fa-cogs"></i> System Configuration</h1>
+                <p class="mb-0">Manage your SpaCy Email Security System settings</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                {% if user_domains|length > 1 %}
+                <div class="dropdown">
+                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe"></i> {{ selected_domain }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        {% for d in user_domains %}
+                        <li><a class="dropdown-item" href="/config?domain={{ d }}">{{ d }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% else %}
+                <span class="badge bg-light text-dark fs-6">
+                    <i class="fas fa-globe"></i> {{ selected_domain }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Quick Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-check-circle fa-2x mb-2"></i>
+                    <h3>{{ stats.whitelisted_senders }}</h3>
+                    <p class="mb-0">Whitelisted Senders</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-ban fa-2x mb-2"></i>
+                    <h3>{{ stats.blocked_patterns }}</h3>
+                    <p class="mb-0">Blocking Rules</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-shield-alt fa-2x mb-2"></i>
+                    <h3>{{ stats.trusted_domains }}</h3>
+                    <p class="mb-0">Trusted Domains</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-users fa-2x mb-2"></i>
+                    <h3>{{ stats.active_domains }}</h3>
+                    <p class="mb-0">Active Domains</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Configuration Sections -->
+    <div class="config-section">
+        <h3><i class="fas fa-user-shield"></i> Email Security</h3>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <div class="config-icon text-success">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <h5 class="card-title">Whitelist Management</h5>
+                        <p class="card-text">Manage trusted senders and domains for your organization</p>
+                        <a href="/whitelist/{{ selected_domain }}" class="btn btn-success">
+                            <i class="fas fa-edit"></i> Manage
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <div class="config-icon text-danger">
+                            <i class="fas fa-ban"></i>
+                        </div>
+                        <h5 class="card-title">Blocking Rules</h5>
+                        <p class="card-text">Configure email blocking patterns and rules</p>
+                        <a href="/config/blocking" class="btn btn-danger">
+                            <i class="fas fa-edit"></i> Configure
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            {% if current_user.is_admin() %}
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-info feature-badge">Fast-track</span>
+                        <div class="config-icon text-info">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h5 class="card-title">Trusted Domains</h5>
+                        <p class="card-text">Domains that bypass security checks (system-wide)</p>
+                        <a href="/config/trusted" class="btn btn-info">
+                            <i class="fas fa-edit"></i> Manage
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if current_user.is_admin() %}
+    <div class="config-section">
+        <h3><i class="fas fa-cog"></i> System Settings</h3>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Admin</span>
+                        <div class="config-icon text-primary">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <h5 class="card-title">Domain Management</h5>
+                        <p class="card-text">Configure email domains and routing</p>
+                        <a href="/config/domains" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Manage
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Admin</span>
+                        <div class="config-icon text-warning">
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <h5 class="card-title">Authentication</h5>
+                        <p class="card-text">SPF, DKIM, and DMARC settings</p>
+                        <a href="/config/authentication" class="btn btn-warning">
+                            <i class="fas fa-edit"></i> Configure
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-success feature-badge">AI</span>
+                        <div class="config-icon text-success">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h5 class="card-title">Learning System</h5>
+                        <p class="card-text">Train AI to reduce false positives</p>
+                        <a href="/learning" class="btn btn-success">
+                            <i class="fas fa-graduation-cap"></i> Train
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Reports Section - Available to All Users -->
+    <div class="config-section">
+        <h3><i class="fas fa-chart-bar"></i> Reports</h3>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <div class="config-icon text-secondary">
+                            <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <h5 class="card-title">Generate Reports</h5>
+                        <p class="card-text">Create email security reports for your domains</p>
+                        <a href="/config/reports" class="btn btn-secondary">
+                            <i class="fas fa-file-pdf"></i> Reports
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if current_user.is_admin() %}
+    <!-- Administration Section - Admin Only -->
+    <div class="config-section">
+        <h3><i class="fas fa-tools"></i> System Administration</h3>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Admin</span>
+                        <div class="config-icon text-dark">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h5 class="card-title">Backup & Restore</h5>
+                        <p class="card-text">Manage system backups (all domains)</p>
+                        <a href="/config/backup" class="btn btn-dark">
+                            <i class="fas fa-save"></i> Manage
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Admin</span>
+                        <div class="config-icon text-danger">
+                            <i class="fas fa-terminal"></i>
+                        </div>
+                        <h5 class="card-title">Advanced Settings</h5>
+                        <p class="card-text">System modules and debugging</p>
+                        <a href="/config/advanced" class="btn btn-danger">
+                            <i class="fas fa-wrench"></i> Advanced
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recent Activity -->
+    <div class="config-section">
+        <h3><i class="fas fa-history"></i> Recent Configuration Changes</h3>
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Change</th>
+                                <th>User</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for change in recent_changes %}
+                            <tr>
+                                <td>{{ change.date }}</td>
+                                <td>
+                                    {% if change.type == 'whitelist' %}
+                                    <span class="badge bg-success">Whitelist</span>
+                                    {% elif change.type == 'blocking' %}
+                                    <span class="badge bg-danger">Blocking</span>
+                                    {% elif change.type == 'domain' %}
+                                    <span class="badge bg-primary">Domain</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ change.type }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ change.description }}</td>
+                                <td>{{ change.user }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">No recent changes</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add any necessary JavaScript here
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle domain switching if needed
+        const domainSelect = document.querySelector('.dropdown-toggle');
+        if (domainSelect) {
+            domainSelect.addEventListener('click', function(e) {
+                // Domain switching logic
+            });
+        }
+    });
+</script>
+{% endblock %}

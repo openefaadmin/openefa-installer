@@ -1,0 +1,18 @@
+{
+  "real_auth_enabled": true,
+  "auth_priority": "real_first",
+  "default_sender_ip": "192.168.50.37",
+  "trusted_networks": [
+    "192.168.50.0/24",
+    "127.0.0.0/8",
+    "::1/128"
+  ],
+  "trusted_network_spf_bypass": true,
+  "fallback_settings": {
+    "use_header_fallback": true,
+    "default_to_none": true,
+    "trust_microsoft_arc": true
+  },
+  "created": "$(date -Iseconds)",
+  "version": "1.1"
+}

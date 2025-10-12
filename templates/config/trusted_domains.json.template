@@ -1,0 +1,17 @@
+{
+  "trusted_domains": [
+    "google.com",
+    "gmail.com",
+    "outlook.com",
+    "hotmail.com",
+    "office365.com",
+    "microsoft.com"
+  ],
+  "description": "System-wide trusted domains that receive fast-track processing",
+  "benefits": [
+    "Skips BEC detection",
+    "Skips typosquatting checks",
+    "Skips marketing filter",
+    "Receives -3 spam score bonus"
+  ]
+}

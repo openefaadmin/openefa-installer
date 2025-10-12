@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - {{ current_user.get_display_name() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-user"></i> User Profile
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Personal Information</h6>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th width="30%">Name:</th>
+                                <td>{{ current_user.first_name }} {{ current_user.last_name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Email:</th>
+                                <td>{{ current_user.email }}</td>
+                            </tr>
+                            <tr>
+                                <th>Domain:</th>
+                                <td>
+                                    <span class="badge bg-info">{{ current_user.domain }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Role:</th>
+                                <td>
+                                    {% if current_user.role == 'admin' %}
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-crown"></i> Administrator
+                                    </span>
+                                    {% elif current_user.role == 'client' %}
+                                    <span class="badge bg-primary">
+                                        <i class="fas fa-user"></i> Client
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-eye"></i> Viewer
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if current_user.company_name %}
+                            <tr>
+                                <th>Company:</th>
+                                <td>{{ current_user.company_name }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Access Permissions</h6>
+                        <ul class="list-group list-group-flush">
+                            {% if current_user.is_admin() %}
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> View all domains
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> Manage users
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> System administration
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> Generate all reports
+                            </li>
+                            {% else %}
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> View {{ current_user.domain }} emails
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check text-success"></i> Generate domain reports
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-times text-danger"></i> View other domains
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-times text-danger"></i> User management
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <h6>Account Actions</h6>
+                        <a href="{{ url_for('auth.change_password') }}" class="btn btn-warning">
+                            <i class="fas fa-key"></i> Change Password
+                        </a>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+                            <i class="fas fa-tachometer-alt"></i> Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle"></i> Quick Stats
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if current_user.is_admin() %}
+                <p><i class="fas fa-globe"></i> <strong>Administrator Access</strong></p>
+                <p class="text-muted">You have full system access and can view all domains and manage users.</p>
+                {% else %}
+                <p><i class="fas fa-shield-alt"></i> <strong>Domain Access</strong></p>
+                <p class="text-muted">You can view emails and reports for {{ current_user.domain }} only.</p>
+                {% endif %}
+                
+                <hr>
+                <small class="text-muted">
+                    <i class="fas fa-clock"></i> 
+                    Last login: Recent
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

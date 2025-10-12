@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenSpacy Database Processor with Redis Queue Integration
+After=network.target mysql.service redis.service mariadb.service
+Requires=mariadb.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=spacy-filter
+Group=spacy-filter
+WorkingDirectory=/opt/spacyserver
+Environment=PYTHONPATH=/opt/spacyserver:/opt/spacyserver/modules:/opt/spacyserver/services
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/spacyserver/venv/bin/python3 /opt/spacyserver/services/db_processor.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spacy-db-processor
+
+# Resource limits
+MemoryMax=1G
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

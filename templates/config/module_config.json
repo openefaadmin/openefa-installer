@@ -1,0 +1,132 @@
+{
+  "modules": {
+    "otp_detector": {
+      "enabled": true,
+      "description": "OTP code extraction and detection",
+      "category": "utility",
+      "performance_impact": "low"
+    },
+    "entity_extraction": {
+      "enabled": true,
+      "description": "Email entity extraction and analysis", 
+      "category": "analysis",
+      "performance_impact": "medium"
+    },
+    "email_database": {
+      "enabled": true,
+      "description": "Database storage and retrieval",
+      "category": "storage",
+      "performance_impact": "low"
+    },
+    "email_dns": {
+      "enabled": true,
+      "description": "DNS reputation and spoofing detection",
+      "category": "security",
+      "performance_impact": "medium"
+    },
+    "email_phishing": {
+      "enabled": true,
+      "description": "Phishing attempt detection",
+      "category": "security", 
+      "performance_impact": "medium"
+    },
+    "email_sentiment": {
+      "enabled": true,
+      "description": "Sentiment analysis and manipulation detection",
+      "category": "analysis",
+      "performance_impact": "medium"
+    },
+    "thread_awareness": {
+      "enabled": false,
+      "description": "Email thread context analysis",
+      "category": "analysis",
+      "performance_impact": "high"
+    },
+    "email_language": {
+      "enabled": true,
+      "description": "Language detection and geographic validation",
+      "category": "analysis",
+      "performance_impact": "low"
+    },
+    "email_obfuscation": {
+      "enabled": true,
+      "description": "Text obfuscation and encoding detection",
+      "category": "security",
+      "performance_impact": "low"
+    },
+    "marketing_spam_filter": {
+      "enabled": true,
+      "description": "Marketing and promotional email detection",
+      "category": "filtering",
+      "performance_impact": "medium"
+    },
+    "bec_detector": {
+      "enabled": true,
+      "description": "Business Email Compromise detection",
+      "category": "security",
+      "performance_impact": "low"
+    },
+    "enhanced_analysis": {
+      "enabled": true,
+      "description": "Government and business context analysis",
+      "category": "analysis", 
+      "performance_impact": "high"
+    },
+    "refund_scam_detector": {
+      "enabled": true,
+      "description": "Refund and payment scam detection",
+      "category": "security",
+      "performance_impact": "low"
+    },
+    "cleaning_services_spam": {
+      "enabled": true,
+      "description": "Cleaning and janitorial service spam detection",
+      "category": "filtering",
+      "performance_impact": "low"
+    },
+    "pdf_analyzer": {
+      "enabled": true,
+      "description": "PDF attachment analysis for malicious content",
+      "category": "security",
+      "performance_impact": "medium"
+    },
+    "url_reputation": {
+      "enabled": true,
+      "description": "URL reputation checking and homograph detection",
+      "category": "security",
+      "performance_impact": "low"
+    },
+    "behavioral_baseline": {
+      "enabled": true,
+      "description": "Behavioral anomaly detection for account compromise",
+      "category": "security",
+      "performance_impact": "low"
+    },
+    "rbl_checker": {
+      "enabled": true,
+      "description": "Real-time blackhole list checks (SORBS, Spamhaus, SpamCop)",
+      "category": "security",
+      "performance_impact": "low"
+    }
+  },
+  "performance_presets": {
+    "maximum_security": {
+      "description": "All security modules enabled, performance modules enabled",
+      "modules": ["email_dns", "email_phishing", "bec_detector", "email_obfuscation", "enhanced_analysis", "email_sentiment", "thread_awareness", "refund_scam_detector"]
+    },
+    "balanced": {
+      "description": "Security modules + lightweight analysis",
+      "modules": ["email_dns", "email_phishing", "bec_detector", "email_obfuscation", "email_language", "marketing_spam_filter", "email_sentiment", "refund_scam_detector"]
+    },
+    "performance": {
+      "description": "Essential security only, minimal processing time",
+      "modules": ["bec_detector", "email_phishing", "email_language"]
+    },
+    "emergency": {
+      "description": "Absolute minimum - BEC detection only",
+      "modules": ["bec_detector"]
+    }
+  },
+  "last_modified": "manual_creation",
+  "version": "1.0"
+}

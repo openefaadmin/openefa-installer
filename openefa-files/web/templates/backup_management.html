@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+
+{% block title %}Backup & Restore - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .backup-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .backup-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+
+    .backup-item {
+        border-bottom: 1px solid #f0f0f0;
+        padding: 1rem;
+        transition: background-color 0.2s;
+    }
+
+    .backup-item:last-child {
+        border-bottom: none;
+    }
+
+    .backup-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .backup-type-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .btn-create-backup {
+        font-size: 1.1rem;
+        padding: 0.75rem 1.5rem;
+    }
+
+    .stat-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+        transform: translateX(5px);
+    }
+
+    #backup-progress {
+        display: none;
+    }
+
+    .table-stat-row {
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Backup Header -->
+<div class="backup-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="fas fa-database"></i> Backup & Restore</h1>
+                <p class="mb-0">Manage database backups and restore points</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="btn-group" role="group">
+                    <button class="btn btn-light" onclick="createBackup()">
+                        <i class="fas fa-database"></i> Database Backup
+                    </button>
+                    <button class="btn btn-primary" onclick="createFullBackup()">
+                        <i class="fas fa-archive"></i> Full System Backup
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Progress indicator -->
+    <div id="backup-progress" class="alert alert-info">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span id="backup-progress-text">Creating backup...</span>
+        </div>
+    </div>
+
+    <!-- Alert messages -->
+    <div id="alert-container"></div>
+
+    <!-- Database Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card stat-card border-primary">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2"><i class="fas fa-database"></i> Database Size</h6>
+                    <h3 class="mb-0">{{ db_size or 'N/A' }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card border-success">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2"><i class="fas fa-copy"></i> Total Backups</h6>
+                    <h3 class="mb-0">{{ backups|length }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card border-info">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2"><i class="fas fa-table"></i> Database Tables</h6>
+                    <h3 class="mb-0">{{ table_stats|length }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card backup-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-table"></i> Database Tables</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Table Name</th>
+                                    <th class="text-end">Rows</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for table in table_stats %}
+                                <tr class="table-stat-row">
+                                    <td><code>{{ table.name }}</code></td>
+                                    <td class="text-end">{{ "{:,}".format(table.rows) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">No table statistics available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup List -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card backup-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-archive"></i> Available Backups</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if backups %}
+                    <div id="backup-list">
+                        {% for backup in backups %}
+                        <div class="backup-item d-flex align-items-center justify-content-between">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-archive me-2 {% if backup.type == 'database' %}text-primary{% else %}text-secondary{% endif %}"></i>
+                                    <div>
+                                        <strong>{{ backup.filename }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="far fa-clock"></i> {{ backup.created }}
+                                            <span class="ms-3"><i class="fas fa-hdd"></i> {{ backup.size_human }}</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                {% if backup.type == 'full' %}
+                                <span class="badge bg-success backup-type-badge me-2">FULL SYSTEM</span>
+                                {% elif backup.type == 'database' %}
+                                <span class="badge bg-primary backup-type-badge me-2">DATABASE</span>
+                                {% else %}
+                                <span class="badge bg-secondary backup-type-badge me-2">CONFIG</span>
+                                {% endif %}
+                                <button class="btn btn-sm btn-success me-1" onclick="downloadBackup('{{ backup.filename }}')" title="Download">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteBackup('{{ backup.filename }}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-inbox fa-3x mb-3"></i>
+                        <p>No backups found. Create your first backup to get started.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup Information -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card backup-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle"></i> Backup Information</h5>
+                </div>
+                <div class="card-body">
+                    <h6>About Backups</h6>
+                    <ul>
+                        <li><strong>Full System Backups:</strong> Complete backup including configuration files, database, and Python modules (tar.gz archive)</li>
+                        <li><strong>Database Backups:</strong> Full backup of the spacy_email_db database including all tables, routines, triggers, and events</li>
+                        <li><strong>Config Backups:</strong> Configuration files created automatically before modifications</li>
+                        <li><strong>Compression:</strong> All backups are automatically compressed to save space</li>
+                        <li><strong>Location:</strong> All backups are stored in <code>/opt/spacyserver/backups/</code></li>
+                    </ul>
+
+                    <h6 class="mt-3">Best Practices</h6>
+                    <ul>
+                        <li>Create backups before making major configuration changes</li>
+                        <li>Keep at least 7 days of daily backups</li>
+                        <li>Download critical backups to a secure off-site location</li>
+                        <li>Test restore procedures periodically</li>
+                        <li>Monitor backup sizes to track database growth</li>
+                    </ul>
+
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Note:</strong> Restore operations should be performed by system administrators via the OpenSpacyMenu or command line.
+                        Contact support if you need to restore from a backup.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showAlert(message, type = 'success') {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    alertContainer.appendChild(alertDiv);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+function createBackup() {
+    const progressDiv = document.getElementById('backup-progress');
+    const progressText = document.getElementById('backup-progress-text');
+
+    // Show progress
+    progressDiv.style.display = 'block';
+    progressText.textContent = 'Creating database backup... This may take a few minutes.';
+
+    fetch('/api/backup/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressDiv.style.display = 'none';
+
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
+            // Reload page after 2 seconds to show new backup
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Backup failed: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        progressDiv.style.display = 'none';
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating backup: ${error}`, 'danger');
+    });
+}
+
+function createFullBackup() {
+    const progressDiv = document.getElementById('backup-progress');
+    const progressText = document.getElementById('backup-progress-text');
+
+    // Show progress
+    progressDiv.style.display = 'block';
+    progressText.textContent = 'Creating full system backup (configs + database + modules)... This may take several minutes.';
+
+    fetch('/api/backup/create-full', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressDiv.style.display = 'none';
+
+        if (data.success) {
+            let detailsMsg = '';
+            if (data.details) {
+                detailsMsg = `<br><small>Includes: ${data.details.config_files} config files, database, and modules</small>`;
+            }
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})${detailsMsg}`, 'success');
+            // Reload page after 3 seconds to show new backup
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Full backup failed: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        progressDiv.style.display = 'none';
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating full backup: ${error}`, 'danger');
+    });
+}
+
+function downloadBackup(filename) {
+    window.location.href = `/api/backup/download/${filename}`;
+}
+
+function deleteBackup(filename) {
+    if (!confirm(`Are you sure you want to delete backup: ${filename}?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+
+    fetch(`/api/backup/delete/${filename}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            // Reload page after 1 second
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error deleting backup: ${error}`, 'danger');
+    });
+}
+</script>
+{% endblock %}

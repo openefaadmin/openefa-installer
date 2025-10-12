@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Email Details - SpacyEmail Analytics{% endblock %}
+
+{% block content %}
+<style>
+.entity {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.entity-person { background-color: #e3f2fd; border-color: #2196f3; }
+.entity-org { background-color: #f3e5f5; border-color: #9c27b0; }
+.entity-time { background-color: #e8f5e8; border-color: #4caf50; }
+.entity-cardinal { background-color: #fff3e0; border-color: #ff9800; }
+.entity-date { background-color: #e8f5e8; border-color: #4caf50; }
+.entity-money { background-color: #e8f5e8; border-color: #4caf50; }
+.entity-gpe { background-color: #e1f5fe; border-color: #00bcd4; }
+.entity-fac { background-color: #fce4ec; border-color: #e91e63; }
+.entity-law { background-color: #f3e5f5; border-color: #9c27b0; }
+.entity-loc { background-color: #e0f2f1; border-color: #009688; }
+.entity-percent { background-color: #fff3e0; border-color: #ff9800; }
+.entity-ordinal { background-color: #e8eaf6; border-color: #3f51b5; }
+.entity-unknown { background-color: #fafafa; border-color: #9e9e9e; }
+</style>
+
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="/emails">Emails</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Email #{{ email.id }}</li>
+            </ol>
+        </nav>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0"><i class="fas fa-envelope-open-text"></i> Email Details #{{ email.id }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="card-title">{{ email.subject }}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">From: {{ email.sender }}</h6>
+                        <h6 class="card-subtitle mb-3 text-muted">Date: {{ email.timestamp }}</h6>
+
+                        {% if email.recipients %}
+                        <p class="mb-2"><strong>To:</strong> {{ email.recipients }}</p>
+                        {% endif %}
+
+                        {% if schema_info.has_lang_col and email.detected_language %}
+                        <p class="mb-2">
+                            <strong>Language:</strong>
+                            {% if email.detected_language == 'en' %}English
+                            {% elif email.detected_language == 'fr' %}French
+                            {% elif email.detected_language == 'es' %}Spanish
+                            {% elif email.detected_language == 'de' %}German
+                            {% else %}{{ email.detected_language }}{% endif %}
+                            {% if email.language_confidence %}
+                                ({{ "%.0f"|format(email.language_confidence * 100) }}% confidence)
+                            {% endif %}
+                        </p>
+                        {% endif %}
+
+                        {% if schema_info.has_category and email.email_category %}
+                        <p class="mb-2">
+                            <strong>Category:</strong>
+                            {% if email.email_category in ['spam', 'phishing'] %}
+                            <span class="category-{{ email.email_category }}">{{ email.email_category }}</span>
+                            {% else %}{{ email.email_category }}{% endif %}
+                            {% if email.category_confidence %}
+                                ({{ "%.1f"|format(email.category_confidence) }}/10 confidence)
+                            {% endif %}
+                        </p>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0"><i class="fas fa-chart-line"></i> Sentiment Analysis</h5>
+                            </div>
+                            <div class="card-body">
+                                {% if email.sentiment_polarity is not none %}
+                                <div class="mb-2">
+                                    <strong>Polarity:</strong>
+                                    {% if email.sentiment_polarity > 0.3 %}<span class="sentiment-positive">{{ "%.2f"|format(email.sentiment_polarity) }} (Very Positive)</span>
+                                    {% elif email.sentiment_polarity > 0.1 %}<span class="sentiment-positive">{{ "%.2f"|format(email.sentiment_polarity) }} (Positive)</span>
+                                    {% elif email.sentiment_polarity > -0.1 %}<span class="sentiment-neutral">{{ "%.2f"|format(email.sentiment_polarity) }} (Neutral)</span>
+                                    {% elif email.sentiment_polarity > -0.3 %}<span class="sentiment-negative">{{ "%.2f"|format(email.sentiment_polarity) }} (Negative)</span>
+                                    {% else %}<span class="sentiment-negative">{{ "%.2f"|format(email.sentiment_polarity) }} (Very Negative)</span>{% endif %}
+                                </div>
+                                {% endif %}
+
+                                {% if email.sentiment_subjectivity is not none %}
+                                <div class="mb-2">
+                                    <strong>Subjectivity:</strong> {{ "%.2f"|format(email.sentiment_subjectivity) }}
+                                    <span class="text-muted">(0=objective, 1=subjective)</span>
+                                </div>
+                                {% endif %}
+
+                                {% if email.sentiment_extremity is not none %}
+                                <div class="mb-2">
+                                    <strong>Extremity:</strong>
+                                    {% if email.sentiment_extremity >= 7 %}<span class="text-danger">{{ "%.1f"|format(email.sentiment_extremity) }}/10 (Extreme)</span>
+                                    {% elif email.sentiment_extremity >= 4 %}<span class="text-warning">{{ "%.1f"|format(email.sentiment_extremity) }}/10 (Moderate)</span>
+                                    {% else %}<span class="text-success">{{ "%.1f"|format(email.sentiment_extremity) }}/10 (Mild)</span>{% endif %}
+                                </div>
+                                {% endif %}
+
+                                {% if email.sentiment_manipulation is not none %}
+                                <div class="mb-2">
+                                    <strong>Manipulation:</strong>
+                                    {% if email.sentiment_manipulation >= 7 %}<span class="text-danger">{{ "%.1f"|format(email.sentiment_manipulation) }}/10 (High)</span>
+                                    {% elif email.sentiment_manipulation >= 4 %}<span class="text-warning">{{ "%.1f"|format(email.sentiment_manipulation) }}/10 (Medium)</span>
+                                    {% else %}<span class="text-success">{{ "%.1f"|format(email.sentiment_manipulation) }}/10 (Low)</span>{% endif %}
+                                </div>
+                                {% endif %}
+
+                                {% if email.manipulation_indicators %}
+                                <div class="mb-0">
+                                    <strong>Manipulation Indicators:</strong>
+                                    <ul class="list-unstyled mb-0">
+                                        {% if email.manipulation_indicators|string|first == '[' %}
+                                            {% set indicators = email.manipulation_indicators | fromjson %}
+                                            {% for indicator in indicators %}
+                                                {% if indicator and indicator.strip() %}
+                                                <li><span class="text-danger"><i class="fas fa-exclamation-triangle"></i> {{ indicator }}</span></li>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            {% if email.manipulation_indicators %}
+                                            <li><span class="text-danger"><i class="fas fa-exclamation-triangle"></i> {{ email.manipulation_indicators }}</span></li>
+                                            {% endif %}
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <ul class="nav nav-tabs mb-3" id="emailTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="content-tab" data-bs-toggle="tab" data-bs-target="#content" type="button" role="tab" aria-controls="content" aria-selected="true">Content</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="metadata-tab" data-bs-toggle="tab" data-bs-target="#metadata" type="button" role="tab" aria-controls="metadata" aria-selected="false">Metadata</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="entities-tab" data-bs-toggle="tab" data-bs-target="#entities" type="button" role="tab" aria-controls="entities" aria-selected="false">Entities</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content" id="emailTabContent">
+                            <div class="tab-pane fade show active" id="content" role="tabpanel" aria-labelledby="content-tab">
+                                <div class="card">
+                                    <div class="card-body">
+                                        {% if email.content_summary %}
+                                        <h6 class="card-subtitle mb-2 text-muted">Content Summary</h6>
+                                        <p class="card-text">{{ email.content_summary }}</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="metadata" role="tabpanel" aria-labelledby="metadata-tab">
+                                <div class="card">
+                                <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <h6>Basic Information</h6>
+                                                <table class="table table-sm">
+                                                    <tr><td><strong>ID:</strong></td><td>{{ email.id }}</td></tr>
+                                                    <tr><td><strong>Message ID:</strong></td><td class="text-break small">{{ email.message_id }}</td></tr>
+                                                    <tr><td><strong>Timestamp:</strong></td><td>{{ email.timestamp }}</td></tr>
+                                                    <tr><td><strong>Raw Text Length:</strong></td><td>{{ email.raw_text_length }}</td></tr>
+                                                    <tr><td><strong>Spam Score:</strong></td><td>{{ email.spam_score }}</td></tr>
+                                                    <tr><td><strong>Has Attachments:</strong></td><td>{{ email.has_attachments }}</td></tr>
+                                                </table>
+                                                
+                                                <h6>Authentication</h6>
+                                                <table class="table table-sm">
+                                                    <tr><td><strong>SPF:</strong></td><td>{{ email.original_spf }}</td></tr>
+                                                    <tr><td><strong>DKIM:</strong></td><td>{{ email.original_dkim }}</td></tr>
+                                                    <tr><td><strong>DMARC:</strong></td><td>{{ email.original_dmarc }}</td></tr>
+                                                </table>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <h6>Analysis Scores</h6>
+                                                <table class="table table-sm">
+                                                    <tr><td><strong>Category Confidence:</strong></td><td>{{ "%.2f"|format(email.category_confidence) }}</td></tr>
+                                                    <tr><td><strong>Language Confidence:</strong></td><td>{{ "%.2f"|format(email.language_confidence) }}</td></tr>
+                                                    <tr><td><strong>Urgency Score:</strong></td><td>{{ email.urgency_score }}</td></tr>
+                                                    <tr><td><strong>Spoofing Score:</strong></td><td>{{ email.spoofing_score }}</td></tr>
+                                                    <tr><td><strong>Spoofing Risk:</strong></td><td>{{ email.spoofing_risk_level }}</td></tr>
+                                                </table>
+                                                
+                                                <h6>Government Detection</h6>
+                                                <table class="table table-sm">
+                                                    <tr><td><strong>Is Government:</strong></td><td>{{ 'Yes' if email.is_government else 'No' }}</td></tr>
+                                                    <tr><td><strong>Gov Confidence:</strong></td><td>{{ email.government_confidence }}</td></tr>
+                                                    <tr><td><strong>Detection Method:</strong></td><td>{{ email.government_method }}</td></tr>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-3">
+                                            <h6>Raw JSON Data</h6>
+                                            <details>
+                                                <summary class="btn btn-outline-secondary btn-sm">Show Raw Data</summary>
+                                                <pre class="mt-2 p-3 bg-light border rounded small">{{ email | pprint }}</pre>
+                                            </details>
+                                        </div>
+                                    </div>
+				</div>
+                            </div>
+                            <div class="tab-pane fade" id="entities" role="tabpanel" aria-labelledby="entities-tab">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-3 text-muted">Detected Entities</h6>
+                                        <div>
+                                            {% if email.entities %}
+                                                {% set parsed_entities = email.entities | fromjson %}
+                                                {% for entity in parsed_entities %}
+                                                    {% if entity and ' (' in entity and ')' in entity %}
+                                                        {% set entity_parts = entity.split(' (') %}
+                                                        {% if entity_parts|length == 2 %}
+                                                            {% set entity_text = entity_parts[0]|trim %}
+                                                            {% set entity_type = entity_parts[1]|replace(')', '')|trim %}
+                                                            
+                                                            <span class="entity entity-{{ entity_type|lower|replace(' ', '') }} me-2 mb-2 d-inline-block">
+                                                                {{ entity_text }} <small class="text-muted">({{ entity_type }})</small>
+                                                            </span>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% else %}
+                                                <p class="text-muted">No entities detected</p>
+                                            {% endif %}
+                                        </div>
+
+                                        {% if email.email_topics %}
+                                        <hr>
+                                        <h6 class="card-subtitle mb-3 text-muted">Email Topics</h6>
+                                        <div>
+                                            {% if email.email_topics|string|first == '[' %}
+                                                {% set parsed_topics = email.email_topics | fromjson %}
+                                                {% for topic in parsed_topics %}
+                                                    {% if topic %}
+                                                    <span class="badge bg-secondary me-1 mb-1">{{ topic }}</span>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% else %}
+                                                {% for topic in email.email_topics.split(',') %}
+                                                    {% if topic and topic.strip() %}
+                                                    <span class="badge bg-secondary me-1 mb-1">{{ topic.strip() }}</span>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                        </div>
+                                        {% endif %}
+
+                                        {% if email.entity_combos %}
+                                        <hr>
+                                        <h6 class="card-subtitle mb-3 text-muted">Entity Combinations</h6>
+                                        <div>
+                                            <span class="text-info">{{ email.entity_combos }}</span>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-white">
+                <a href="/emails" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to List</a>
+                <a href="/export/json?id={{ email.id }}" class="btn btn-dark"><i class="fas fa-file-code"></i> Export as JSON</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

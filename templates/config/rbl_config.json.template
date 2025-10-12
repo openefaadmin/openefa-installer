@@ -1,0 +1,28 @@
+{
+  "enabled": true,
+  "timeout": 3,
+  "rbls": {
+    "zen.spamhaus.org": {
+      "enabled": true,
+      "weight": 5.0,
+      "description": "Spamhaus ZEN (SBL+XBL+PBL)",
+      "type": "aggregate"
+    },
+    "bl.spamcop.net": {
+      "enabled": true,
+      "weight": 4.0,
+      "description": "SpamCop Blocking List",
+      "type": "spam"
+    },
+    "dnsbl.sorbs.net": {
+      "enabled": true,
+      "weight": 3.0,
+      "description": "SORBS DNSBL",
+      "type": "aggregate"
+    }
+  },
+  "skip_private_ips": true,
+  "skip_authenticated": true,
+  "cache_results": true,
+  "cache_ttl": 3600
+}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Alert Configuration - {{ selected_domain }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Domain Selector -->
+    {% if user_domains|length > 1 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                {% for domain in user_domains %}
+                <a href="{{ url_for('alerts_dashboard', domain=domain) }}" 
+                   class="btn {% if domain == selected_domain %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    {{ domain }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <h1 class="mb-4">Alert Configuration - {{ selected_domain }}</h1>
+    
+    <!-- Configured Alerts -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Configured Alerts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Alert Name</th>
+                                    <th>Type</th>
+                                    <th>Pattern/Keywords</th>
+                                    <th>Priority</th>
+                                    <th>Notification</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in alerts %}
+                                <tr>
+                                    <td><strong>{{ alert.alert_name }}</strong></td>
+                                    <td><span class="badge badge-info">{{ alert.alert_type }}</span></td>
+                                    <td>
+                                        {% if alert.entity_pattern %}
+                                            <small><code>{{ alert.entity_pattern|truncate(50) }}</code></small><br>
+                                        {% endif %}
+                                        {% if alert.keywords %}
+                                            <small>Keywords: {{ alert.keywords|truncate(50) }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if alert.priority == 'critical' %}
+                                            <span class="badge badge-danger">{{ alert.priority|upper }}</span>
+                                        {% elif alert.priority == 'high' %}
+                                            <span class="badge badge-warning">{{ alert.priority|upper }}</span>
+                                        {% elif alert.priority == 'medium' %}
+                                            <span class="badge badge-info">{{ alert.priority|upper }}</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary">{{ alert.priority|upper }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if alert.notification_emails %}
+                                            <small>{{ alert.notification_emails|truncate(30) }}</small>
+                                        {% endif %}
+                                        {% if alert.webhook_url %}
+                                            <br><small>Webhook configured</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if alert.active %}
+                                            <span class="badge badge-success">Active</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        No alerts configured yet. Contact support to set up custom alerts.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Types Information -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Available Alert Types</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>Legal Alerts</h6>
+                            <ul class="list-unstyled">
+                                <li>✓ Court date notifications</li>
+                                <li>✓ Filing deadline warnings</li>
+                                <li>✓ Attorney communications</li>
+                                <li>✓ Case number detection</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Financial Alerts</h6>
+                            <ul class="list-unstyled">
+                                <li>✓ Past due notices</li>
+                                <li>✓ Large payment amounts</li>
+                                <li>✓ Invoice detection</li>
+                                <li>✓ Payment status changes</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Compliance Alerts</h6>
+                            <ul class="list-unstyled">
+                                <li>✓ Regulatory mentions</li>
+                                <li>✓ Audit notifications</li>
+                                <li>✓ Violation warnings</li>
+                                <li>✓ Risk threshold triggers</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Support -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <strong>Need custom alerts?</strong> Contact your account manager to configure additional alert rules tailored to your specific compliance needs.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+
+{% block title %}Whitelist Management - {{ domain }} - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+<style>
+    .config-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .config-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+        margin-bottom: 1.5rem;
+    }
+
+    .config-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }
+
+    .stat-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        height: 100%;
+    }
+
+    .trust-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    .trust-high { background: #10b981; color: white; }
+    .trust-medium { background: #f59e0b; color: white; }
+    .trust-low { background: #ef4444; color: white; }
+
+    .auth-badge {
+        display: inline-block;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.2rem;
+        font-size: 0.75rem;
+        margin: 0 0.1rem;
+    }
+    .auth-spf { background: #e0e7ff; color: #3730a3; }
+    .auth-dkim { background: #dbeafe; color: #1e40af; }
+    .auth-dmarc { background: #dcfce7; color: #166534; }
+
+    .sender-row:hover { background: #f9fafb; }
+    .action-buttons { opacity: 0; transition: opacity 0.2s; }
+    .sender-row:hover .action-buttons { opacity: 1; }
+    .search-results { max-height: 400px; overflow-y: auto; }
+
+    .nav-tabs .nav-link {
+        color: #6c757d;
+        border: none;
+        padding: 0.75rem 1.5rem;
+    }
+
+    .nav-tabs .nav-link.active {
+        color: #667eea;
+        background: transparent;
+        border-bottom: 3px solid #667eea;
+    }
+
+    .nav-tabs {
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Configuration Header -->
+<div class="config-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="fas fa-user-check"></i> Whitelist Management</h1>
+                {% if multi_domain %}
+                <p class="mb-0">Managing whitelists for all your domains: {{ user_domains|join(', ') }}</p>
+                {% else %}
+                <p class="mb-0">Managing whitelist for: {{ domain }}</p>
+                {% endif %}
+            </div>
+            <div class="col-md-4 text-md-end">
+                <a href="/config" class="btn btn-light me-2">
+                    <i class="fas fa-cogs"></i> Configuration
+                </a>
+                <a href="/dashboard" class="btn btn-outline-light">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+
+                {% if user_domains|length > 1 %}
+                <div class="dropdown mt-2">
+                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe"></i> Switch Domain
+                    </button>
+                    <ul class="dropdown-menu">
+                        {% for d in user_domains %}
+                            {% if d != domain %}
+                            <li><a class="dropdown-item" href="/whitelist/{{ d }}">{{ d }}</a></li>
+                            {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-user-check fa-2x mb-2"></i>
+                    <h3>{{ stats.total_senders }}</h3>
+                    <p class="mb-0">Whitelisted Senders</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-globe fa-2x mb-2"></i>
+                    <h3>{{ stats.total_domains }}</h3>
+                    <p class="mb-0">Trusted Domains</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-clock fa-2x mb-2"></i>
+                    <h3>{{ stats.recent_additions|length }}</h3>
+                    <p class="mb-0">Recent Additions</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                    <h3>{{ stats.most_active|length }}</h3>
+                    <p class="mb-0">Active Senders</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="card config-card">
+        <div class="card-body">
+            <!-- Action Tabs -->
+            <ul class="nav nav-tabs mb-4" id="whitelistTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="senders-tab" data-bs-toggle="tab" data-bs-target="#senders">
+                        <i class="fas fa-user-check"></i> Senders
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="search-tab" data-bs-toggle="tab" data-bs-target="#search">
+                        <i class="fas fa-search"></i> Search Sender
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="add-tab" data-bs-toggle="tab" data-bs-target="#add">
+                        <i class="fas fa-plus-circle"></i> Add to Whitelist
+                    </button>
+                </li>
+                {% if current_user.is_admin() %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="domains-tab" data-bs-toggle="tab" data-bs-target="#domains">
+                        <i class="fas fa-globe"></i> Domain Whitelist
+                    </button>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="whitelistTabContent">
+                <!-- Senders Tab -->
+                <div class="tab-pane fade show active" id="senders" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Whitelisted Senders</h5>
+                        <div class="input-group" style="width: 300px;">
+                            <input type="text" class="form-control" id="filterSenders"
+                                   placeholder="Filter senders..." autocomplete="off">
+                            <button class="btn btn-outline-secondary" type="button" id="clearFilter">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Highlighted match section -->
+                    <div id="highlightedMatch" style="display: none;" class="mb-3">
+                        <div class="alert alert-info">
+                            <h6 class="mb-2"><i class="bi bi-search"></i> Search Result:</h6>
+                            <table class="table table-sm mb-0">
+                                <tbody id="highlightedMatchBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {% if whitelist.senders %}
+                    <div class="table-responsive">
+                        <table class="table" id="sendersTable">
+                            <thead>
+                                <tr>
+                                    <th>Email Address</th>
+                                    {% if multi_domain %}
+                                    <th>For Domain</th>
+                                    {% endif %}
+                                    <th>Trust Level</th>
+                                    <th>Required Auth</th>
+                                    <th>Added</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sendersTableBody">
+                                {% for sender in whitelist.senders %}
+                                <tr class="sender-row">
+                                    <td>
+                                        <i class="bi bi-envelope"></i>
+                                        {{ sender.email }}
+                                    </td>
+                                    {% if multi_domain %}
+                                    <td>
+                                        <span class="badge bg-info">{{ sender.for_domain | default('Not specified') }}</span>
+                                    </td>
+                                    {% endif %}
+                                    <td>
+                                        <span class="trust-badge {% if sender.trust_bonus >= 5 %}trust-high{% elif sender.trust_bonus >= 3 %}trust-medium{% else %}trust-low{% endif %}">
+                                            {{ sender.trust_bonus }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% for auth in sender.require_auth %}
+                                        <span class="auth-badge auth-{{ auth }}">{{ auth|upper }}</span>
+                                        {% endfor %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ sender.added_date }}
+                                            {% if sender.added_by %}
+                                            <br>by {{ sender.added_by }}
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-sm btn-danger remove-sender"
+                                                    data-email="{{ sender.email }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No senders whitelisted for this domain yet.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Search Tab -->
+                <div class="tab-pane fade" id="search" role="tabpanel">
+                    <h5>Search for Sender</h5>
+                    <form id="searchForm">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <input type="email" class="form-control" id="searchEmail"
+                                       placeholder="Enter sender email address" required>
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="searchDays">
+                                    <option value="7">Last 7 days</option>
+                                    <option value="30" selected>Last 30 days</option>
+                                    <option value="90">Last 90 days</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div id="searchResults" class="mt-4" style="display: none;">
+                        <h6>Search Results</h6>
+                        <div class="alert alert-info" id="searchSummary" style="display: none;">
+                            <i class="bi bi-info-circle"></i> <span id="searchSummaryText"></span>
+                        </div>
+                        <div class="search-results">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Subject / Sender</th>
+                                        <th>Spam Score</th>
+                                        <th>Verdict</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="searchResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                        <button id="addSearchedSender" class="btn btn-success mt-2" style="display: none;">
+                            <i class="bi bi-plus-circle"></i> Add to Whitelist
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Add to Whitelist Tab -->
+                <div class="tab-pane fade" id="add" role="tabpanel">
+                    <h5>Add Sender to Whitelist</h5>
+                    <form id="addSenderForm">
+                        <div class="mb-3">
+                            <label class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="addEmail" required
+                                   placeholder="sender@example.com">
+                        </div>
+
+                        {% if multi_domain %}
+                        <div class="mb-3">
+                            <label class="form-label">For Domain</label>
+                            <select class="form-select" id="addForDomain" required>
+                                <option value="">Select domain...</option>
+                                {% for d in user_domains %}
+                                <option value="{{ d }}">{{ d }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Which domain should see this whitelist entry?</small>
+                        </div>
+                        {% else %}
+                        <input type="hidden" id="addForDomain" value="{{ domain }}">
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Trust Bonus (Spam Score Reduction)</label>
+                            <select class="form-select" id="addTrustBonus">
+                                <option value="1">1 - Minimal trust</option>
+                                <option value="2">2 - Low trust</option>
+                                <option value="3" selected>3 - Medium trust</option>
+                                <option value="4">4 - High trust</option>
+                                <option value="5">5 - Very high trust</option>
+                                <option value="10">10 - Complete trust</option>
+                            </select>
+                            <small class="text-muted">Points to subtract from spam score</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Required Authentication</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="authSpf" value="spf" checked>
+                                <label class="form-check-label" for="authSpf">SPF</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="authDkim" value="dkim">
+                                <label class="form-check-label" for="authDkim">DKIM</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="authDmarc" value="dmarc">
+                                <label class="form-check-label" for="authDmarc">DMARC</label>
+                            </div>
+                            <small class="text-muted">Select which authentication methods must pass</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-plus-circle"></i> Add to Whitelist
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Domain Whitelist Tab (Admin Only) -->
+                {% if current_user.is_admin() %}
+                <div class="tab-pane fade" id="domains" role="tabpanel">
+                    <h5>Whitelisted Domains</h5>
+
+                    {% if whitelist.domains %}
+                    <div class="table-responsive mb-4">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th>Trust Level</th>
+                                    <th>Bypass Checks</th>
+                                    <th>Required Auth</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for domain_wl in whitelist.domains %}
+                                <tr>
+                                    <td><i class="bi bi-globe"></i> {{ domain_wl.domain }}</td>
+                                    <td>
+                                        <span class="trust-badge trust-high">{{ domain_wl.trust_level }}</span>
+                                    </td>
+                                    <td>
+                                        {% if domain_wl.bypass_bec %}
+                                            <span class="badge bg-warning">BEC</span>
+                                        {% endif %}
+                                        {% if domain_wl.bypass_typo %}
+                                            <span class="badge bg-warning">Typo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% for auth in domain_wl.require_auth %}
+                                        <span class="auth-badge auth-{{ auth }}">{{ auth|upper }}</span>
+                                        {% endfor %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No domains whitelisted yet.</p>
+                    {% endif %}
+
+                    <hr>
+
+                    <h5>Add Domain to Whitelist</h5>
+                    <form id="addDomainForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="addDomain"
+                                       placeholder="example.com" required>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="domainTrustLevel">
+                                    <option value="5" selected>Trust Level 5</option>
+                                    <option value="4">Trust Level 4</option>
+                                    <option value="3">Trust Level 3</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="bi bi-plus"></i> Add Domain
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="bypassChecks">
+                                <label class="form-check-label" for="bypassChecks">
+                                    Bypass BEC and Typosquatting checks
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Most Active Whitelisted Senders -->
+    {% if stats.most_active %}
+    <div class="card config-card mt-4">
+        <div class="card-header">
+            <h5>Most Active Whitelisted Senders (Last 30 Days)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Sender</th>
+                            <th>Email Count</th>
+                            <th>Avg Spam Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for active in stats.most_active %}
+                        <tr>
+                            <td>{{ active.sender }}</td>
+                            <td>{{ active.email_count }}</td>
+                            <td>{{ "%.2f"|format(active.avg_score) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- JavaScript -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    const domain = '{{ domain }}';
+
+    // Store original senders data
+    const allSenders = {{ whitelist.senders|tojson|safe }};
+    console.log('Total senders loaded:', allSenders.length);
+
+    // Check for URL parameter to pre-populate filter
+    const urlParams = new URLSearchParams(window.location.search);
+    const filterParam = urlParams.get('filter');
+    if (filterParam) {
+        $('#filterSenders').val(filterParam).trigger('input');
+    }
+
+    // Filter/search senders in the whitelist
+    $('#filterSenders').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase().trim();
+
+        // Show all rows if search is empty
+        if (searchTerm === '') {
+            $('#highlightedMatch').hide();
+            document.querySelectorAll('#sendersTableBody tr.sender-row').forEach(function(row) {
+                row.style.display = '';
+                row.classList.remove('table-warning');
+            });
+            $('#noMatchMessage').remove();
+            return;
+        }
+
+        // Find exact match in the data
+        const exactMatch = allSenders.find(sender =>
+            sender.email.toLowerCase() === searchTerm.toLowerCase()
+        );
+
+        // If exact match found, show it at the top
+        if (exactMatch) {
+            $('#highlightedMatch').show();
+            const trustClass = exactMatch.trust_bonus >= 5 ? 'trust-high' :
+                              exactMatch.trust_bonus >= 3 ? 'trust-medium' : 'trust-low';
+
+            const authBadges = (exactMatch.require_auth || []).map(function(auth) {
+                return '<span class="auth-badge auth-' + auth + '">' + auth.toUpperCase() + '</span>';
+            }).join(' ');
+
+            const addedBy = exactMatch.added_by ? ('<br>by ' + exactMatch.added_by) : '';
+
+            const highlightedHtml = '<tr>' +
+                '<td><i class="bi bi-envelope"></i> <strong>' + exactMatch.email + '</strong></td>' +
+                '<td><span class="trust-badge ' + trustClass + '">' + exactMatch.trust_bonus + '</span></td>' +
+                '<td>' + authBadges + '</td>' +
+                '<td><small class="text-muted">' + (exactMatch.added_date || 'Unknown') + addedBy + '</small></td>' +
+                '<td><button class="btn btn-sm btn-danger remove-sender-highlight" data-email="' + exactMatch.email + '">' +
+                '<i class="bi bi-trash"></i></button></td>' +
+                '</tr>';
+            $('#highlightedMatchBody').html(highlightedHtml);
+        } else {
+            $('#highlightedMatch').hide();
+        }
+
+        // Filter the main table rows
+        let matchFound = false;
+        const rows = document.querySelectorAll('#sendersTableBody tr.sender-row');
+
+        rows.forEach(function(row) {
+            const emailCell = row.cells[0].textContent.trim().toLowerCase();
+
+            if (emailCell.includes(searchTerm)) {
+                row.style.display = '';
+                matchFound = true;
+                if (exactMatch && emailCell.includes(exactMatch.email.toLowerCase())) {
+                    row.classList.add('table-warning');
+                } else {
+                    row.classList.remove('table-warning');
+                }
+            } else {
+                row.style.display = 'none';
+                row.classList.remove('table-warning');
+            }
+        });
+
+        // If no matches found
+        if (!matchFound && !exactMatch) {
+            if ($('#noMatchMessage').length === 0) {
+                $('#sendersTableBody').append(
+                    '<tr id="noMatchMessage"><td colspan="6" class="text-center text-muted">No matching senders found</td></tr>'
+                );
+            }
+        } else {
+            $('#noMatchMessage').remove();
+        }
+    });
+
+    // Clear filter
+    $('#clearFilter').click(function(e) {
+        e.preventDefault();
+        $('#filterSenders').val('').trigger('input');
+    });
+
+    // Remove sender from whitelist
+    $('.remove-sender').click(function() {
+        const email = $(this).data('email');
+        if (confirm(`Remove ${email} from whitelist?`)) {
+            $.post(`/whitelist/${domain}/remove_sender`, {sender_email: email}, function(response) {
+                if (response.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            });
+        }
+    });
+
+    // Search for sender
+    $('#searchForm').submit(function(e) {
+        e.preventDefault();
+        const email = $('#searchEmail').val();
+        const days = $('#searchDays').val();
+
+        $.post(`/whitelist/${domain}/search_sender`, {
+            sender_email: email,
+            days: days
+        }, function(response) {
+            if (response.success) {
+                $('#searchResults').show();
+                const tbody = $('#searchResultsBody');
+                tbody.empty();
+
+                if (response.results.length > 0) {
+                    response.results.forEach(function(emailData) {
+                        const scoreClass = emailData.spam_score > 5 ? 'text-danger' :
+                                          emailData.spam_score > 3 ? 'text-warning' : 'text-success';
+
+                        tbody.append(`
+                            <tr>
+                                <td>${emailData.timestamp}</td>
+                                <td>${emailData.subject || 'N/A'}</td>
+                                <td class="${scoreClass}">${emailData.spam_score}</td>
+                                <td>${emailData.final_verdict || 'N/A'}</td>
+                            </tr>
+                        `);
+                    });
+
+                    // Show add button if not already whitelisted
+                    const isWhitelisted = allSenders.some(s => s.email.toLowerCase() === email.toLowerCase());
+                    if (!isWhitelisted) {
+                        $('#addSearchedSender').data('email', email).show();
+                    } else {
+                        $('#addSearchedSender').hide();
+                    }
+                } else {
+                    tbody.append('<tr><td colspan="4">No emails found from this sender</td></tr>');
+                    $('#addSearchedSender').hide();
+                }
+            } else {
+                alert('Error: ' + response.error);
+            }
+        });
+    });
+
+    // Add searched sender to whitelist
+    $('#addSearchedSender').click(function() {
+        const email = $(this).data('email');
+        $('#addEmail').val(email);
+        $('button[data-bs-target="#add"]').click();
+    });
+
+    // Add sender to whitelist
+    $('#addSenderForm').submit(function(e) {
+        e.preventDefault();
+        const email = $('#addEmail').val();
+        const forDomain = $('#addForDomain').val();
+        const trustBonus = $('#addTrustBonus').val();
+        const requireAuth = [];
+
+        if ($('#authSpf').is(':checked')) requireAuth.push('spf');
+        if ($('#authDkim').is(':checked')) requireAuth.push('dkim');
+        if ($('#authDmarc').is(':checked')) requireAuth.push('dmarc');
+
+        $.post(`/whitelist/${forDomain || domain}/add_sender`, {
+            sender_email: email,
+            trust_bonus: trustBonus,
+            require_auth: requireAuth,
+            for_domain: forDomain || domain
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                location.reload();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
+    });
+
+    // Add domain to whitelist (admin only)
+    $('#addDomainForm').submit(function(e) {
+        e.preventDefault();
+        const targetDomain = $('#addDomain').val();
+        const trustLevel = $('#domainTrustLevel').val();
+        const bypassChecks = $('#bypassChecks').is(':checked');
+
+        $.post(`/whitelist/${domain}/add_domain`, {
+            target_domain: targetDomain,
+            trust_level: trustLevel,
+            bypass_checks: bypassChecks,
+            require_auth: ['spf']
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                location.reload();
+            } else {
+                alert('Error: ' + response.error);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

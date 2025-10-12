@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upgrade Required - SpaCy Email Filter</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .upgrade-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 3rem;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .lock-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+        
+        .module-name {
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .domain-name {
+            color: #764ba2;
+            font-weight: bold;
+        }
+        
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+        
+        .features-list {
+            text-align: left;
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .features-list h3 {
+            color: #333;
+            margin-bottom: 1rem;
+        }
+        
+        .features-list ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .features-list li {
+            padding: 0.5rem 0;
+            color: #555;
+        }
+        
+        .features-list li:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+        
+        .btn-container {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .btn-secondary:hover {
+            background: #f8f9fa;
+        }
+        
+        .contact-info {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e0e0e0;
+            color: #999;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="upgrade-container">
+        <div class="lock-icon">🔒</div>
+        
+        <h1>Premium Module Required</h1>
+        
+        <p>
+            The <span class="module-name">{{ module }}</span> module is not currently enabled 
+            for <span class="domain-name">{{ domain }}</span>.
+        </p>
+        
+        <div class="features-list">
+            <h3>What you'll get with {{ module }}:</h3>
+            <ul>
+                {% if module == 'Compliance Tracking' %}
+                    <li>Legal entity extraction and tracking</li>
+                    <li>Case number and court date detection</li>
+                    <li>Deadline monitoring and alerts</li>
+                    <li>Financial entity tracking</li>
+                    <li>Compliance risk scoring</li>
+                    <li>Audit trail generation</li>
+                {% elif module == 'Legal Alerts' %}
+                    <li>Custom alert configuration</li>
+                    <li>Real-time notification system</li>
+                    <li>Attorney communication tracking</li>
+                    <li>Court date reminders</li>
+                    <li>Deadline warnings</li>
+                    <li>Priority-based alert routing</li>
+                {% elif module == 'Debt Monitoring' %}
+                    <li>Debtor communication tracking</li>
+                    <li>Payment status monitoring</li>
+                    <li>Invoice and account tracking</li>
+                    <li>Aging reports</li>
+                    <li>Collection status updates</li>
+                    <li>Interest calculation tracking</li>
+                {% else %}
+                    <li>Advanced analytics and insights</li>
+                    <li>Custom entity extraction</li>
+                    <li>Automated workflows</li>
+                    <li>Priority support</li>
+                {% endif %}
+            </ul>
+        </div>
+        
+        <div class="btn-container">
+            <a href="mailto:sales@spacy.covereddata.com?subject=Upgrade%20Request%20for%20{{ module }}&body=Domain:%20{{ domain }}" class="btn btn-primary">
+                Contact Sales
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                Back to Dashboard
+            </a>
+        </div>
+        
+        <div class="contact-info">
+            For immediate assistance, contact your account manager or email sales@spacy.covereddata.com
+        </div>
+    </div>
+</body>
+</html>

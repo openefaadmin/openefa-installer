@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}GuardianMail - Conversation Learning System{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card {
+        margin-bottom: 1.5rem;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    }
+    
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: 600;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 1rem;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: bold;
+        color: #495057;
+        margin-bottom: 0.25rem;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .progress {
+        height: 20px;
+        background-color: #e9ecef;
+    }
+    
+    .progress-bar {
+        background-color: #0d6efd;
+    }
+    
+    .table-responsive {
+        margin-top: 1rem;
+    }
+    
+    #feedbackMessage {
+        margin-top: 1rem;
+        display: none;
+    }
+    
+    #feedbackMessage.success {
+        display: block;
+    }
+    
+    #feedbackMessage.error {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="fas fa-brain text-primary"></i> Conversation Learning System
+            </h4>
+        </div>
+        <div class="card-body">
+            {% if stats %}
+            <!-- Statistics Overview -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.vocabulary }}</div>
+                    <div class="stat-label">Vocabulary Patterns</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.relationships }}</div>
+                    <div class="stat-label">Domain Relationships</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.phrases }}</div>
+                    <div class="stat-label">Professional Phrases</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.overall_confidence }}%</div>
+                    <div class="stat-label">System Confidence</div>
+                </div>
+            </div>
+            
+            <!-- Progress Bars -->
+            <div class="mb-4">
+                <h5 class="mb-3">Learning Progress</h5>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Vocabulary ({{ stats.vocabulary }}/1000)</span>
+                        <span>{{ [100, stats.vocabulary * 100 / 1000]|min|round }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" style="width: {{ [100, stats.vocabulary * 100 / 1000]|min }}%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Relationships ({{ stats.relationships }}/50)</span>
+                        <span>{{ [100, stats.relationships * 100 / 50]|min|round }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" style="width: {{ [100, stats.relationships * 100 / 50]|min }}%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Overall Confidence</span>
+                        <span>{{ stats.overall_confidence }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" style="width: {{ stats.overall_confidence }}%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Top Communication Patterns -->
+            {% if stats.top_relationships %}
+            <div class="mb-4">
+                <h5 class="mb-3">Top Communication Patterns</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>From Domain</th>
+                                <th>To Domain</th>
+                                <th>Messages</th>
+                                <th>Avg Spam Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rel in stats.top_relationships[:5] %}
+                            <tr>
+                                <td>{{ rel.sender_domain if rel.sender_domain else 'N/A' }}</td>
+                                <td>{{ rel.recipient_domain if rel.recipient_domain else 'N/A' }}</td>
+                                <td>{{ rel.message_count if rel.message_count else 0 }}</td>
+                                <td>{{ "%.1f"|format(rel.avg_spam_score if rel.avg_spam_score else 0) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Domain Statistics -->
+            {% if stats.domain_stats %}
+            <div class="mb-4">
+                <h5 class="mb-3">Domain Learning Statistics</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Total Messages</th>
+                                <th>Patterns Learned</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for domain in stats.domain_stats %}
+                            <tr>
+                                <td>{{ domain.domain }}</td>
+                                <td>{{ domain.total_messages if domain.total_messages else 0 }}</td>
+                                <td>{{ domain.patterns_learned if domain.patterns_learned else 0 }}</td>
+                                <td>{{ "%.1f"|format(domain.confidence * 100 if domain.confidence else 0) }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- System Status -->
+            <div class="alert {% if stats.effectiveness_status == 'Optimal' %}alert-success{% elif stats.effectiveness_status == 'Effective' %}alert-info{% else %}alert-warning{% endif %}">
+                <h5><i class="fas fa-info-circle"></i> System Status: {{ stats.effectiveness_status }}</h5>
+                <p class="mb-0">
+                    {% if stats.effectiveness_status == 'Initial Learning' %}
+                    The system is gathering baseline patterns. Minimal adjustments are being made.
+                    {% elif stats.effectiveness_status == 'Active Learning' %}
+                    The system is actively learning communication patterns. Moderate adjustments are being applied.
+                    {% elif stats.effectiveness_status == 'Effective' %}
+                    The system has strong pattern recognition. Significant spam score adjustments are being made.
+                    {% else %}
+                    The system is operating at optimal effectiveness with maximum pattern recognition.
+                    {% endif %}
+                </p>
+            </div>
+            
+            {% else %}
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> Unable to load learning statistics.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Manual Feed Section -->
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="fas fa-upload text-primary"></i> Manual Email Feed
+            </h4>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-4">
+                Feed legitimate emails to the learning system to improve pattern recognition and reduce false positives.
+            </p>
+            
+            <form id="feedForm" onsubmit="feedEmailToLearning(); return false;">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="messageId" class="form-label">Message-ID</label>
+                            <input type="text" class="form-control" id="messageId" required
+                                   placeholder="e.g., c1f70042f7f5e528 or full ID@domain.com">
+                            <small class="text-muted">Enter partial or full Message-ID from email headers</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="overrideScore" class="form-label">Override Spam Score (Optional)</label>
+                            <input type="number" class="form-control" id="overrideScore" 
+                                   min="0" max="10" step="0.1" placeholder="0-10">
+                            <small class="text-muted">Leave blank to use original score (lower = more trusted)</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i> Feed to Learning System
+                </button>
+            </form>
+            
+            <div id="feedbackMessage" class="alert" role="alert"></div>
+        </div>
+    </div>
+    
+    <!-- Instructions -->
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="fas fa-question-circle text-info"></i> How It Works
+            </h4>
+        </div>
+        <div class="card-body">
+            <h5>Automatic Learning</h5>
+            <p>The system automatically learns from emails with spam scores below 2.5, building patterns of legitimate communication.</p>
+            
+            <h5>Manual Training</h5>
+            <p>You can manually feed legitimate emails that were incorrectly flagged to improve the system's accuracy.</p>
+            
+            <h5>Finding Message-IDs</h5>
+            <ul>
+                <li>In email headers, look for: <code>Message-ID: &lt;abc123...@domain.com&gt;</code></li>
+                <li>You can use partial IDs (the part before @) for easier entry</li>
+                <li>Not the MailGuard internal ID (like 4cKDGr1qxpzYmQDW)</li>
+            </ul>
+            
+            <h5>Override Scores</h5>
+            <ul>
+                <li><strong>0-2:</strong> Highly trusted legitimate email</li>
+                <li><strong>2-5:</strong> Normal legitimate email</li>
+                <li><strong>5-10:</strong> Suspicious but may be legitimate</li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function feedEmailToLearning() {
+    const messageId = document.getElementById('messageId').value.trim();
+    const overrideScore = document.getElementById('overrideScore').value.trim();
+    const feedbackDiv = document.getElementById('feedbackMessage');
+    
+    if (!messageId) {
+        feedbackDiv.className = 'alert alert-danger';
+        feedbackDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please enter a Message-ID';
+        feedbackDiv.style.display = 'block';
+        return;
+    }
+    
+    feedbackDiv.className = 'alert alert-info';
+    feedbackDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    feedbackDiv.style.display = 'block';
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/learning/feed', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (data.success) {
+                    feedbackDiv.className = 'alert alert-success';
+                    feedbackDiv.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
+                    if (data.details) {
+                        feedbackDiv.innerHTML += '<br><small>From: ' + (data.details.sender || 'Unknown') +
+                            '<br>Subject: ' + (data.details.subject || 'N/A') +
+                            '<br>Score: ' + (data.details.spam_score || 'N/A') + '</small>';
+                    }
+                    document.getElementById('feedForm').reset();
+                    setTimeout(() => location.reload(), 3000);
+                } else {
+                    feedbackDiv.className = 'alert alert-danger';
+                    feedbackDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + data.error;
+                }
+            } catch (e) {
+                feedbackDiv.className = 'alert alert-danger';
+                feedbackDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Error parsing response';
+            }
+        } else {
+            feedbackDiv.className = 'alert alert-danger';
+            feedbackDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Failed to process request. Please check the Message-ID and try again.';
+        }
+        feedbackDiv.style.display = 'block';
+    };
+    
+    xhr.onerror = function() {
+        feedbackDiv.className = 'alert alert-danger';
+        feedbackDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error occurred';
+        feedbackDiv.style.display = 'block';
+    };
+    
+    const params = 'message_id=' + encodeURIComponent(messageId) + '&override_score=' + encodeURIComponent(overrideScore);
+    xhr.send(params);
+}
+</script>
+{% endblock %}

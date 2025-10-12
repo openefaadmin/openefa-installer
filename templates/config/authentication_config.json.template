@@ -1,0 +1,31 @@
+{
+  "spf": {
+    "enabled": true,
+    "fail_score": 5.0,
+    "softfail_score": 2.0,
+    "neutral_score": 0.0,
+    "pass_score": -2.0
+  },
+  "dkim": {
+    "enabled": true,
+    "fail_score": 5.0,
+    "pass_score": -2.0,
+    "invalid_score": 3.0
+  },
+  "dmarc": {
+    "enabled": true,
+    "fail_score": 8.0,
+    "quarantine_score": 5.0,
+    "reject_score": 10.0,
+    "pass_score": -3.0
+  },
+  "alignment": {
+    "require_spf_alignment": false,
+    "require_dkim_alignment": false,
+    "strict_dmarc_enforcement": false
+  },
+  "logging": {
+    "log_all_checks": true,
+    "log_failures_only": false
+  }
+}

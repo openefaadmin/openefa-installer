@@ -1,0 +1,45 @@
+# Sensitive files
+*.env
+.env
+*.key
+*.pem
+*.crt
+*credentials*
+*password*
+*token*
+
+# Temporary files
+*.tmp
+*.log
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+*.tar.gz
+*.zip
+openefa-files-*.tar.gz
+
+# Patches and local development
+patches/
+*.patch
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Testing
+test_results/
+*.test
+
+# Secrets scanning results
+secrets_scan_*.txt

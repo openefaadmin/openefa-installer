@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - GuardianMail - Email Sentiment Analyzer{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-tachometer-alt"></i> Dashboard</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title"><i class="fas fa-envelope"></i> Total Emails</h5>
+                                <h2 class="display-4">{{ stats.total_emails }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title"><i class="fas fa-language"></i> Languages</h5>
+                                <h2 class="display-4">{{ stats.languages|length }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title"><i class="fas fa-tags"></i> Categories</h5>
+                                <h2 class="display-4">{{ stats.categories|length }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title"><i class="fas fa-exclamation-triangle"></i> Manipulation</h5>
+                                <h2 class="display-4">{{ stats.manipulation_indicators|length }}</h2>
+                                <small>types detected</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sentiment Distribution Chart -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Sentiment Distribution</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if sentiment_chart %}
+                <img src="{{ sentiment_chart }}" class="img-fluid" alt="Sentiment Distribution">
+                {% else %}
+                <div class="alert alert-warning">No data available for visualization</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-percentage"></i> Sentiment Breakdown</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.sentiment_distribution %}
+                <ul class="list-group">
+                    {% for sentiment, count in stats.sentiment_distribution.items() %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {% if sentiment == 'Very Positive' %}
+                        <a href="/emails?sentiment_category=positive" class="text-decoration-none">
+                            <span class="sentiment-positive"><i class="fas fa-grin-beam"></i> {{ sentiment }}</span>
+                        </a>
+                        <a href="/emails?sentiment_category=positive" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                        {% elif sentiment == 'Positive' %}
+                        <a href="/emails?sentiment_category=positive" class="text-decoration-none">
+                            <span class="sentiment-positive"><i class="fas fa-smile"></i> {{ sentiment }}</span>
+                        </a>
+                        <a href="/emails?sentiment_category=positive" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                        {% elif sentiment == 'Neutral' %}
+                        <a href="/emails?sentiment_category=neutral" class="text-decoration-none">
+                            <span class="sentiment-neutral"><i class="fas fa-meh"></i> {{ sentiment }}</span>
+                        </a>
+                        <a href="/emails?sentiment_category=neutral" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                        {% elif sentiment == 'Negative' %}
+                        <a href="/emails?sentiment_category=negative" class="text-decoration-none">
+                            <span class="sentiment-negative"><i class="fas fa-frown"></i> {{ sentiment }}</span>
+                        </a>
+                        <a href="/emails?sentiment_category=negative" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                        {% elif sentiment == 'Very Negative' %}
+                        <a href="/emails?sentiment_category=negative" class="text-decoration-none">
+                            <span class="sentiment-negative"><i class="fas fa-angry"></i> {{ sentiment }}</span>
+                        </a>
+                        <a href="/emails?sentiment_category=negative" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="alert alert-warning">No sentiment data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <!-- Language Distribution -->
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-language"></i> Language Distribution</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.languages %}
+                <ul class="list-group">
+                    {% for lang, count in stats.languages.items() %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="/emails?language={{ lang }}" class="text-decoration-none">
+                            <span>
+                                {% if lang == 'en' %}
+                                <i class="fas fa-flag"></i> English
+                                {% elif lang == 'fr' %}
+                                <i class="fas fa-flag"></i> French
+                                {% elif lang == 'es' %}
+                                <i class="fas fa-flag"></i> Spanish
+                                {% elif lang == 'de' %}
+                                <i class="fas fa-flag"></i> German
+                                {% else %}
+                                <i class="fas fa-flag"></i> {{ lang }}
+                                {% endif %}
+                            </span>
+                        </a>
+                        <a href="/emails?language={{ lang }}" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="alert alert-warning">No language data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <!-- Email Categories -->
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-tags"></i> Email Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.categories %}
+                <ul class="list-group">
+                    {% for category, count in stats.categories.items() %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="/emails?category={{ category }}" class="text-decoration-none">
+                            {% if category == 'spam' %}
+                            <span class="category-spam"><i class="fas fa-ban"></i> {{ category }}</span>
+                            {% elif category == 'phishing' %}
+                            <span class="category-phishing"><i class="fas fa-fish"></i> {{ category }}</span>
+                            {% elif category == 'marketing' %}
+                            <span><i class="fas fa-bullhorn"></i> {{ category }}</span>
+                            {% elif category == 'personal' %}
+                            <span><i class="fas fa-user"></i> {{ category }}</span>
+                            {% elif category == 'business' %}
+                            <span><i class="fas fa-briefcase"></i> {{ category }}</span>
+                            {% elif category == 'notification' %}
+                            <span><i class="fas fa-bell"></i> {{ category }}</span>
+                            {% elif category == 'transactional' %}
+                            <span><i class="fas fa-receipt"></i> {{ category }}</span>
+                            {% else %}
+                            <span><i class="fas fa-tag"></i> {{ category }}</span>
+                            {% endif %}
+                        </a>
+                        <a href="/emails?category={{ category }}" class="badge bg-primary rounded-pill text-decoration-none">{{ count }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="alert alert-warning">No category data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Receiving Domain Distribution -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-globe"></i> Receiving Domain Distribution</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.receiving_domains %}
+                <div class="row">
+                    {% for domain, count in stats.receiving_domains.items() %}
+                    <div class="col-md-3 col-sm-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <a href="/emails?receiving_domain={{ domain }}" class="text-decoration-none">
+                                <span class="badge bg-info text-dark">{{ domain }}</span>
+                            </a>
+                            <a href="/emails?receiving_domain={{ domain }}" class="badge bg-primary text-decoration-none">{{ count }}</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-warning">No receiving domain data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- PDF Reports Section - Only for Hosted Domains -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Executive Reports - Hosted Domains</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Generate professional PDF reports for your hosted client domains.</p>
+                
+                {% set hosted_domains = [
+                    'seguelogic.com', 
+                    'offgriddynamics.com', 
+                    'covereddata.com', 
+                    'securedata247.com', 
+                    'rdjohnsonlaw.com', 
+                    'safesoundins.com', 
+                    'openefa.com', 
+                    'barbour.tech'
+                ] %}
+                
+                {% set available_hosted_domains = [] %}
+                {% for domain in hosted_domains %}
+                    {% if stats.receiving_domains and domain in stats.receiving_domains %}
+                        {% set _ = available_hosted_domains.append((domain, stats.receiving_domains[domain])) %}
+                    {% endif %}
+                {% endfor %}
+                
+                {% if available_hosted_domains %}
+                <div class="row">
+                    {% for domain, count in available_hosted_domains %}
+                    <div class="col-md-4 col-sm-6 mb-3">
+                        <div class="card border-success">
+                            <div class="card-body text-center">
+                                <h6 class="card-title">
+                                    <span class="badge bg-success text-white mb-2">
+                                        <i class="fas fa-shield-alt"></i> {{ domain }}
+                                    </span>
+                                </h6>
+                                <p class="card-text">
+                                    <small class="text-muted">{{ count }} emails processed</small>
+                                </p>
+                                <a href="/reports/domain/{{ domain }}" class="btn btn-success btn-sm" target="_blank">
+                                    <i class="fas fa-download"></i> Download Report
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> No hosted domains have processed emails yet. 
+                    <br><small class="text-muted">Reports are only available for: seguelogic.com, offgriddynamics.com, covereddata.com, securedata247.com, rdjohnsonlaw.com, safesoundins.com, openefa.com, barbour.tech</small>
+                </div>
+                {% endif %}
+                
+                <!-- Show all hosted domains status -->
+                <div class="mt-4">
+                    <h6><i class="fas fa-server"></i> Hosted Domain Status</h6>
+                    <div class="row">
+                        {% for domain in hosted_domains %}
+                        <div class="col-md-3 col-sm-6 mb-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                {% if stats.receiving_domains and domain in stats.receiving_domains %}
+                                <span class="badge bg-success text-white">
+                                    <i class="fas fa-check"></i> {{ domain }}
+                                </span>
+                                <span class="badge bg-primary">{{ stats.receiving_domains[domain] }} emails</span>
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="fas fa-clock"></i> {{ domain }}
+                                </span>
+                                <span class="badge bg-light text-dark">No emails</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <hr class="mt-4">
+                <div class="row">
+                    <div class="col-md-12">
+                        <h6><i class="fas fa-info-circle"></i> About Executive Reports</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success"></i> <strong>Monthly email summaries</strong> - Last 30 days of data</li>
+                            <li><i class="fas fa-check text-success"></i> <strong>Sentiment analysis breakdown</strong> - Positive, neutral, negative communications</li>
+                            <li><i class="fas fa-check text-success"></i> <strong>Security metrics</strong> - Threats blocked and email volume</li>
+                            <li><i class="fas fa-check text-success"></i> <strong>Executive summary</strong> - Business-friendly language and insights</li>
+                            <li><i class="fas fa-check text-success"></i> <strong>Professional PDF format</strong> - Ready to share with clients</li>
+                            <li><i class="fas fa-shield-alt text-success"></i> <strong>Hosted domains only</strong> - Reports restricted to your managed clients</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manipulation Indicators -->
+<div class="row mt-4 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Manipulation Indicators</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.manipulation_indicators %}
+                <div class="row">
+                    {% for indicator, count in stats.manipulation_indicators.items() %}
+                    <div class="col-md-3 col-sm-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-danger">{{ indicator }}</span>
+                            <span class="badge bg-danger">{{ count }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-warning">No manipulation indicators available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-search"></i> Quick Filters</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails?category=spam" class="btn btn-danger w-100">
+                            <i class="fas fa-ban"></i> View Spam Emails
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails?category=phishing" class="btn btn-warning w-100">
+                            <i class="fas fa-fish"></i> View Phishing Emails
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails?min_manipulation=7" class="btn btn-dark w-100">
+                            <i class="fas fa-exclamation-triangle"></i> High Manipulation
+                        </a>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails?sentiment_category=positive" class="btn btn-success w-100">
+                            <i class="fas fa-smile-beam"></i> 😊 Positive Emails
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails?sentiment_category=negative" class="btn btn-danger w-100">
+                            <i class="fas fa-angry"></i> 😠 Negative Emails
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="/emails" class="btn btn-primary w-100">
+                            <i class="fas fa-envelope"></i> View All Emails
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Options -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-file-export"></i> Export Data</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-2">
+                        <a href="/export/json" class="btn btn-dark w-100">
+                            <i class="fas fa-file-code"></i> Export All as JSON
+                        </a>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <a href="/export/csv" class="btn btn-dark w-100">
+                            <i class="fas fa-file-csv"></i> Export All as CSV
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

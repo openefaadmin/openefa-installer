@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "description": "RBL (Real-time Blackhole List) Configuration",
+  "rbl_lists": {
+    "SORBS": {
+      "host": "dnsbl.sorbs.net",
+      "weight": 3.0,
+      "enabled": true,
+      "description": "SORBS spam/relay/proxy detection"
+    },
+    "SPAMHAUS": {
+      "host": "zen.spamhaus.org",
+      "weight": 5.0,
+      "enabled": true,
+      "description": "Spamhaus ZEN aggregate list (SBL+XBL+PBL)"
+    },
+    "SPAMCOP": {
+      "host": "bl.spamcop.net",
+      "weight": 4.0,
+      "enabled": true,
+      "description": "SpamCop user-reported spam sources"
+    },
+    "BARRACUDA": {
+      "host": "b.barracudacentral.org",
+      "weight": 4.0,
+      "enabled": false,
+      "description": "Barracuda Reputation - Requires registration",
+      "note": "Register at https://barracudacentral.org/account/register"
+    }
+  },
+  "trusted_networks": [
+    "192.168.0.0/16",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "127.0.0.0/8",
+    "100.64.0.0/10"
+  ],
+  "comments": {
+    "weight": "Spam score points added per RBL hit",
+    "enabled": "Set to false to disable specific RBL without removing it",
+    "trusted_networks": "IP ranges that skip RBL checks (internal/private IPs)"
+  }
+}

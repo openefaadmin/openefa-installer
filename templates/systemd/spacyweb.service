@@ -1,0 +1,26 @@
+[Unit]
+Description=SpacyWeb Dashboard
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=spacy-filter
+Group=spacy-filter
+WorkingDirectory=/opt/spacyserver/web
+Environment=PYTHONPATH=/opt/spacyserver:/opt/spacyserver/web
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/spacyserver/venv/bin/python3 /opt/spacyserver/web/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spacyweb
+
+# Resource limits
+MemoryMax=512M
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

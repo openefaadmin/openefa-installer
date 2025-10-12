@@ -1,0 +1,306 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-gradient-purple text-white">
+                <div class="card-body">
+                    <h2 class="mb-0">
+                        <i class="fas fa-shield-alt"></i> Spam Fighting Effectiveness Dashboard
+                    </h2>
+                    <p class="mb-0 mt-2">Real-time metrics on SpaCy's performance and accuracy</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Status Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-primary">{{ current.effectiveness_score|default(0)|round(1) }}%</h3>
+                    <h6 class="text-muted mb-2">Overall Effectiveness</h6>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar {{ 'bg-success' if current.effectiveness_score >= 85 else 'bg-warning' if current.effectiveness_score >= 70 else 'bg-danger' }}" 
+                             role="progressbar" 
+                             style="width: {{ current.effectiveness_score|default(0) }}%"></div>
+                    </div>
+                    <small class="text-muted">{{ current.performance_rating|default('Calculating...') }}</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-success">{{ (current.detection_rate * 100)|default(0)|round(1) }}%</h3>
+                    <h6 class="text-muted mb-2">Detection Rate</h6>
+                    <small class="text-muted">{{ current.spam_caught|default(0) }} / {{ (current.spam_caught + current.false_negatives)|default(1) }} spam caught</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-info">{{ (current.false_positive_rate * 100)|default(0)|round(2) }}%</h3>
+                    <h6 class="text-muted mb-2">False Positive Rate</h6>
+                    <small class="text-muted">{{ current.false_positives|default(0) }} legitimate emails blocked</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-warning">{{ current.accuracy_percentage|default(100)|round(1) }}%</h3>
+                    <h6 class="text-muted mb-2">Accuracy</h6>
+                    <small class="text-muted">100% - False Positive Rate</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Statistics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Today's Performance ({{ current.metric_date|default('Loading...') }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-primary">{{ current.total_emails|default(0) }}</h5>
+                            <small class="text-muted">Total Emails</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-danger">{{ current.spam_caught|default(0) }}</h5>
+                            <small class="text-muted">Spam Blocked</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-success">{{ current.clean_passed|default(0) }}</h5>
+                            <small class="text-muted">Clean Passed</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-warning">{{ current.gray_area|default(0) }}</h5>
+                            <small class="text-muted">Gray Area</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-info">{{ current.avg_spam_score|default(0)|round(1) }}</h5>
+                            <small class="text-muted">Avg Score</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <h5 class="text-secondary">{{ current.f1_score|default(0)|round(3) }}</h5>
+                            <small class="text-muted">F1 Score</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trends Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-area"></i> 30-Day Effectiveness Trend</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="effectivenessChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Module Performance -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-puzzle-piece"></i> Module Effectiveness</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Module</th>
+                                    <th class="text-center">Triggers</th>
+                                    <th class="text-center">Accuracy</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for module in module_stats %}
+                                <tr>
+                                    <td>{{ module.module_name }}</td>
+                                    <td class="text-center">{{ module.triggers }}</td>
+                                    <td class="text-center">
+                                        <span class="badge {{ 'bg-success' if module.accuracy >= 0.9 else 'bg-warning' if module.accuracy >= 0.7 else 'bg-danger' }}">
+                                            {{ (module.accuracy * 100)|round(1) }}%
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No module data available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-calendar-week"></i> Weekly Summary</h5>
+                </div>
+                <div class="card-body">
+                    {% if weekly_summary %}
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Week Average</small>
+                            <h4 class="text-primary">{{ weekly_summary.avg_effectiveness|round(1) }}%</h4>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Improvement</small>
+                            <h4 class="{{ 'text-success' if weekly_summary.improvement_from_previous > 0 else 'text-danger' }}">
+                                {% if weekly_summary.improvement_from_previous is not none %}
+                                    {{ weekly_summary.improvement_from_previous|round(1)|abs }}%
+                                    <i class="fas fa-arrow-{{ 'up' if weekly_summary.improvement_from_previous > 0 else 'down' }}"></i>
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </h4>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-4">
+                            <small class="text-muted d-block">Emails</small>
+                            <strong>{{ weekly_summary.total_emails|default(0) }}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted d-block">Spam</small>
+                            <strong>{{ weekly_summary.total_spam_caught|default(0) }}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted d-block">False Pos</small>
+                            <strong>{{ weekly_summary.total_false_positives|default(0) }}</strong>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center">No weekly data available yet</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Learning Progress -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-brain"></i> System Learning & Adaptation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Auto-Whitelists Today</h6>
+                            <div class="d-flex align-items-center">
+                                <h3 class="mb-0 me-3">{{ current.auto_whitelists_added|default(0) }}</h3>
+                                <small class="text-muted">senders auto-trusted</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Unique Releases</h6>
+                            <div class="d-flex align-items-center">
+                                <h3 class="mb-0 me-3">{{ current.unique_senders_released|default(0) }}</h3>
+                                <small class="text-muted">senders corrected</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Learning Rate</h6>
+                            <div class="d-flex align-items-center">
+                                <h3 class="mb-0 me-3 {{ 'text-success' if current.learning_rate > 0 else 'text-muted' }}">
+                                    {{ (current.learning_rate * 100)|default(0)|round(2) }}%
+                                </h3>
+                                <small class="text-muted">weekly improvement</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+// Effectiveness Trend Chart
+const ctx = document.getElementById('effectivenessChart').getContext('2d');
+const effectivenessChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ trend_dates|tojson }},
+        datasets: [{
+            label: 'Effectiveness Score',
+            data: {{ trend_scores|tojson }},
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            tension: 0.1
+        }, {
+            label: '7-Day Average',
+            data: {{ trend_week_avg|tojson }},
+            borderColor: 'rgb(255, 206, 86)',
+            backgroundColor: 'rgba(255, 206, 86, 0.2)',
+            borderDash: [5, 5],
+            tension: 0.1
+        }, {
+            label: '30-Day Average',
+            data: {{ trend_month_avg|tojson }},
+            borderColor: 'rgb(153, 102, 255)',
+            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+            borderDash: [10, 5],
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+
+<style>
+.bg-gradient-purple {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+</style>
+{% endblock %}

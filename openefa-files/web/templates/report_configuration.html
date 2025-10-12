@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block title %}Report Configuration - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .report-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+
+    .report-item {
+        border-bottom: 1px solid #f0f0f0;
+        padding: 1rem;
+        transition: background-color 0.2s;
+    }
+
+    .report-item:last-child {
+        border-bottom: none;
+    }
+
+    .report-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    #report-progress {
+        display: none;
+    }
+
+    .date-preset-btn {
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Report Header -->
+<div class="report-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="fas fa-file-pdf"></i> Report Configuration</h1>
+                <p class="mb-0">Generate comprehensive email security reports</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                {% if user_domains|length > 1 %}
+                <div class="dropdown">
+                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe"></i> {{ selected_domain }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        {% for d in user_domains %}
+                        <li><a class="dropdown-item" href="/config/reports?domain={{ d }}">{{ d }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% else %}
+                <span class="badge bg-light text-dark fs-6">
+                    <i class="fas fa-globe"></i> {{ selected_domain }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Progress indicator -->
+    <div id="report-progress" class="alert alert-info">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span id="report-progress-text">Generating report...</span>
+        </div>
+    </div>
+
+    <!-- Alert messages -->
+    <div id="alert-container"></div>
+
+    <!-- Report Generator Card -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card report-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Generate New Report</h5>
+                </div>
+                <div class="card-body">
+                    <form id="reportForm">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="date_from" class="form-label">Start Date</label>
+                                    <input type="date" class="form-control" id="date_from" name="date_from" required>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="date_to" class="form-label">End Date</label>
+                                    <input type="date" class="form-control" id="date_to" name="date_to" required>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="fas fa-file-pdf"></i> Generate Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Date Presets -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label class="form-label">Quick Date Presets:</label>
+                                <div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(7)">
+                                        Last 7 Days
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(30)">
+                                        Last 30 Days
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(90)">
+                                        Last 90 Days
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setThisMonth()">
+                                        This Month
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setLastMonth()">
+                                        Last Month
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                    <hr>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>What's included in the report:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>30-day email volume trends and comparisons</li>
+                            <li>Security threat analysis by category</li>
+                            <li>Top email senders and recipients</li>
+                            <li>Hourly distribution patterns</li>
+                            <li>Spam and phishing detection statistics</li>
+                            <li>Executive summary with key metrics</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Previously Generated Reports -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card report-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-archive"></i> Previously Generated Reports</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if previous_reports %}
+                    <div id="report-list">
+                        {% for report in previous_reports %}
+                        <div class="report-item d-flex align-items-center justify-content-between">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-pdf me-2 text-danger"></i>
+                                    <div>
+                                        <strong>{{ report.filename }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="far fa-clock"></i> {{ report.created }}
+                                            <span class="ms-3"><i class="fas fa-hdd"></i> {{ report.size_human }}</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success me-1" onclick="downloadReport('{{ report.filename }}')" title="Download">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                {% if current_user.is_admin() %}
+                                <button class="btn btn-sm btn-danger" onclick="deleteReport('{{ report.filename }}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-inbox fa-3x mb-3"></i>
+                        <p>No reports found for this domain. Generate your first report to get started.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Information -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card report-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle"></i> Report Information</h5>
+                </div>
+                <div class="card-body">
+                    <h6>About Email Security Reports</h6>
+                    <p>
+                        The enhanced email security reports provide comprehensive insights into your email traffic,
+                        security posture, and threat landscape. These professional PDF reports are perfect for:
+                    </p>
+                    <ul>
+                        <li>Executive briefings and stakeholder updates</li>
+                        <li>Compliance documentation and audits</li>
+                        <li>Security trend analysis and planning</li>
+                        <li>Monthly or quarterly business reviews</li>
+                    </ul>
+
+                    <h6 class="mt-3">Report Storage</h6>
+                    <p>
+                        Generated reports are stored in <code>/opt/spacyserver/reports/</code> and can be downloaded
+                        at any time. Reports include your name and generation timestamp for tracking purposes.
+                    </p>
+
+                    <div class="alert alert-success mt-3">
+                        <i class="fas fa-lightbulb"></i>
+                        <strong>Pro Tip:</strong> For best results, generate reports covering 30-day periods to see
+                        meaningful trends and comparisons with previous months.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Set default dates to last 30 days on page load
+window.addEventListener('DOMContentLoaded', function() {
+    setDateRange(30);
+});
+
+function showAlert(message, type = 'success') {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    alertContainer.appendChild(alertDiv);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+function setDateRange(days) {
+    const today = new Date();
+    const pastDate = new Date();
+    pastDate.setDate(today.getDate() - days);
+
+    document.getElementById('date_to').value = today.toISOString().split('T')[0];
+    document.getElementById('date_from').value = pastDate.toISOString().split('T')[0];
+}
+
+function setThisMonth() {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    document.getElementById('date_from').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('date_to').value = today.toISOString().split('T')[0];
+}
+
+function setLastMonth() {
+    const today = new Date();
+    const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+
+    document.getElementById('date_from').value = firstDayLastMonth.toISOString().split('T')[0];
+    document.getElementById('date_to').value = lastDayLastMonth.toISOString().split('T')[0];
+}
+
+document.getElementById('reportForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const progressDiv = document.getElementById('report-progress');
+    const progressText = document.getElementById('report-progress-text');
+
+    const dateFrom = document.getElementById('date_from').value;
+    const dateTo = document.getElementById('date_to').value;
+    const domain = '{{ selected_domain }}';
+
+    // Show progress
+    progressDiv.style.display = 'block';
+    progressText.textContent = 'Generating report... This may take a few minutes depending on email volume.';
+
+    fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            domain: domain,
+            date_from: dateFrom,
+            date_to: dateTo
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressDiv.style.display = 'none';
+
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
+            // Reload page after 2 seconds to show new report
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Report generation failed: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        progressDiv.style.display = 'none';
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error generating report: ${error}`, 'danger');
+    });
+});
+
+function downloadReport(filename) {
+    window.location.href = `/api/reports/download/${filename}`;
+}
+
+function deleteReport(filename) {
+    if (!confirm(`Are you sure you want to delete report: ${filename}?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+
+    fetch(`/api/reports/delete/${filename}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            // Reload page after 1 second
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error deleting report: ${error}`, 'danger');
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,491 @@
+{% extends "base.html" %}
+
+{% block title %}Conversation Learning - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .progress {
+        height: 25px;
+    }
+    
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #0d6efd;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .effectiveness-badge {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .effectiveness-learning {
+        background: #ffc107;
+        color: #000;
+    }
+    
+    .effectiveness-active {
+        background: #17a2b8;
+        color: white;
+    }
+    
+    .effectiveness-effective {
+        background: #28a745;
+        color: white;
+    }
+    
+    .effectiveness-optimal {
+        background: #007bff;
+        color: white;
+    }
+    
+    .relationship-item {
+        padding: 10px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .relationship-item:last-child {
+        border-bottom: none;
+    }
+    
+    .phrase-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        margin: 5px;
+        background: #e9ecef;
+        border-radius: 15px;
+        font-size: 0.9rem;
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-brain"></i> Conversation Learning System</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">Train the AI to recognize legitimate email patterns and reduce false positives by feeding it examples of good emails.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Feed Section (Always visible) -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-graduation-cap"></i> Train Learning System</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Feed Email by Message-ID</h6>
+                        <form id="feedForm" class="mt-3" onsubmit="return false;">
+                            <div class="mb-3">
+                                <label for="messageId" class="form-label">Message-ID</label>
+                                <input type="text" class="form-control" id="messageId" 
+                                       placeholder="e.g., c1f70042f7f5e528 or full ID@domain.com">
+                                <small class="text-muted">Enter partial or full Message-ID (not MailGuard ID)</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="overrideScore" class="form-label">Override Spam Score (Optional)</label>
+                                <input type="number" class="form-control" id="overrideScore" 
+                                       min="0" max="10" step="0.1" placeholder="0-10 (lower = more trusted)">
+                                <small class="text-muted">Leave blank to use original score</small>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="feedEmailToLearning()">
+                                <i class="fas fa-upload"></i> Feed to Learning System
+                            </button>
+                        </form>
+                        <div id="feedResult" class="mt-3"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Search and Feed</h6>
+                        <form id="searchForm" class="mt-3" onsubmit="return false;">
+                            <div class="mb-3">
+                                <label for="searchTerm" class="form-label">Search by Sender</label>
+                                <input type="text" class="form-control" id="searchTerm" 
+                                       placeholder="e.g., fm20000 or gmail.com">
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="searchEmails()">
+                                <i class="fas fa-search"></i> Search Emails
+                            </button>
+                        </form>
+                        <div id="searchResults" class="mt-3" style="max-height: 300px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% elif stats %}
+
+<!-- Overview Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ stats.vocabulary }}</div>
+                <div class="stat-label">Vocabulary Patterns</div>
+                <div class="progress mt-3">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ [100, stats.vocabulary * 100 / 1000]|min }}%">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ stats.relationships }}</div>
+                <div class="stat-label">Domain Relationships</div>
+                <div class="progress mt-3">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ [100, stats.relationships * 100 / 50]|min }}%">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ stats.domains }}</div>
+                <div class="stat-label">Client Domains</div>
+                <small class="text-muted">Being monitored</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ stats.overall_confidence }}%</div>
+                <div class="stat-label">System Confidence</div>
+                <div class="mt-3">
+                    {% if stats.overall_confidence < 20 %}
+                    <span class="effectiveness-badge effectiveness-learning">Learning</span>
+                    {% elif stats.overall_confidence < 50 %}
+                    <span class="effectiveness-badge effectiveness-active">Active</span>
+                    {% elif stats.overall_confidence < 80 %}
+                    <span class="effectiveness-badge effectiveness-effective">Effective</span>
+                    {% else %}
+                    <span class="effectiveness-badge effectiveness-optimal">Optimal</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Learning Activity and Timeline -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line"></i> Learning Activity</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Last 24 Hours:</strong><br>
+                        <span class="text-success">+{{ stats.new_patterns_24h }} patterns</span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Last 7 Days:</strong><br>
+                        <span class="text-success">+{{ stats.new_patterns_7d }} patterns</span>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <strong>Professional Phrases Identified:</strong> {{ stats.phrases }}
+                </div>
+                <div class="mt-2">
+                    <strong>Avg Legitimate Score:</strong> 
+                    <span class="badge bg-success">{{ stats.avg_legitimate_score }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> 7-Day Learning Trend</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="timelineChart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Communication Patterns and Phrases -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-network-wired"></i> Top Communication Patterns</h5>
+            </div>
+            <div class="card-body">
+                {% for rel in stats.top_relationships[:5] %}
+                <div class="relationship-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ rel.sender_domain if rel.sender_domain else rel[0] }}</strong> 
+                            <i class="fas fa-arrow-right text-muted mx-2"></i>
+                            <strong>{{ rel.recipient_domain if rel.recipient_domain else rel[1] }}</strong>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-primary">{{ rel.message_count if rel.message_count else rel[2] }} msgs</span>
+                            <span class="badge bg-secondary">{{ "%.1f"|format(rel.avg_spam_score if rel.avg_spam_score else rel[3]) }} avg</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-quote-right"></i> Common Professional Phrases</h5>
+            </div>
+            <div class="card-body">
+                <div class="phrase-container">
+                    {% for phrase in stats.top_phrases %}
+                    <span class="phrase-badge">
+                        "{{ phrase.phrase if phrase.phrase else phrase[0] }}" 
+                        <small>({{ phrase.frequency if phrase.frequency else phrase[1] }}x)</small>
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Effectiveness -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="fas fa-tachometer-alt"></i> System Effectiveness</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Current Status:</h6>
+                {% if stats.overall_confidence < 20 %}
+                <div class="alert alert-warning">
+                    <strong>Initial Learning Phase</strong><br>
+                    • Gathering baseline patterns<br>
+                    • Minimal spam adjustments (±0.5 points)<br>
+                    • Full confidence expected in 3-5 days
+                </div>
+                {% elif stats.overall_confidence < 50 %}
+                <div class="alert alert-info">
+                    <strong>Active Learning</strong><br>
+                    • Recognizing communication patterns<br>
+                    • Moderate spam adjustments (±1.0 points)<br>
+                    • Full effectiveness in 1-2 weeks
+                </div>
+                {% elif stats.overall_confidence < 80 %}
+                <div class="alert alert-success">
+                    <strong>Effective</strong><br>
+                    • Strong pattern recognition<br>
+                    • Significant spam adjustments (±1.5 points)<br>
+                    • Actively reducing false positives
+                </div>
+                {% else %}
+                <div class="alert alert-success">
+                    <strong>Highly Effective</strong><br>
+                    • Excellent pattern recognition<br>
+                    • Maximum spam adjustments (±2.0 points)<br>
+                    • Optimal false positive reduction
+                </div>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <h6>Email Headers to Monitor:</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <td><code>X-Conversation-Pattern-Adjustment</code></td>
+                        <td>Spam score change</td>
+                    </tr>
+                    <tr>
+                        <td><code>X-Conversation-Legitimacy</code></td>
+                        <td>Pattern match (0-1)</td>
+                    </tr>
+                    <tr>
+                        <td><code>X-Learning-Confidence</code></td>
+                        <td>Confidence level (0-1)</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i> No learning data available yet. Start feeding emails to train the system.
+</div>
+{% endif %}
+
+<script>
+// Inline JavaScript for feed functionality
+console.log('Learning functions loaded');
+
+function feedEmailToLearning() {
+    const messageId = document.getElementById('messageId').value.trim();
+    const overrideScore = document.getElementById('overrideScore').value.trim();
+    
+    if (!messageId) {
+        alert('Please enter a Message-ID');
+        return;
+    }
+    
+    console.log('Feeding email:', messageId);
+    
+    const resultDiv = document.getElementById('feedResult');
+    resultDiv.innerHTML = '<div class="alert alert-info">Processing... Please wait.</div>';
+    
+    // Make AJAX request
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/learning/feed', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onload = function() {
+        console.log('Response received:', xhr.status);
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (data.success) {
+                    resultDiv.innerHTML = '<div class="alert alert-success">✅ ' + data.message + 
+                        '<br><small>From: ' + (data.details.sender || 'Unknown') +
+                        '<br>Subject: ' + (data.details.subject || 'N/A') +
+                        '<br>Score: ' + (data.details.spam_score || 'N/A') + '</small></div>';
+                    document.getElementById('feedForm').reset();
+                } else {
+                    resultDiv.innerHTML = '<div class="alert alert-danger">❌ ' + data.error + '</div>';
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<div class="alert alert-danger">Error parsing response</div>';
+            }
+        } else if (xhr.status === 302 || xhr.status === 401) {
+            resultDiv.innerHTML = '<div class="alert alert-warning">Session expired. Please refresh and log in.</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger">Error: HTTP ' + xhr.status + '</div>';
+        }
+    };
+    
+    xhr.onerror = function() {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Network error occurred</div>';
+    };
+    
+    const params = 'message_id=' + encodeURIComponent(messageId) + '&override_score=' + encodeURIComponent(overrideScore);
+    xhr.send(params);
+}
+
+function searchEmails() {
+    const searchTerm = document.getElementById('searchTerm').value.trim();
+    
+    if (!searchTerm) {
+        alert('Please enter a search term');
+        return;
+    }
+    
+    const resultsDiv = document.getElementById('searchResults');
+    resultsDiv.innerHTML = '<div class="alert alert-info">Searching...</div>';
+    
+    fetch('/learning/search?q=' + encodeURIComponent(searchTerm), {
+        credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.emails.length > 0) {
+            let html = '<div class="list-group">';
+            data.emails.forEach(email => {
+                html += '<div class="list-group-item p-2">' +
+                    '<small class="text-muted">' + email.time + '</small><br>' +
+                    '<strong>' + email.sender + '</strong><br>' +
+                    '<small>' + email.subject + '</small><br>' +
+                    '<button class="btn btn-sm btn-primary mt-2" onclick="feedFromSearch(\'' + 
+                    email.message_id.replace(/'/g, "\\'") + '\', ' + email.spam_score + ')">Feed to Learning</button>' +
+                    '</div>';
+            });
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        } else {
+            resultsDiv.innerHTML = '<div class="alert alert-info">No emails found</div>';
+        }
+    })
+    .catch(error => {
+        resultsDiv.innerHTML = '<div class="alert alert-danger">Search error: ' + error.message + '</div>';
+    });
+}
+
+function feedFromSearch(messageId, originalScore) {
+    const override = prompt('Override spam score? (0-10, or leave blank for ' + originalScore + ')');
+    document.getElementById('messageId').value = messageId;
+    if (override) {
+        document.getElementById('overrideScore').value = override;
+    }
+    feedEmailToLearning();
+}
+
+{% if stats and stats.timeline %}
+// Timeline Chart
+const ctx = document.getElementById('timelineChart').getContext('2d');
+const timelineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ stats.timeline|map(attribute='date')|list|tojson }},
+        datasets: [{
+            label: 'Patterns Learned',
+            data: {{ stats.timeline|map(attribute='patterns')|list|tojson }},
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    precision: 0
+                }
+            }
+        }
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

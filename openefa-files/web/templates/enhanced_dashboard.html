@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+
+{% block title %}Enhanced Dashboard - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .domain-selector {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .system-overview {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .system-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .system-stat-card {
+        background: rgba(255,255,255,0.15);
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        backdrop-filter: blur(10px);
+    }
+    
+    .system-stat-value {
+        font-size: 2.5em;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .system-stat-label {
+        font-size: 0.9em;
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .system-stat-change {
+        font-size: 0.8em;
+        margin-top: 5px;
+        padding: 3px 8px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.2);
+    }
+    
+    .domain-breakdown {
+        margin-top: 15px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+    }
+    
+    .domain-mini-card {
+        background: rgba(255,255,255,0.1);
+        border-radius: 5px;
+        padding: 10px;
+        text-align: center;
+        font-size: 0.9em;
+    }
+    
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 25px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #667eea;
+        transition: transform 0.2s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .metric-value {
+        font-size: 2.2em;
+        font-weight: bold;
+        color: #2d3748;
+        margin-bottom: 5px;
+    }
+    
+    .metric-label {
+        color: #718096;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+    }
+    
+    .metric-trend {
+        font-size: 0.85em;
+        padding: 4px 8px;
+        border-radius: 12px;
+        display: inline-block;
+        font-weight: 500;
+    }
+    
+    .trend-positive {
+        background-color: #c6f6d5;
+        color: #276749;
+    }
+    
+    .trend-negative {
+        background-color: #fed7d7;
+        color: #c53030;
+    }
+    
+    .trend-neutral {
+        background-color: #e2e8f0;
+        color: #4a5568;
+    }
+    
+    .volume-highlight {
+        border-left-color: #48bb78;
+    }
+    
+    .security-highlight {
+        border-left-color: #ed8936;
+    }
+    
+    .sentiment-highlight {
+        border-left-color: #0bc5ea;
+    }
+    
+    .chart-container {
+        background: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .chart-title {
+        font-size: 1.4em;
+        color: #2d3748;
+        margin-bottom: 20px;
+        font-weight: 600;
+    }
+    
+    .quick-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .quick-stat {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .quick-stat-value {
+        font-size: 1.8em;
+        font-weight: bold;
+        color: #4a5568;
+    }
+    
+    .quick-stat-label {
+        color: #718096;
+        font-size: 0.8em;
+        margin-top: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .peak-info {
+        background: #f7fafc;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 15px;
+        border-left: 3px solid #667eea;
+    }
+    
+    .peak-info strong {
+        color: #2d3748;
+    }
+    
+    .domain-table {
+        background: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h1 class="card-title mb-0">
+                    <i class="fas fa-tachometer-alt"></i> Enhanced Email Security Dashboard
+                </h1>
+                <p class="card-text">
+                    Comprehensive email monitoring and threat analysis for 
+                    {% if current_user.is_admin() %}
+                        all hosted domains
+                    {% else %}
+                        your authorized domains
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Overview for Admin Users -->
+{% if current_user.is_admin() and overall_stats %}
+<div class="system-overview">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h3><i class="fas fa-globe"></i> Today's System Overview</h3>
+            <p class="mb-0">Real-time activity across all hosted domains</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-light text-dark fs-6">
+                <i class="fas fa-calendar-day"></i> {{ moment().format('MMMM D, YYYY') if moment else 'Today' }}
+            </span>
+        </div>
+    </div>
+    
+    <div class="system-stats-grid">
+        <div class="system-stat-card">
+            <div class="system-stat-value">{{ "{:,}".format(overall_stats.today_total) }}</div>
+            <div class="system-stat-label">Today's Total Emails</div>
+            {% if overall_stats.change_from_yesterday != 0 %}
+            <div class="system-stat-change">
+                {% if overall_stats.change_from_yesterday > 0 %}
+                    ↑ {{ "{:+,}".format(overall_stats.change_from_yesterday) }} vs yesterday
+                {% else %}
+                    ↓ {{ "{:,}".format(overall_stats.change_from_yesterday) }} vs yesterday
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="system-stat-card">
+            <div class="system-stat-value">{{ overall_stats.daily_average_week }}</div>
+            <div class="system-stat-label">7-Day Daily Average</div>
+            <div class="system-stat-change">
+                {{ "{:,}".format(overall_stats.week_total) }} total this week
+            </div>
+        </div>
+        
+        <div class="system-stat-card">
+            <div class="system-stat-value">{{ overall_stats.today_threats }}</div>
+            <div class="system-stat-label">Today's Threats</div>
+            <div class="system-stat-change">
+                {{ overall_stats.threat_rate_today }}% threat rate
+            </div>
+        </div>
+        
+        <div class="system-stat-card">
+            <div class="system-stat-value">{{ overall_stats.domain_breakdown|length }}</div>
+            <div class="system-stat-label">Active Domains</div>
+            <div class="system-stat-change">
+                domains with email today
+            </div>
+        </div>
+    </div>
+    
+    {% if overall_stats.domain_breakdown %}
+    <div class="mt-4">
+        <h6><i class="fas fa-chart-bar"></i> Today's Activity by Domain:</h6>
+        <div class="domain-breakdown">
+            {% for domain, count in overall_stats.domain_breakdown.items() %}
+            <div class="domain-mini-card">
+                <strong>{{ count }}</strong><br>
+                <small>{{ domain }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Domain Selector for Multi-Domain Users -->
+{% if user_domains and user_domains|length > 1 %}
+<div class="domain-selector">
+    <h5><i class="fas fa-globe"></i> Select Domain to View</h5>
+    <div class="row align-items-center">
+        <div class="col-md-6">
+            <select class="form-select" onchange="changeDomain(this.value)">
+                {% for domain in user_domains %}
+                <option value="{{ domain }}" {% if domain == selected_domain %}selected{% endif %}>
+                    {{ domain }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <small class="text-muted">
+                <i class="fas fa-info-circle"></i> 
+                You have access to {{ user_domains|length }} domains. 
+                {% if current_user.is_admin() %}
+                    <span class="badge bg-warning text-dark">Admin Access</span>
+                {% else %}
+                    <span class="badge bg-info">Multi-Domain Access</span>
+                {% endif %}
+            </small>
+        </div>
+    </div>
+</div>
+{% elif user_domains and user_domains|length == 1 %}
+<div class="domain-selector">
+    <h5><i class="fas fa-globe"></i> Current Domain: 
+        <span class="badge bg-primary">{{ selected_domain }}</span>
+    </h5>
+</div>
+{% endif %}
+
+{% if stats.volume_metrics %}
+<!-- Enhanced Volume Metrics Section -->
+<div class="metrics-grid">
+    <div class="metric-card volume-highlight">
+        <div class="metric-label">30-Day Email Volume</div>
+        <div class="metric-value">{{ "{:,}".format(stats.volume_metrics.last_30_days) }}</div>
+        {% set change = stats.volume_metrics.volume_change %}
+        {% set percent_change = stats.volume_metrics.volume_percent_change %}
+        {% if percent_change > 5 %}
+            <span class="metric-trend trend-positive">
+                ↑ {{ "{:+,}".format(change) }} ({{ "{:+.1f}".format(percent_change) }}%)
+            </span>
+        {% elif percent_change < -5 %}
+            <span class="metric-trend trend-negative">
+                ↓ {{ "{:+,}".format(change) }} ({{ "{:+.1f}".format(percent_change) }}%)
+            </span>
+        {% else %}
+            <span class="metric-trend trend-neutral">
+                → {{ "{:+,}".format(change) }} ({{ "{:+.1f}".format(percent_change) }}%)
+            </span>
+        {% endif %}
+        
+        {% if stats.volume_metrics.peak_day.date %}
+        <div class="peak-info">
+            <strong>Peak Day:</strong> 
+            {% if stats.volume_metrics.peak_day.date.strftime %}
+                {{ stats.volume_metrics.peak_day.date.strftime('%B %d') }}
+            {% else %}
+                {{ stats.volume_metrics.peak_day.date }}
+            {% endif %}
+            <br><strong>Peak Volume:</strong> {{ stats.volume_metrics.peak_day.count }} emails
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-label">Daily Average</div>
+        <div class="metric-value">{{ stats.volume_metrics.daily_average }}</div>
+        <span class="metric-trend trend-neutral">emails per day</span>
+    </div>
+
+    <div class="metric-card security-highlight">
+        <div class="metric-label">Security Threats Blocked</div>
+        {% set spam_count = stats.categories.get('spam', 0) %}
+        {% set phishing_count = stats.categories.get('phishing', 0) %}
+        {% set total_threats = spam_count + phishing_count %}
+        <div class="metric-value">{{ total_threats }}</div>
+        {% set threat_rate = (total_threats / stats.total_emails * 100) if stats.total_emails > 0 else 0 %}
+        {% if threat_rate < 2 %}
+            <span class="metric-trend trend-positive">{{ "{:.1f}".format(threat_rate) }}% threat rate</span>
+        {% elif threat_rate < 5 %}
+            <span class="metric-trend trend-neutral">{{ "{:.1f}".format(threat_rate) }}% threat rate</span>
+        {% else %}
+            <span class="metric-trend trend-negative">{{ "{:.1f}".format(threat_rate) }}% threat rate</span>
+        {% endif %}
+    </div>
+
+    <div class="metric-card sentiment-highlight">
+        <div class="metric-label">Communication Quality</div>
+        {% set positive_sentiment = stats.sentiment_distribution.get('Very Positive', 0) + stats.sentiment_distribution.get('Positive', 0) %}
+        {% set sentiment_percent = (positive_sentiment / stats.total_emails * 100) if stats.total_emails > 0 else 0 %}
+        <div class="metric-value">{{ "{:.1f}".format(sentiment_percent) }}%</div>
+        {% if sentiment_percent > 70 %}
+            <span class="metric-trend trend-positive">Excellent</span>
+        {% elif sentiment_percent > 50 %}
+            <span class="metric-trend trend-neutral">Good</span>
+        {% else %}
+            <span class="metric-trend trend-negative">Needs Attention</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick Statistics Grid -->
+<div class="quick-stats">
+    <div class="quick-stat">
+        <div class="quick-stat-value">{{ "{:,}".format(stats.total_emails) }}</div>
+        <div class="quick-stat-label">Total Emails</div>
+    </div>
+    
+    {% if stats.languages %}
+    <div class="quick-stat">
+        <div class="quick-stat-value">{{ stats.languages.keys() | list | length }}</div>
+        <div class="quick-stat-label">Languages Detected</div>
+    </div>
+    {% endif %}
+    
+    {% if stats.categories %}
+    <div class="quick-stat">
+        <div class="quick-stat-value">{{ stats.categories.keys() | list | length }}</div>
+        <div class="quick-stat-label">Email Categories</div>
+    </div>
+    {% endif %}
+    
+    <div class="quick-stat">
+        <div class="quick-stat-value">{{ selected_domain }}</div>
+        <div class="quick-stat-label">Current Domain</div>
+    </div>
+</div>
+
+<!-- Volume Trend Alert -->
+{% if stats.volume_metrics %}
+{% set percent_change = stats.volume_metrics.volume_percent_change %}
+{% if percent_change > 30 %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>High Volume Alert:</strong> Email volume has increased by {{ "{:.1f}".format(percent_change) }}% compared to the previous 30-day period. Monitor for potential spam campaigns.
+</div>
+{% elif percent_change < -30 %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>Low Volume Alert:</strong> Email volume has decreased by {{ "{:.1f}".format(percent_change if percent_change >= 0 else (0 - percent_change)) }}% compared to the previous 30-day period. Check for delivery issues.
+</div>
+{% elif percent_change > -5 and percent_change < 5 %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i>
+    <strong>Stable Volume:</strong> Email volume is consistent with the previous period ({{ "{:+.1f}".format(percent_change) }}% change).
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Sentiment Chart -->
+{% if sentiment_chart %}
+<div class="chart-container">
+    <div class="chart-title">
+        <i class="fas fa-chart-pie"></i> Email Sentiment Analysis - {{ selected_domain }}
+    </div>
+    <div class="text-center">
+        <img src="{{ sentiment_chart }}" alt="Sentiment Distribution Chart" style="max-width: 100%; height: auto;">
+    </div>
+</div>
+{% endif %}
+
+<!-- Actions Panel -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-tools"></i> Available Actions
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if selected_domain %}
+        <a href="{{ url_for('enhanced_domain_report', domain=selected_domain) }}" class="btn btn-success me-2">
+            <i class="fas fa-file-pdf"></i> Generate Enhanced Report for {{ selected_domain }}
+        </a>
+        {% endif %}
+        
+        <a href="{{ url_for('emails') }}" class="btn btn-primary me-2">
+            <i class="fas fa-envelope"></i> View All Emails
+        </a>
+        
+        <a href="{{ url_for('export_data', format='csv') }}" class="btn btn-secondary me-2">
+            <i class="fas fa-download"></i> Export Data (CSV)
+        </a>
+        
+        {% if current_user.is_admin() %}
+        <a href="{{ url_for('admin_users') }}" class="btn btn-warning">
+            <i class="fas fa-users-cog"></i> Manage Users
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+{% if user_domains and user_domains|length > 1 %}
+<!-- Multi-Domain Overview -->
+<div class="domain-table">
+    <div class="chart-title">
+        <i class="fas fa-globe"></i> Your Authorized Domains
+    </div>
+    <div class="row">
+        {% for domain in user_domains %}
+        <div class="col-md-4 mb-3">
+            <div class="card {% if domain == selected_domain %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    <h6 class="card-title">{{ domain }}</h6>
+                    {% if domain == selected_domain %}
+                        <span class="badge bg-primary">Currently Viewing</span>
+                    {% else %}
+                        <a href="?domain={{ domain }}" class="btn btn-sm btn-outline-primary">Switch to {{ domain }}</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function changeDomain(selectedDomain) {
+        if (selectedDomain) {
+            window.location.href = '{{ url_for("dashboard") }}?domain=' + encodeURIComponent(selectedDomain);
+        }
+    }
+    
+    // Auto-refresh every 5 minutes
+    setTimeout(function() {
+        window.location.reload();
+    }, 300000);
+</script>
+{% endblock %}

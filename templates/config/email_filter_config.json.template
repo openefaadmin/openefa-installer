@@ -1,0 +1,30 @@
+{
+  "timeout": 90,
+  "relay_host": "{{EFA_IP}}",
+  "primary_domain": "{{DOMAIN}}",
+  "dns_resolver": "{{DNS_IP}}",
+  "log_level": "DEBUG",
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "queue_name": "email_queue"
+  },
+  "database": {
+    "host": "localhost",
+    "database": "{{DB_NAME}}",
+    "user": "{{DB_USER}}",
+    "config_file": "{{INSTALL_DIR}}/config/.my.cnf"
+  },
+  "paths": {
+    "install_dir": "{{INSTALL_DIR}}",
+    "modules_dir": "{{INSTALL_DIR}}/modules",
+    "config_dir": "{{INSTALL_DIR}}/config",
+    "logs_dir": "{{INSTALL_DIR}}/logs"
+  },
+  "logging": {
+    "error_log": "{{INSTALL_DIR}}/logs/email_filter_error.log",
+    "debug_log": "{{INSTALL_DIR}}/logs/email_filter_debug.log",
+    "max_size_mb": 100,
+    "backup_count": 10
+  }
+}

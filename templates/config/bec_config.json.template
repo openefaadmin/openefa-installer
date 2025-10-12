@@ -1,0 +1,45 @@
+{
+  "whitelisted_domains": {
+    "authentication_aware": {
+      "google.com": {
+        "require_auth": ["spf", "dkim"],
+        "trust_level": 5,
+        "description": "Google/Gmail",
+        "bypass_financial_checks": false
+      },
+      "outlook.com": {
+        "require_auth": ["spf", "dkim"],
+        "trust_level": 5,
+        "description": "Microsoft Outlook",
+        "bypass_financial_checks": false
+      },
+      "dattobackup.com": {
+        "require_auth": ["spf", "dkim"],
+        "trust_level": 5,
+        "description": "Datto Backup Service",
+        "bypass_financial_checks": true
+      }
+    }
+  },
+  "whitelist": {
+    "authentication_aware": {
+      "senders": {}
+    },
+    "bulk_sender_exceptions": {
+      "senders": {}
+    }
+  },
+  "trust_levels": {
+    "0": "Default (strictest) - Unknown senders",
+    "1": "Minimal trust - Occasional contacts",
+    "2": "Low trust - Regular vendors",
+    "3": "Medium trust - Business partners",
+    "4": "High trust - Long-term partners",
+    "5": "Maximum trust - Internal systems"
+  },
+  "typosquatting": {
+    "enabled": true,
+    "levenshtein_threshold": 2,
+    "visual_similarity_check": true
+  }
+}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}{{ error or 'Error' }} - GuardianMail{% endblock %}
+
+{% block extra_css %}
+<style>
+    .error-container {
+        max-width: 600px;
+        margin: 100px auto;
+        text-align: center;
+    }
+
+    .error-icon {
+        font-size: 6rem;
+        margin-bottom: 2rem;
+    }
+
+    .error-code {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #dc3545;
+        margin-bottom: 1rem;
+    }
+
+    .error-message {
+        font-size: 1.2rem;
+        color: #6c757d;
+        margin-bottom: 2rem;
+    }
+
+    .error-details {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        text-align: left;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    {% if error == 'Access Denied' %}
+    <div class="error-icon text-warning">
+        <i class="fas fa-lock"></i>
+    </div>
+    <div class="error-code">Access Denied</div>
+    {% elif error == 'Not Found' %}
+    <div class="error-icon text-secondary">
+        <i class="fas fa-search"></i>
+    </div>
+    <div class="error-code">404 Not Found</div>
+    {% else %}
+    <div class="error-icon text-danger">
+        <i class="fas fa-exclamation-triangle"></i>
+    </div>
+    <div class="error-code">Error</div>
+    {% endif %}
+
+    <div class="error-message">
+        {{ message or error or 'An unexpected error occurred.' }}
+    </div>
+
+    {% if error == 'Access Denied' %}
+    <div class="error-details">
+        <h5><i class="fas fa-info-circle"></i> Why am I seeing this?</h5>
+        <p class="mb-2">This feature requires administrator privileges. Your account is configured as a domain administrator with access to specific domains only.</p>
+
+        <h6 class="mt-3">What you can do:</h6>
+        <ul class="text-start">
+            <li>Return to your dashboard to access features available to you</li>
+            <li>Contact your system administrator if you need additional permissions</li>
+            <li>Use the navigation menu to explore other available features</li>
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary me-2">
+            <i class="fas fa-home"></i> Go to Dashboard
+        </a>
+        <a href="{{ url_for('config_dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-cog"></i> Configuration
+        </a>
+    </div>
+
+    {% if current_user.is_authenticated %}
+    <div class="mt-4 text-muted">
+        <small>Logged in as: {{ current_user.email }}</small>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

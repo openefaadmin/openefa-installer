@@ -1,0 +1,69 @@
+{
+  "timeouts": {
+    "total_processing": 90,
+    "analysis_timeout": 60,
+    "smtp_timeout": 30,
+    "module_timeout": 10,
+    "auth_timeout": 15
+  },
+  "size_limits": {
+    "max_email_size": 104857600,
+    "text_extraction_limit": 25000,
+    "analysis_text_limit": 15000,
+    "minimal_analysis_size": 10000,
+    "basic_analysis_size": 25000,
+    "standard_analysis_size": 50000
+  },
+  "domains": {
+    "internal_domains": [
+      "covereddata.com",
+      "seguelogic.com",
+      "safesoundins.com",
+      "offgriddynamics.com",
+      "rdjohnsonlaw.com",
+      "escudolaw.com",
+      "barbour.tech",
+      "securedata247.com",
+      "chrystinakatz.com",
+      "statvu.com"
+    ],
+    "processed_domains": [
+      "seguelogic.com",
+      "offgriddynamics.com",
+      "covereddata.com",
+      "securedata247.com",
+      "rdjohnsonlaw.com",
+      "safesoundins.com",
+      "openefa.com",
+      "barbour.tech",
+      "escudolaw.com",
+      "chrystinakatz.com",
+      "phoenixdefence.com",
+      "chipotlepublishing.com",
+      "spacy.covereddata.com",
+      "statvu.com"
+    ],
+    "journal_addresses": [
+      "journal@spacy.covereddata.com",
+      "journal@covereddata.com"
+    ],
+    "trusted_domains": [
+      "datto.com",
+      "dattobackup.com",
+      "microsoft.com",
+      "microsoftonline.com"
+    ]
+  },
+  "servers": {
+    "mailguard_host": "192.168.50.37",
+    "mailguard_port": 25,
+    "internal_ips": [
+      "192.168.50.114",
+      "192.168.50.37",
+      "zimbra.apollomx.com",
+      "mailguard.covereddata.com"
+    ]
+  },
+  "created": "$(date -Iseconds)",
+  "version": "1.0"
+}

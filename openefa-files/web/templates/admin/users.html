@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-users"></i> User Management
+                </h4>
+                <div>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-light btn-sm me-2">
+                        <i class="fas fa-tachometer-alt"></i> Main Dashboard
+                    </a>
+                    <a href="{{ url_for('admin_create_user') }}" class="btn btn-light btn-sm">
+                        <i class="fas fa-plus"></i> Add New User
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Domain</th>
+                                <th>Role</th>
+                                <th>Company</th>
+                                <th>Status</th>
+                                <th>Emails</th>
+                                <th>Last Login</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>
+                                    <div>
+                                        <strong>{{ user.first_name }} {{ user.last_name }}</strong>
+                                        <br>
+                                        <small class="text-muted">{{ user.email }}</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ user.domain }}</span>
+                                </td>
+                                <td>
+                                    {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-crown"></i> Admin
+                                    </span>
+                                    {% elif user.role == 'client' %}
+                                    <span class="badge bg-primary">
+                                        <i class="fas fa-user"></i> Client
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-eye"></i> Viewer
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user.company_name or '-' }}</td>
+                                <td>
+                                    {% if user.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Inactive</span>
+                                    {% endif %}
+
+                                    {% if user.failed_login_attempts > 0 %}
+                                    <br><small class="text-warning">{{ user.failed_login_attempts }} failed attempts</small>
+                                    {% endif %}
+
+                                    {% if user.locked_until %}
+                                    <br><small class="text-danger">Locked until {{ user.locked_until.strftime('%Y-%m-%d %H:%M') }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ user.email_count }}</span>
+                                </td>
+                                <td>
+                                    {% if user.last_login %}
+                                    {{ user.last_login.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                    <span class="text-muted">Never</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ url_for('admin_edit_user', user_id=user.id) }}"
+                                           class="btn btn-outline-primary" title="Edit User">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+
+                                        {% if user.id != current_user.id %}
+                                        <form method="POST" action="{{ url_for('admin_reset_password', user_id=user.id) }}"
+                                              style="display: inline;"
+                                              onsubmit="return confirm('Reset password for {{ user.email }}?')">
+                                            <button type="submit" class="btn btn-outline-warning" title="Reset Password">
+                                                <i class="fas fa-key"></i>
+                                            </button>
+                                        </form>
+
+                                        <form method="POST" action="{{ url_for('admin_toggle_user_status', user_id=user.id) }}"
+                                              style="display: inline;"
+                                              onsubmit="return confirm('{{ 'Deactivate' if user.is_active else 'Activate' }} {{ user.email }}?')">
+                                            <button type="submit" class="btn btn-outline-{{ 'danger' if user.is_active else 'success' }}"
+                                                    title="{{ 'Deactivate' if user.is_active else 'Activate' }} User">
+                                                <i class="fas fa-{{ 'ban' if user.is_active else 'check' }}"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if not users %}
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-users fa-3x mb-3"></i>
+                    <p>No users found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> User Statistics</h5>
+            </div>
+            <div class="card-body">
+                {% set stats = {
+                    'total': users|length,
+                    'active': users|selectattr('is_active')|list|length,
+                    'admins': users|selectattr('role', 'equalto', 'admin')|list|length,
+                    'clients': users|selectattr('role', 'equalto', 'client')|list|length
+                } %}
+
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h3 class="text-primary">{{ stats.total }}</h3>
+                        <small>Total Users</small>
+                    </div>
+                    <div class="col-6">
+                        <h3 class="text-success">{{ stats.active }}</h3>
+                        <small>Active Users</small>
+                    </div>
+                </div>
+                <hr>
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h4 class="text-danger">{{ stats.admins }}</h4>
+                        <small>Administrators</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-info">{{ stats.clients }}</h4>
+                        <small>Clients</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Security Overview</h5>
+            </div>
+            <div class="card-body">
+                {% set security_stats = {
+                    'locked': users|selectattr('locked_until')|list|length,
+                    'failed_attempts': users|selectattr('failed_login_attempts', 'greaterthan', 0)|list|length,
+                    'never_logged_in': users|selectattr('last_login', 'none')|list|length
+                } %}
+
+                <div class="row">
+                    <div class="col-12 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span>Locked Accounts:</span>
+                            <span class="badge bg-danger">{{ security_stats.locked }}</span>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span>Failed Login Attempts:</span>
+                            <span class="badge bg-warning text-dark">{{ security_stats.failed_attempts }}</span>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span>Never Logged In:</span>
+                            <span class="badge bg-info">{{ security_stats.never_logged_in }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

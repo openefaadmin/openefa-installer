@@ -1,0 +1,25 @@
+# OpenEFA Log Rotation Configuration
+
+{{INSTALL_DIR}}/logs/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 spacy-filter spacy-filter
+    sharedscripts
+    postrotate
+        systemctl reload spacy-db-processor spacyweb spacy-release-api spacy-whitelist-api spacy-block-api >/dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/openefa-install.log {
+    monthly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root root
+}

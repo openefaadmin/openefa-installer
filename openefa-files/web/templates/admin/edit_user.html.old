@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User - {{ user.email }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-user-edit"></i> Edit User - {{ user.email }}
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">
+                                    <i class="fas fa-envelope"></i> Email Address
+                                </label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ user.email }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="domain" class="form-label">
+                                    <i class="fas fa-globe"></i> Domain
+                                </label>
+                                <select class="form-select" id="domain" name="domain" required>
+                                    {% for domain in hosted_domains %}
+                                    <option value="{{ domain }}" {% if domain == user.domain %}selected{% endif %}>
+                                        {{ domain }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="first_name" class="form-label">
+                                    <i class="fas fa-user"></i> First Name
+                                </label>
+                                <input type="text" class="form-control" id="first_name" name="first_name" 
+                                       value="{{ user.first_name or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="last_name" class="form-label">
+                                    <i class="fas fa-user"></i> Last Name
+                                </label>
+                                <input type="text" class="form-control" id="last_name" name="last_name" 
+                                       value="{{ user.last_name or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="role" class="form-label">
+                                    <i class="fas fa-shield-alt"></i> Role
+                                </label>
+                                <select class="form-select" id="role" name="role">
+                                    <option value="client" {% if user.role == 'client' %}selected{% endif %}>Client</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrator</option>
+                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="company_name" class="form-label">
+                                    <i class="fas fa-building"></i> Company Name
+                                </label>
+                                <input type="text" class="form-control" id="company_name" name="company_name" 
+                                       value="{{ user.company_name or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="is_active" name="is_active" 
+                                       {% if user.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="fas fa-check-circle"></i> Account Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Update User
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-populate domain based on email
+document.getElementById('email').addEventListener('change', function() {
+    const email = this.value;
+    if (email.includes('@')) {
+        const domain = email.split('@')[1];
+        const domainSelect = document.getElementById('domain');
+        
+        // Check if domain exists in options
+        for (let option of domainSelect.options) {
+            if (option.value === domain) {
+                option.selected = true;
+                break;
+            }
+        }
+    }
+});
+
+// Domain management functions
+function selectAllDomains() {
+    const checkboxes = document.querySelectorAll('input[name="authorized_domains"]');
+    checkboxes.forEach(cb => cb.checked = true);
+}
+
+function clearAllDomains() {
+    const checkboxes = document.querySelectorAll('input[name="authorized_domains"]');
+    checkboxes.forEach(cb => cb.checked = false);
+}
+
+function selectPrimaryOnly() {
+    const primaryDomain = document.getElementById('domain').value;
+    const checkboxes = document.querySelectorAll('input[name="authorized_domains"]');
+    checkboxes.forEach(cb => {
+        cb.checked = cb.value === primaryDomain;
+    });
+}
+
+// Auto-update authorized domains when primary domain changes
+document.getElementById('domain').addEventListener('change', function() {
+    const primaryDomain = this.value;
+    const primaryCheckbox = document.querySelector(`input[name="authorized_domains"][value="${primaryDomain}"]`);
+    if (primaryCheckbox) {
+        primaryCheckbox.checked = true;
+    }
+});
+</script>
+{% endblock %}

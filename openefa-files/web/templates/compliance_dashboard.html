@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Compliance Dashboard - {{ selected_domain }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Domain Selector for multi-domain users -->
+    {% if user_domains|length > 1 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                {% for domain in user_domains %}
+                <a href="{{ url_for('compliance_dashboard', domain=domain) }}" 
+                   class="btn {% if domain == selected_domain %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    {{ domain }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <h1 class="mb-4">Compliance Dashboard - {{ selected_domain }}</h1>
+    
+    <!-- Compliance Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Compliance Entity Statistics (Last 30 Days)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for stat in compliance_stats %}
+                        <div class="col-md-3 mb-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ stat.entity_type|replace('_', ' ')|title }}</h5>
+                                    <p class="card-text">
+                                        <span class="h3">{{ stat.count }}</span><br>
+                                        <small class="text-muted">in {{ stat.unique_emails }} emails</small>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Compliance Entities -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Recent Compliance Entities Detected</h5>
+                </div>
+                <div class="card-body">
+                    <style>
+                        /* Fix text visibility for compliance table */
+                        .compliance-table {
+                            color: #212529 !important;
+                            background-color: white !important;
+                        }
+                        .compliance-table th {
+                            color: #212529 !important;
+                            font-weight: 600;
+                            background-color: #f8f9fa !important;
+                        }
+                        .compliance-table td {
+                            color: #212529 !important;
+                            background-color: white !important;
+                        }
+                        .compliance-table tr:hover td {
+                            background-color: #f8f9fa !important;
+                        }
+                        .compliance-table a {
+                            color: #0066cc !important;
+                            text-decoration: none;
+                        }
+                        .compliance-table a:hover {
+                            text-decoration: underline;
+                        }
+                        /* Force entity type badges to be visible */
+                        .entity-badge {
+                            background-color: #6c757d !important;
+                            color: #FFFFFF !important;
+                            padding: 0.25rem 0.5rem !important;
+                            border-radius: 0.25rem !important;
+                            display: inline-block !important;
+                            font-weight: 600 !important;
+                            font-size: 0.875rem !important;
+                            text-decoration: none !important;
+                            line-height: 1.2 !important;
+                        }
+                        /* Override Bootstrap's default badge white text */
+                        .badge {
+                            color: #FFFFFF !important;
+                        }
+                        /* Or specifically for entity type badges */
+                        .entity-type-badge {
+                            background-color: #6c757d !important;
+                            color: #000 !important;
+                        }
+                    </style>
+                    <div class="table-responsive">
+                        <table class="table table-hover compliance-table">
+                            <thead>
+                                <tr>
+                                    <th>Date/Time</th>
+                                    <th>Entity Type</th>
+                                    <th>Entity Value</th>
+                                    <th>Email Subject</th>
+                                    <th>Sender</th>
+                                    <th>Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entity in compliance_data %}
+                                <tr>
+                                    <td style="color: #212529;">{{ entity.extracted_date|default('') }}</td>
+                                    <td>
+                                        <span class="entity-type-badge">{{ entity.entity_type|replace('_', ' ')|title }}</span>
+                                    </td>
+                                    <td style="color: #212529;"><strong>{{ entity.entity_value }}</strong></td>
+                                    <td style="color: #212529;">
+                                        <a href="{{ url_for('email_detail', email_id=entity.email_id) }}" target="_blank" style="color: #0066cc;">
+                                            {{ entity.subject|truncate(50) }}
+                                        </a>
+                                    </td>
+                                    <td style="color: #212529;">{{ entity.sender|truncate(30) }}</td>
+                                    <td style="color: #212529;">
+                                        {% if entity.confidence_score|float > 0.8 %}
+                                            <span class="badge bg-success">{{ "%.1f%%"|format(entity.confidence_score|float * 100) }}</span>
+                                        {% elif entity.confidence_score|float > 0.5 %}
+                                            <span class="badge bg-warning">{{ "%.1f%%"|format(entity.confidence_score|float * 100) }}</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ "%.1f%%"|format(entity.confidence_score|float * 100) }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        No compliance entities detected yet. Entities will appear here as emails are processed.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Type Legend -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Entity Types Detected</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Legal Entities</h6>
+                            <ul>
+                                <li><strong>Case Numbers:</strong> Legal case identifiers (e.g., 2024-CV-12345)</li>
+                                <li><strong>Attorneys:</strong> Names of lawyers and legal representatives</li>
+                                <li><strong>Courts:</strong> Court names and jurisdictions</li>
+                                <li><strong>Legal Documents:</strong> Motions, briefs, subpoenas, etc.</li>
+                                <li><strong>Legal Deadlines:</strong> Court dates, filing deadlines</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Financial Entities</h6>
+                            <ul>
+                                <li><strong>Amounts:</strong> Money values and financial figures</li>
+                                <li><strong>Invoice Numbers:</strong> Bill and invoice identifiers</li>
+                                <li><strong>Account Numbers:</strong> Account references</li>
+                                <li><strong>Payment Terms:</strong> Net 30, due dates, etc.</li>
+                                <li><strong>Payment Status:</strong> Paid, unpaid, overdue</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(function(){
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}
