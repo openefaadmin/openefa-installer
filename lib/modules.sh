@@ -157,7 +157,11 @@ update_hosted_domains() {
     # Update HOSTED_DOMAINS line in app.py
     if grep -q "^HOSTED_DOMAINS = " "${app_file}"; then
         sed -i "s/^HOSTED_DOMAINS = .*/HOSTED_DOMAINS = ${domains_python}/" "${app_file}"
-        success "HOSTED_DOMAINS updated with ${#INSTALL_DOMAINS[@]:-1} domain(s)"
+        local domain_count=1
+        if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+            domain_count=${#INSTALL_DOMAINS[@]}
+        fi
+        success "HOSTED_DOMAINS updated with ${domain_count} domain(s)"
     else
         warn "HOSTED_DOMAINS not found in app.py, may need manual configuration"
     fi
