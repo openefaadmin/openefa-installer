@@ -79,5 +79,12 @@ echo ""
 echo -e "${CYAN}Starting OpenEFA installation...${NC}"
 echo ""
 
-# Run the installer, passing through any environment variables
-exec ./install.sh "$@"
+# Run the installer with terminal input restored
+# This allows interactive prompts to work when piped from curl
+if [ -t 0 ]; then
+    # Already have a terminal, run normally
+    exec ./install.sh "$@"
+else
+    # Piped from curl, reconnect stdin to terminal
+    exec ./install.sh "$@" < /dev/tty
+fi
