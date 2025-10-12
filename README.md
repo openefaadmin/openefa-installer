@@ -128,6 +128,35 @@ All features including AI/NLP models:
 
 ## Post-Installation
 
+### ⚠️ CRITICAL: Configure Your MailGuard/EFA Server
+
+**If you have an existing MailGuard or EFA server downstream**, you **MUST** deploy SpamAssassin rules to make it trust OpenEFA's scoring.
+
+**Why this is critical**:
+- Without these rules, MailGuard will ignore OpenEFA's analysis
+- Authentication checks will run twice and fail (due to relay hop)
+- Legitimate emails will be incorrectly blocked
+
+**Quick Setup** (3 minutes):
+```bash
+# On your OpenEFA server
+cd /opt/spacyserver/installer/templates/spamassassin
+
+# Copy to MailGuard/EFA server
+scp spacy_rules.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+scp local.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+scp zzz_spacy_trust.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+
+# On MailGuard server, verify and restart
+ssh root@YOUR_MAILGUARD_IP "spamassassin --lint && systemctl restart mailscanner"
+```
+
+**Full Documentation**: See `/opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md` or `docs/EFA_SPAMASSASSIN_INTEGRATION.md` in this repository.
+
+**Step-by-step checklist**: See `docs/MAILGUARD_INTEGRATION_CHECKLIST.md`
+
+---
+
 ### Services Installed
 ```bash
 # Check all services

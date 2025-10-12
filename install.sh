@@ -137,6 +137,16 @@ ${COLOR_WHITE}Services Running:${COLOR_RESET}
   • Whitelist API (Port 5002)
   • Block API (Port 5003)
 
+${COLOR_RED}⚠️  CRITICAL - If using MailGuard/EFA downstream:${COLOR_RESET}
+  ${COLOR_YELLOW}Deploy SpamAssassin rules to your MailGuard/EFA server:${COLOR_RESET}
+
+  cd /opt/spacyserver/installer/templates/spamassassin
+  scp *.cf root@YOUR_MAILGUARD_IP:/etc/mail/spamassassin/
+  ssh root@YOUR_MAILGUARD_IP "spamassassin --lint && systemctl restart mailscanner"
+
+  ${COLOR_WHITE}Without this, MailGuard will IGNORE OpenEFA's analysis!${COLOR_RESET}
+  See: /opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md
+
 ${COLOR_WHITE}Next Steps:${COLOR_RESET}
   1. Update DNS MX records to point to this server
   2. Configure firewall to allow port 25 (SMTP) inbound
@@ -153,7 +163,7 @@ ${COLOR_WHITE}Useful Commands:${COLOR_RESET}
 
 ${COLOR_YELLOW}Optional:${COLOR_RESET}
   • Run efa_integration.sh to configure APIs on existing EFA appliance
-  • See INSTALLATION.md for detailed configuration guide
+  • See README.md for detailed configuration guide
 
 ${COLOR_GREEN}Thank you for installing OpenEFA!${COLOR_RESET}
 ${COLOR_CYAN}Community: https://openefa.com | Forum: https://forum.openefa.com${COLOR_RESET}
