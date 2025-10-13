@@ -742,6 +742,39 @@ def detect_original_authentication(msg: EmailMessage, from_header: str) -> Dict[
                     safe_log("Microsoft domain with passing ARC signatures")
                     auth_status['spf'] = 'pass'
                     auth_status['dkim'] = 'pass'
+                    auth_status['dmarc'] = 'pass'  # Trust ARC chain for DMARC
+                    break
+
+        # Google domain special handling (same pattern as Microsoft)
+        if sender_domain in ['gmail.com', 'google.com', 'googlemail.com', 'googlegroups.com']:
+            arc_headers = msg.get_all('ARC-Authentication-Results', [])
+            # Limit ARC headers too
+            if len(arc_headers) > 5:
+                arc_headers = arc_headers[-5:]
+
+            for arc_header in arc_headers:
+                arc_str = str(arc_header).lower()
+                if 'spf=pass' in arc_str or 'dkim=pass' in arc_str:
+                    safe_log("Google domain with passing ARC signatures")
+                    auth_status['spf'] = 'pass'
+                    auth_status['dkim'] = 'pass'
+                    auth_status['dmarc'] = 'pass'  # Trust ARC chain for DMARC
+                    break
+
+        # Yahoo domain special handling (same pattern as Microsoft/Google)
+        if sender_domain in ['yahoo.com', 'yahoo.co.uk', 'yahoo.ca', 'ymail.com', 'rocketmail.com']:
+            arc_headers = msg.get_all('ARC-Authentication-Results', [])
+            # Limit ARC headers too
+            if len(arc_headers) > 5:
+                arc_headers = arc_headers[-5:]
+
+            for arc_header in arc_headers:
+                arc_str = str(arc_header).lower()
+                if 'spf=pass' in arc_str or 'dkim=pass' in arc_str:
+                    safe_log("Yahoo domain with passing ARC signatures")
+                    auth_status['spf'] = 'pass'
+                    auth_status['dkim'] = 'pass'
+                    auth_status['dmarc'] = 'pass'  # Trust ARC chain for DMARC
                     break
 
     except Exception as e:
@@ -753,8 +786,8 @@ def detect_original_authentication(msg: EmailMessage, from_header: str) -> Dict[
 # REAL AUTHENTICATION VALIDATION
 # ============================================================================
 
-def perform_real_authentication(msg: EmailMessage, from_header: str, monitor: PerformanceMonitor) -> Dict:
-    """Perform real SPF, DKIM, and DMARC validation"""
+def perform_real_authentication(msg: EmailMessage, from_header: str, monitor: PerformanceMonitor, arc_auth: Dict = None) -> Dict:
+    """Perform real SPF, DKIM, and DMARC validation (respects ARC-trusted authentication)"""
     auth_results = {
         'spf': 'none',
         'dkim': 'none',
@@ -763,7 +796,18 @@ def perform_real_authentication(msg: EmailMessage, from_header: str, monitor: Pe
         'validation_method': 'none',
         'auth_score': 0.0
     }
-    
+
+    # If ARC authentication is provided and trusted, use it instead of real validation
+    if arc_auth and arc_auth.get('dmarc') == 'pass':
+        safe_log("✅ Using ARC-trusted authentication instead of real validation")
+        auth_results['spf'] = arc_auth.get('spf', 'none')
+        auth_results['dkim'] = arc_auth.get('dkim', 'none')
+        auth_results['dmarc'] = 'pass'
+        auth_results['dmarc_policy'] = 'none'  # ARC overrides policy
+        auth_results['validation_method'] = 'arc_trusted'
+        auth_results['auth_score'] = 10.0  # High score for ARC-trusted auth
+        return auth_results
+
     if not REAL_AUTH_AVAILABLE:
         safe_log("Real authentication libraries not available")
         auth_results['validation_method'] = 'unavailable'
@@ -2491,9 +2535,9 @@ def main():
         safe_add_header(msg, 'X-Original-Auth-SPF', auth_status['spf'], monitor)
         safe_add_header(msg, 'X-Original-Auth-DKIM', auth_status['dkim'], monitor)
         safe_add_header(msg, 'X-Original-Auth-DMARC', auth_status['dmarc'], monitor)
-        
-        # Perform real authentication if enabled
-        auth_results = perform_real_authentication(msg, from_header, monitor)
+
+        # Perform real authentication if enabled (pass ARC-trusted auth_status)
+        auth_results = perform_real_authentication(msg, from_header, monitor, arc_auth=auth_status)
         safe_log(f"📧 Auth completed, generating headers...")
         
         # Generate Authentication-Results header
