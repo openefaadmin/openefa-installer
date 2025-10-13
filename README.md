@@ -240,6 +240,112 @@ example.com.    IN  TXT  "v=spf1 mx ip4:YOUR_OPENEFA_IP -all"
 _dmarc.example.com. IN TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"
 ```
 
+## Updating OpenEFA
+
+### Smart Update Script
+
+OpenEFA includes an intelligent update mechanism that preserves your configuration while updating code components.
+
+**One-Line Update** (Recommended):
+```bash
+curl -sSL https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/update.sh | sudo bash
+```
+
+**Or download and review first**:
+```bash
+wget https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/update.sh
+chmod +x update.sh
+sudo ./update.sh
+```
+
+### Update Features
+
+✅ **Automatic Backup**: Creates timestamped backup before updating
+✅ **Config Preservation**: Never overwrites your configuration files
+✅ **Service Validation**: Verifies all services after update
+✅ **Rollback Capability**: One-command restore if update fails
+✅ **Selective Updates**: Update specific components only
+
+### What Gets Updated
+
+- `email_filter.py` - Main email processing engine
+- `modules/*` - All security modules
+- `services/*` - Background services (db_processor, APIs)
+- `web/*` - SpacyWeb dashboard
+- `scripts/*` and `tools/*` - Utility scripts
+
+### What Gets Preserved
+
+- `config/*.json` - All user configurations
+- `config/.my.cnf` - Database credentials
+- `config/.app_config.ini` - Flask secret key
+- `logs/*` - Log files
+- Database content
+
+### Update Options
+
+```bash
+# Standard update (with prompts)
+sudo ./update.sh
+
+# Dry run (preview changes without applying)
+sudo ./update.sh --dry-run
+
+# Update specific component only
+sudo ./update.sh --component email_filter
+sudo ./update.sh --component modules
+sudo ./update.sh --component web
+
+# Backup only (no update)
+sudo ./update.sh --backup-only
+
+# Rollback to previous version
+sudo ./update.sh --rollback
+```
+
+### Version Tracking
+
+After first update, OpenEFA creates `/opt/spacyserver/VERSION`:
+```
+VERSION=1.0.0
+INSTALLED=2025-10-13
+UPDATED=2025-10-13
+COMMIT=872b1b0
+```
+
+### Update Safety
+
+The update script includes multiple safety features:
+
+1. **Pre-flight Checks**: Verifies root access, disk space, internet connectivity
+2. **Automatic Backup**: Creates `/opt/spacyserver-backup-YYYYMMDD_HHMMSS/`
+3. **Database Backup**: Exports database with mysqldump
+4. **Service Validation**: Tests all services after update
+5. **Auto-Rollback**: Offers rollback if validation fails
+6. **Detailed Logging**: Saves log to `/tmp/openefa-update-*.log`
+
+### Manual Component Update
+
+If you only need to update a single file (e.g., after a bugfix):
+
+```bash
+# Update email_filter.py only
+sudo curl -sSL https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/openefa-files/email_filter.py \
+  -o /opt/spacyserver/email_filter.py
+sudo chmod 755 /opt/spacyserver/email_filter.py
+sudo chown spacy-filter:spacy-filter /opt/spacyserver/email_filter.py
+
+# Update a specific module
+sudo curl -sSL https://raw.githubusercontent.com/openefaadmin/openefa-installer/main/openefa-files/modules/bec_detector.py \
+  -o /opt/spacyserver/modules/bec_detector.py
+sudo chown spacy-filter:spacy-filter /opt/spacyserver/modules/bec_detector.py
+
+# Restart services after manual update
+sudo systemctl restart spacy-db-processor spacyweb
+```
+
+---
+
 ## Uninstallation
 
 ```bash
