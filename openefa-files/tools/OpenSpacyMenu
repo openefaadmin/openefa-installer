@@ -4653,7 +4653,7 @@ system_info() {
     
     # SpaCy Web
     if systemctl is-active --quiet spacyweb; then
-        echo -e "${GREEN}✓${NC} SpaCy Web Interface: Running (port 5000)"
+        echo -e "${GREEN}✓${NC} SpaCy Web Interface: Running (port 5500)"
     else
         echo -e "${YELLOW}!${NC} SpaCy Web Interface: Not running"
     fi
