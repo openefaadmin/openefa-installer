@@ -172,13 +172,16 @@ create_admin_user() {
         return 1
     fi
 
+    # Use INSTALL_DOMAINS_LIST if available (multiple domains), otherwise INSTALL_DOMAIN
+    local authorized_domains="${INSTALL_DOMAINS_LIST:-${INSTALL_DOMAIN}}"
+
     mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
 INSERT INTO users (email, password_hash, domain, authorized_domains, role, is_active, created_at)
-VALUES ('${ADMIN_EMAIL}', '${password_hash}', '${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', 'admin', 1, NOW())
+VALUES ('${ADMIN_EMAIL}', '${password_hash}', '${INSTALL_DOMAIN}', '${authorized_domains}', 'admin', 1, NOW())
 ON DUPLICATE KEY UPDATE
     password_hash = '${password_hash}',
     domain = '${INSTALL_DOMAIN}',
-    authorized_domains = '${INSTALL_DOMAIN}',
+    authorized_domains = '${authorized_domains}',
     role = 'admin';
 EOSQL
 
