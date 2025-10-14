@@ -78,6 +78,7 @@ install_utility_packages() {
         "logrotate"
         "certbot"
         "ssl-cert"
+        "iputils-ping"
     )
 
     if run_cmd "DEBIAN_FRONTEND=noninteractive apt-get install -y ${packages[*]}" "Failed to install utility packages"; then
