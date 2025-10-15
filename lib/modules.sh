@@ -154,9 +154,20 @@ update_hosted_domains() {
     fi
     domains_python+="]"
 
-    # Update HOSTED_DOMAINS line in app.py
-    if grep -q "^HOSTED_DOMAINS = " "${app_file}"; then
-        sed -i "s/^HOSTED_DOMAINS = .*/HOSTED_DOMAINS = ${domains_python}/" "${app_file}"
+    # Update HOSTED_DOMAINS in app.py (handle multi-line format)
+    if grep -q "^HOSTED_DOMAINS = \[" "${app_file}"; then
+        # Find the line number of HOSTED_DOMAINS = [
+        local start_line=$(grep -n "^HOSTED_DOMAINS = \[" "${app_file}" | cut -d: -f1)
+        # Find the closing ] (next line that starts with ])
+        local end_line=$(tail -n +${start_line} "${app_file}" | grep -n "^\]" | head -1 | cut -d: -f1)
+        end_line=$((start_line + end_line - 1))
+
+        # Delete the old HOSTED_DOMAINS block
+        sed -i "${start_line},${end_line}d" "${app_file}"
+
+        # Insert new HOSTED_DOMAINS on single line
+        sed -i "${start_line}i\\HOSTED_DOMAINS = ${domains_python}" "${app_file}"
+
         local domain_count=1
         if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
             domain_count=${#INSTALL_DOMAINS[@]}
