@@ -54,7 +54,23 @@ HOST = "localhost"
 # Centralized hosted domains configuration
 # This will be populated from database at startup via get_hosted_domains()
 # Updated during installation with configured domains
-HOSTED_DOMAINS = []
+HOSTED_DOMAINS = [
+    'seguelogic.com',
+    'offgriddynamics.com',
+    'covereddata.com',
+    'securedata247.com',
+    'rdjohnsonlaw.com',
+    'safesoundins.com',
+    'openefa.com',
+    'openefa.org',
+    'barbour.tech',
+    'escudolaw.com',
+    'chrystinakatz.com',
+    'phoenixdefence.com',
+    'chipotlepublishing.com',
+    'spacy.covereddata.com',
+    'statvu.com'
+]
 
 def get_hosted_domains():
     """

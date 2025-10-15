@@ -116,11 +116,24 @@ class EmailFilterConfig:
             },
             
             # Domain configuration
-            # NOTE: These will be populated from HOSTED_DOMAINS and client_domains table
             "domains": {
-                "internal_domains": set(),  # Your protected domains (for spoofing detection)
-                "processed_domains": set(),  # Domains processed by this server
-                "journal_addresses": set(),  # Journal/archive addresses (if any)
+                "internal_domains": {
+                    'covereddata.com', 'seguelogic.com', 'safesoundins.com', 'offgriddynamics.com',
+                    'rdjohnsonlaw.com', 'escudolaw.com', 'barbour.tech', 'securedata247.com',
+                    'chrystinakatz.com', 'epolaw.ai', 'epobot.ai', 'sd247.guardiannet.world',
+                    'openefa.com', 'openefa.org', 'guardiannet.world', 'statvu.com'
+                },
+                "processed_domains": {
+                    'seguelogic.com', 'offgriddynamics.com', 'covereddata.com', 'securedata247.com',
+                    'rdjohnsonlaw.com', 'safesoundins.com', 'openefa.com', 'openefa.org',
+                    'barbour.tech', 'escudolaw.com', 'chrystinakatz.com', 'epolaw.ai',
+                    'epobot.ai', 'sd247.guardiannet.world', 'guardiannet.world',
+                    'phoenixdefence.com', 'chipotlepublishing.com', 'statvu.com'
+                },
+                "journal_addresses": {
+                    'journal@spacy.covereddata.com',
+                    'journal@covereddata.com'
+                },
                 "trusted_domains": set()  # Will be loaded from config file
             },
             
