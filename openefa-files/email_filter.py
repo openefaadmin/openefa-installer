@@ -49,6 +49,13 @@ from typing import Dict, List, Set, Optional, Tuple, Any
 # Add modules path
 sys.path.insert(0, '/opt/spacyserver/modules')
 
+# Import quarantine manager (after path is set)
+from modules.quarantine_manager import get_quarantine_manager
+
+# Initialize quarantine manager
+QUARANTINE_MANAGER = get_quarantine_manager()
+
+
 # ============================================================================
 # REDIS QUEUE INTEGRATION FOR DATABASE OPERATIONS
 # ============================================================================
@@ -405,7 +412,8 @@ class ModuleManager:
             'fraud_funding_detector': ('funding_spam_detector', 'analyze_funding_spam'),
             'url_reputation': ('url_reputation', 'analyze_email_urls'),
             'behavioral_baseline': ('behavioral_baseline', 'analyze_behavior'),
-            'rbl_checker': ('rbl_checker', 'analyze_rbl')
+            'rbl_checker': ('rbl_checker', 'analyze_rbl'),
+            'antivirus_scanner': ('antivirus_scanner', 'scan_email'),
         }
         
         for module_key, (module_name, functions) in module_imports.items():
@@ -836,32 +844,6 @@ def perform_real_authentication(msg: EmailMessage, from_header: str, monitor: Pe
             sender_ip = CONFIG.config['servers']['internal_ips'][0]
             safe_log(f"No sender IP found, using default: {sender_ip}")
 
-        # RBL (Real-time Blackhole List) checking
-        if MODULE_MANAGER.is_available('rbl_checker'):
-            try:
-                with timeout_handler(module_timeout):
-                    analyze_rbl = MODULE_MANAGER.get_module('rbl_checker')
-                    rbl_data = {'sender_ip': sender_ip}
-                    rbl_results = analyze_rbl(rbl_data)
-
-                    if rbl_results and isinstance(rbl_results, dict):
-                        rbl_score = rbl_results.get('rbl_score', 0.0)
-                        if rbl_score > 0:
-                            analysis_results['spam_score'] += rbl_score
-                            safe_log(f"🚫 RBL HIT: IP {sender_ip} listed in {len(rbl_results.get('rbl_hits', []))} blacklists - added {rbl_score} points")
-
-                            # Add detailed RBL info to analysis
-                            for hit in rbl_results.get('rbl_hits', []):
-                                safe_log(f"   - {hit['name']} ({hit['host']}): weight {hit['weight']}")
-
-                        # Add RBL headers
-                        for header, value in rbl_results.get('headers_to_add', {}).items():
-                            msg.add_header(header, str(value))
-
-                        analysis_results['modules_run'].append('rbl_checker')
-                        monitor.record_module('rbl_checker')
-            except Exception as e:
-                safe_log(f"RBL checker module error: {e}")
 
         # Check if sender IP is in trusted networks
         is_trusted_network = False
@@ -1742,6 +1724,31 @@ def check_thread_continuity(msg: EmailMessage, text_content: str) -> Dict:
 # ============================================================================
 # BLOCKING LOGIC - ENHANCED WITH AUTH ABUSE
 # ============================================================================
+
+def store_in_quarantine(msg: EmailMessage, text_content: str, analysis_results: Dict,
+                        from_header: str, recipients: List[str]) -> bool:
+    """Store email in quarantine"""
+    try:
+        email_data = {
+            'message_id': safe_get_header(msg, 'Message-ID', ''),
+            'sender': from_header,
+            'recipients': recipients,
+            'subject': safe_get_header(msg, 'Subject', ''),
+            'text_content': text_content
+        }
+        
+        quarantine_id = QUARANTINE_MANAGER.store_email(msg, email_data, analysis_results)
+        
+        if quarantine_id:
+            safe_log(f"✅ Email quarantined (ID: {quarantine_id})")
+            return True
+        else:
+            safe_log(f"❌ Failed to store quarantine")
+            return False
+    except Exception as e:
+        safe_log(f"❌ Quarantine storage error: {e}")
+        return False
+
 
 def should_block_email(analysis_results: Dict, msg: EmailMessage) -> bool:
     """Enhanced blocking logic with thread-aware thresholds and auth abuse detection"""
@@ -2697,6 +2704,22 @@ def main():
                     safe_log(f"OTP detected: {provider}")
             except Exception as e:
                 safe_log(f"OTP detection error: {e}")
+        
+        # QUARANTINE CHECK FIRST - before blocking rules
+        spam_score = analysis_results.get('spam_score', 0.0)
+        virus_detected = analysis_results.get('virus_detected', False)
+        
+        safe_log(f"🔍 Checking quarantine threshold - spam_score: {spam_score:.2f}")
+        if QUARANTINE_MANAGER.should_quarantine(spam_score, virus_detected):
+            if store_in_quarantine(msg, text_content, analysis_results, from_header, recipients):
+                safe_log(f"📬 Email quarantined (Score: {spam_score:.2f}) - NOT relaying. User must release to deliver.")
+                monitor.log_performance(safe_log)
+                signal.alarm(0)
+                sys.exit(0)  # Exit successfully - email is quarantined, awaiting user review
+            else:
+                safe_log(f"⚠️  Quarantine storage failed - continuing to relay anyway")
+                # Continue even if quarantine fails - don't lose the email
+        
         
         # Enhanced blocking logic with RESTORED thread awareness + FUNDING SPAM + AUTH ABUSE
         safe_log(f"🔍 Checking if email should be blocked - spam_score: {analysis_results['spam_score']:.2f}")
