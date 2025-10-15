@@ -1,0 +1,8 @@
+{
+  "release": {
+    "mailguard": {
+      "host": "YOUR_RELAY_HOST",
+      "port": 25
+    }
+  }
+}

@@ -1,0 +1,216 @@
+:root {
+    /* Primary Colors - Enterprise Trust Palette */
+    --openefa-navy: #1e3a5f;
+    --openefa-blue: #2563eb;
+    --openefa-teal: #0891b2;
+    --openefa-green: #059669;
+    --openefa-amber: #d97706;
+    --openefa-red: #dc2626;
+    --openefa-slate: #475569;
+    --openefa-bg-light: #f1f5f9;
+    
+    /* Override Bootstrap variables */
+    --bs-primary: var(--openefa-navy);
+    --bs-primary-rgb: 30, 58, 95;
+    --bs-success: var(--openefa-green);
+    --bs-success-rgb: 5, 150, 105;
+    --bs-info: var(--openefa-teal);
+    --bs-info-rgb: 8, 145, 178;
+    --bs-warning: var(--openefa-amber);
+    --bs-warning-rgb: 217, 119, 6;
+    --bs-danger: var(--openefa-red);
+    --bs-danger-rgb: 220, 38, 38;
+}
+
+/* Navbar - Deep Navy with subtle shadow */
+.navbar-dark.bg-primary {
+    background: linear-gradient(135deg, var(--openefa-navy) 0%, #2d4a6f 50%, var(--openefa-blue) 100%) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Card Headers - Professional gradient */
+.card-header.bg-primary {
+    background: linear-gradient(135deg, var(--openefa-navy) 0%, var(--openefa-blue) 100%) !important;
+    border: none;
+}
+
+/* Primary Buttons - Professional blue with hover effects */
+.btn-primary {
+    background-color: var(--openefa-blue);
+    border-color: var(--openefa-blue);
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    background-color: var(--openefa-navy);
+    border-color: var(--openefa-navy);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Success Buttons */
+.btn-success {
+    background-color: var(--openefa-green);
+    border-color: var(--openefa-green);
+}
+
+.btn-success:hover {
+    background-color: #047857;
+    border-color: #047857;
+}
+
+/* Info Buttons */
+.btn-info {
+    background-color: var(--openefa-teal);
+    border-color: var(--openefa-teal);
+    color: white;
+}
+
+.btn-info:hover {
+    background-color: #0e7490;
+    border-color: #0e7490;
+}
+
+/* Success/Info Cards - Toned down professional colors */
+.bg-success.bg-opacity-10 {
+    background-color: rgba(5, 150, 105, 0.08) !important;
+}
+
+.bg-info.bg-opacity-10 {
+    background-color: rgba(8, 145, 178, 0.08) !important;
+}
+
+.border-success {
+    border-color: var(--openefa-green) !important;
+}
+
+.border-info {
+    border-color: var(--openefa-teal) !important;
+}
+
+/* Text Colors */
+.text-success {
+    color: var(--openefa-green) !important;
+}
+
+.text-info {
+    color: var(--openefa-teal) !important;
+}
+
+.text-primary {
+    color: var(--openefa-blue) !important;
+}
+
+/* Badges */
+.badge.bg-primary {
+    background-color: var(--openefa-blue) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--openefa-amber) !important;
+    color: white !important;
+}
+
+.badge.bg-success {
+    background-color: var(--openefa-green) !important;
+}
+
+.badge.bg-info {
+    background-color: var(--openefa-teal) !important;
+}
+
+/* Alert Messages - Professional appearance */
+.alert-success {
+    background-color: rgba(5, 150, 105, 0.1);
+    border-color: var(--openefa-green);
+    color: var(--openefa-slate);
+}
+
+.alert-info {
+    background-color: rgba(8, 145, 178, 0.1);
+    border-color: var(--openefa-teal);
+    color: var(--openefa-slate);
+}
+
+.alert-warning {
+    background-color: rgba(217, 119, 6, 0.1);
+    border-color: var(--openefa-amber);
+    color: var(--openefa-slate);
+}
+
+.alert-danger {
+    background-color: rgba(220, 38, 38, 0.1);
+    border-color: var(--openefa-red);
+    color: var(--openefa-slate);
+}
+
+/* Stat Cards - Subtle professional look with hover effect */
+.card.bg-light {
+    background-color: var(--openefa-bg-light) !important;
+    border: 1px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.card.bg-light:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+/* All Cards - Professional styling */
+.card {
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+}
+
+.card-header {
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    border-bottom: 2px solid rgba(255,255,255,0.1);
+}
+
+/* Professional Footer */
+.footer {
+    background: linear-gradient(to right, #f8fafc 0%, #f1f5f9 100%);
+    border-top: 2px solid var(--openefa-navy);
+}
+
+/* Dropdown menus */
+.dropdown-menu {
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Links in primary color */
+a {
+    color: var(--openefa-blue);
+}
+
+a:hover {
+    color: var(--openefa-navy);
+}
+
+/* Form controls focus */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--openefa-teal);
+    box-shadow: 0 0 0 0.25rem rgba(8, 145, 178, 0.25);
+}
+
+/* Tables */
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: var(--openefa-bg-light);
+}
+
+/* Progress bars */
+.progress-bar {
+    background-color: var(--openefa-blue);
+}
+
+.progress-bar.bg-success {
+    background-color: var(--openefa-green) !important;
+}
+
+.progress-bar.bg-info {
+    background-color: var(--openefa-teal) !important;
+}

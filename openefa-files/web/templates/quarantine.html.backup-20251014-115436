@@ -1,0 +1,649 @@
+{% extends "base.html" %}
+<!-- Cache buster: v2025-10-14-10:58 -->
+{% block title %}Recent Messages - Email Security Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .stat-card.warning { border-left-color: #dc3545; }
+    .stat-card.info { border-left-color: #0dcaf0; }
+    .stat-card.success { border-left-color: #198754; }
+    .stat-card.secondary { border-left-color: #6c757d; }
+
+    .email-item {
+        border-left: 3px solid transparent;
+        transition: all 0.2s;
+    }
+    .email-item:hover {
+        background-color: #f8f9fa;
+        border-left-color: #0d6efd;
+    }
+    .email-item.expanded {
+        background-color: #f0f3ff;
+        border-left-color: #0d6efd;
+    }
+
+    .spam-score-badge {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .score-high { background-color: #f8d7da; color: #842029; }
+    .score-medium { background-color: #fff3cd; color: #997404; }
+    .score-low { background-color: #d1e7dd; color: #0a3622; }
+
+    .email-preview {
+        display: none !important;
+        visibility: hidden;
+        height: 0;
+        overflow: hidden;
+        padding: 0;
+        margin: 0;
+        border: none;
+    }
+    .email-preview.show {
+        display: block !important;
+        visibility: visible;
+        height: auto;
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        background-color: white;
+    }
+
+    .attachment-badge {
+        background-color: #e7f3ff;
+        color: #004085;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+    }
+
+    .virus-badge {
+        background-color: #f8d7da;
+        color: #842029;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .expiry-warning {
+        color: #dc3545;
+        font-weight: 600;
+    }
+
+    /* Email type badges */
+    .email-type-badge {
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.8rem;
+        display: inline-block;
+    }
+    .email-spam {
+        background-color: #dc3545;
+        color: white;
+    }
+    .email-legitimate {
+        background-color: #198754;
+        color: white;
+    }
+    .email-suspicious {
+        background-color: #ffc107;
+        color: #000;
+    }
+
+    /* Update email item border colors based on type */
+    .email-item.spam-email {
+        border-left-color: #dc3545 !important;
+        background-color: #ffffff !important;
+    }
+    .email-item.spam-email:hover {
+        background-color: #f8f9fa !important;
+    }
+    .email-item.legitimate-email {
+        border-left-color: #198754 !important;
+        background-color: #ffffff !important;
+    }
+    .email-item.legitimate-email:hover {
+        background-color: #f8f9fa !important;
+    }
+    .email-item.suspicious-email {
+        border-left-color: #ffc107 !important;
+        background-color: #ffffff !important;
+    }
+    .email-item.suspicious-email:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    /* Released indicator badge */
+    .released-badge {
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        background-color: #198754;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        color: white;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        padding: 4px 12px;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        border-radius: 4px;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        font-weight: 600;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        font-size: 0.8rem;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+        display: inline-block;
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+    }
+/* Deleted indicator badge */    .deleted-badge {        background-color: #dc3545;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }    /* Archived/Held indicator badge */    .held-badge {        background-color: #6c757d;        color: white;        padding: 4px 12px;        border-radius: 4px;        font-weight: 600;        font-size: 0.8rem;        display: inline-block;    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="fas fa-inbox"></i> Recent Messages</h2>
+            <p class="text-muted">30-day archive of all processed emails</p>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card info">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">TOTAL MESSAGES</h6>
+                    <h3 class="card-title mb-0">{{ total_count or 0 }}</h3>
+                    <small class="text-muted">In 30-day archive</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card info">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">EXPIRING SOON</h6>
+                    <h3 class="card-title mb-0">{{ stats.expiring_soon or 0 }}</h3>
+                    <small class="text-muted">Next 7 days</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card success">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">AVG SPAM SCORE</h6>
+                    <h3 class="card-title mb-0">{{ "%.1f"|format(stats.avg_spam_score or 0) }}</h3>
+                    <small class="text-muted">Out of 10.0</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card secondary">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">VIRUS DETECTED</h6>
+                    <h3 class="card-title mb-0">{{ stats.virus_count or 0 }}</h3>
+                    <small class="text-muted">Blocked viruses</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters and Search -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('quarantine_view') }}" class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="search"
+                           placeholder="Search sender, subject, or recipients..."
+                           value="{{ search_query }}">
+                </div>
+
+                <div class="col-md-2">
+                    <select class="form-select" name="status" onchange="this.form.submit()">
+                        <option value="active" {% if status_filter == 'active' or not status_filter %}selected{% endif %}>Active</option>
+                        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All (excl. deleted)</option>
+                        <option value="held" {% if status_filter == 'held' %}selected{% endif %}>Held</option>
+                        <option value="released" {% if status_filter == 'released' %}selected{% endif %}>Released</option>
+                        <option value="deleted" {% if status_filter == 'deleted' %}selected{% endif %}>Deleted</option>
+                    </select>
+                </div>
+
+                {% if current_user.is_admin() %}
+                <div class="col-md-3">
+                    <select class="form-select" name="domain" onchange="this.form.submit()">
+                        <option value="">All Domains</option>
+                        {% for domain in user_domains %}
+                        <option value="{{ domain }}" {% if domain_filter == domain %}selected{% endif %}>
+                            {{ domain }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <a href="{{ url_for('quarantine_view') }}" class="btn btn-secondary">
+                        <i class="fas fa-redo"></i> Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Email List -->
+    {% if quarantined_emails %}
+    <div class="card">
+        <div class="card-header bg-light">
+            <div class="d-flex justify-content-between align-items-center">
+                <span>
+                    <strong>{{ total_count }}</strong> email(s) found
+                    {% if page > 1 %}
+                        (Page {{ page }} of {{ total_pages }})
+                    {% endif %}
+                </span>
+                <div>
+                    <input type="checkbox" id="selectAll" class="form-check-input me-2">
+                    <label for="selectAll" class="form-check-label me-3">Select All</label>
+                    <button class="btn btn-outline-success btn-sm" onclick="bulkRelease()" disabled id="bulkReleaseBtn">
+                        <i class="fas fa-check"></i> Release Selected
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="bulkDelete()" disabled id="bulkDeleteBtn">
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for email in quarantined_emails %}
+            <div class="list-group-item email-item
+                {% if email.spam_score >= 5.0 %}spam-email
+                {% elif email.spam_score >= 3.0 %}suspicious-email
+                {% else %}legitimate-email{% endif %}" id="email-{{ email.id }}">
+                <div class="d-flex">
+                    <div class="me-3">
+                        <input type="checkbox" class="form-check-input email-checkbox" value="{{ email.id }}">
+                    </div>
+                    <div class="flex-shrink-0 me-3">
+                        {% if email.virus_detected %}
+                        <i class="fas fa-virus fa-2x text-danger"></i>
+                        {% elif email.phishing_detected %}
+                        <i class="fas fa-fish fa-2x text-warning"></i>
+                        {% elif email.spam_score >= 8.0 %}
+                        <i class="fas fa-exclamation-triangle fa-2x text-danger"></i>
+                        {% else %}
+                        <i class="fas fa-envelope fa-2x text-secondary"></i>
+                        {% endif %}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <strong>{{ email.sender }}</strong>
+                            <small class="text-muted">{{ email.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </div>
+                        <div class="mb-1">
+                            <span>{{ email.subject or '(No Subject)' }}</span>
+                            {% if email.spam_score >= 5.0 %}
+                            <span class="email-type-badge email-spam ms-2">
+                                <i class="fas fa-exclamation-circle"></i> SPAM
+                            </span>
+                            {% elif email.spam_score >= 3.0 %}
+                            <span class="email-type-badge email-suspicious ms-2">
+                                <i class="fas fa-question-circle"></i> SUSPICIOUS
+                            </span>
+                            {% else %}
+                            <span class="email-type-badge email-legitimate ms-2">
+                                <i class="fas fa-check-circle"></i> LEGITIMATE
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            {% if email.spam_score %}
+                            <span class="spam-score-badge
+                                {% if email.spam_score >= 8.0 %}score-high
+                                {% elif email.spam_score >= 5.0 %}score-medium
+                                {% else %}score-low{% endif %}">
+                                Score: {{ "%.1f"|format(email.spam_score) }}
+                            </span>
+                            {% endif %}
+
+                            {% if email.virus_detected %}
+                            <span class="virus-badge">
+                                <i class="fas fa-virus"></i> VIRUS
+                            </span>
+                            {% endif %}
+
+                            {% if email.has_attachments %}
+                            <span class="attachment-badge">
+                                <i class="fas fa-paperclip"></i> {{ email.attachment_count }} attachment(s)
+                            </span>
+                            {% endif %}
+
+                            {% if email.quarantine_status == 'released' %}
+
+                            <span class="released-badge">
+                                <i class="fas fa-check"></i> RELEASED
+                            </span>
+                            {% endif %}
+
+                            {% if email.days_until_expiry <= 7 %}
+                            <span class="expiry-warning">
+                                <i class="fas fa-clock"></i> Expires in {{ email.days_until_expiry }} day(s)
+                            </span>
+                            {% endif %}
+
+                            <span class="badge bg-secondary">{{ email.quarantine_reason }}</span>
+                        </div>
+
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="togglePreview({{ email.id }})">
+                                <i class="fas fa-eye"></i> <span id="preview-btn-{{ email.id }}">Show Preview</span>
+                            </button>
+                        </div>
+
+                        <!-- Email Preview (hidden by default) -->
+                        <div class="email-preview" id="preview-{{ email.id }}">
+                            <div class="d-flex justify-content-between mb-2">
+                                <strong>Email Preview</strong>
+                                <button class="btn btn-sm btn-link" onclick="togglePreview({{ email.id }})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="border-bottom pb-2 mb-2">
+                                <small class="text-muted">
+                                    <strong>From:</strong> {{ email.sender }}<br>
+                                    <strong>To:</strong> {{ email.recipients | tojson | safe }}<br>
+                                    <strong>Subject:</strong> {{ email.subject or '(No Subject)' }}<br>
+                                    {% if email.has_attachments %}
+                                    <strong>Attachments:</strong> {{ email.attachment_count }} file(s)<br>
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div style="max-height: 400px; overflow-y: auto; font-size: 0.9rem; white-space: pre-wrap;">
+                                {{ email.text_content or 'No text content available' }}
+                            </div>
+
+                            <!-- Email Headers (Collapsible) -->
+                            <div class="mt-3" id="headers-section-{{ email.id }}" style="display: none;">
+                                <div class="border-top pt-3">
+                                    <strong class="d-block mb-2">Email Headers:</strong>
+                                    <div style="max-height: 300px; overflow-y: auto; font-size: 0.75rem; white-space: pre-wrap; background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace;">
+                                        <div id="headers-content-{{ email.id }}">Loading headers...</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 d-flex gap-2 flex-wrap">
+                                <button class="btn btn-release btn-sm" onclick="releaseEmail({{ email.id }})">
+                                    <i class="fas fa-paper-plane"></i> Release & Deliver
+                                </button>
+                                <button class="btn btn-not-spam btn-sm" onclick="markNotSpam({{ email.id }})">
+                                    <i class="fas fa-thumbs-up"></i> Not Spam
+                                </button>
+                                <button class="btn btn-delete-spam btn-sm" onclick="deleteEmail({{ email.id }})">
+                                    <i class="fas fa-trash"></i> Delete (Is Spam)
+                                </button>
+                                <button class="btn btn-show-headers btn-sm" onclick="toggleHeaders({{ email.id }})" id="headers-btn-{{ email.id }}">
+                                    <i class="fas fa-code"></i> Show Headers
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="card-footer">
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('quarantine_view', page=page-1, status=status_filter, domain=domain_filter, search=search_query) }}">
+                            Previous
+                        </a>
+                    </li>
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p == page or (p >= page-2 and p <= page+2) or p == 1 or p == total_pages %}
+                        <li class="page-item {% if p == page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('quarantine_view', page=p, status=status_filter, domain=domain_filter, search=search_query) }}">
+                                {{ p }}
+                            </a>
+                        </li>
+                        {% elif p == page-3 or p == page+3 %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('quarantine_view', page=page+1, status=status_filter, domain=domain_filter, search=search_query) }}">
+                            Next
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+            <h4>No Quarantined Emails</h4>
+            <p class="text-muted">There are currently no emails in quarantine matching your filters.</p>
+            {% if search_query or domain_filter or status_filter != 'held' %}
+            <a href="{{ url_for('quarantine_view') }}" class="btn btn-primary">
+                <i class="fas fa-redo"></i> Clear Filters
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Select all checkbox functionality
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.email-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    updateBulkButtons();
+});
+
+// Update bulk action buttons
+document.querySelectorAll('.email-checkbox').forEach(cb => {
+    cb.addEventListener('change', updateBulkButtons);
+});
+
+function updateBulkButtons() {
+    const selected = document.querySelectorAll('.email-checkbox:checked').length;
+    document.getElementById('bulkReleaseBtn').disabled = selected === 0;
+    document.getElementById('bulkDeleteBtn').disabled = selected === 0;
+}
+
+// Toggle email preview
+function togglePreview(emailId) {
+    const preview = document.getElementById(`preview-${emailId}`);
+    const btnText = document.getElementById(`preview-btn-${emailId}`);
+    const item = document.getElementById(`email-${emailId}`);
+
+    if (preview.classList.contains('show')) {
+        preview.classList.remove('show');
+        btnText.textContent = 'Show Preview';
+        item.classList.remove('expanded');
+    } else {
+        // Close all other previews
+        document.querySelectorAll('.email-preview.show').forEach(p => {
+            p.classList.remove('show');
+            p.closest('.email-item').classList.remove('expanded');
+        });
+        document.querySelectorAll('[id^="preview-btn-"]').forEach(btn => {
+            btn.textContent = 'Show Preview';
+        });
+
+        // Open this preview
+        preview.classList.add('show');
+        btnText.textContent = 'Hide Preview';
+        item.classList.add('expanded');
+
+        // Content is already loaded in template - no AJAX needed
+        // loadPreviewContent(emailId);
+    }
+}
+
+// Load email preview content via AJAX
+function loadPreviewContent(emailId) {
+    const preview = document.querySelector(`#preview-${emailId} > div:last-of-type`);
+    if (preview.textContent.includes('Loading')) {
+        fetch(`/api/quarantine/${emailId}/preview`)
+            .then(r => r.json())
+            .then(data => {
+                preview.innerHTML = data.text_content || '<em>No text content available</em>';
+            })
+            .catch(err => {
+                preview.innerHTML = '<em class="text-danger">Error loading preview</em>';
+            });
+    }
+}
+
+// Release single email
+function releaseEmail(emailId) {
+    if (!confirm('Release this email and deliver to recipients?')) return;
+
+    fetch(`/api/quarantine/${emailId}/release`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error releasing email'));
+}
+
+// Delete single email
+function deleteEmail(emailId) {
+    if (!confirm('Delete this email permanently? This cannot be undone.')) return;
+
+    fetch(`/api/quarantine/${emailId}/delete`, {
+        method: 'POST',
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error deleting email'));
+}
+
+// Mark as not spam
+function markNotSpam(emailId) {
+    if (!confirm('Mark this email as NOT SPAM? This will train the spam filter.')) return;
+
+    fetch(`/api/quarantine/${emailId}/not-spam`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message + '\n\nUse "Release" button to deliver the email.');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error marking email'));
+}
+
+// Toggle headers display
+function toggleHeaders(emailId) {
+    const section = document.getElementById(`headers-section-${emailId}`);
+    const btn = document.getElementById(`headers-btn-${emailId}`);
+    const content = document.getElementById(`headers-content-${emailId}`);
+
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-code"></i> Hide Headers';
+
+        // Fetch headers if not already loaded
+        if (content.textContent === 'Loading headers...') {
+            fetch(`/api/quarantine/${emailId}/headers`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        content.textContent = data.headers;
+                    } else {
+                        content.textContent = 'Error loading headers: ' + data.error;
+                    }
+                })
+                .catch(err => {
+                    content.textContent = 'Error loading headers';
+                });
+        }
+    } else {
+        section.style.display = 'none';
+        btn.innerHTML = '<i class="fas fa-code"></i> Show Headers';
+    }
+}
+
+// Bulk release
+function bulkRelease() {
+    const selected = Array.from(document.querySelectorAll('.email-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (selected.length === 0) return;
+
+    if (!confirm(`Release ${selected.length} email(s)?`)) return;
+
+    fetch('/api/quarantine/bulk-release', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email_ids: selected})
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(err => alert('Error with bulk release'));
+}
+
+// Bulk delete
+function bulkDelete() {
+    const selected = Array.from(document.querySelectorAll('.email-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (selected.length === 0) return;
+
+    if (!confirm(`Delete ${selected.length} email(s) permanently?`)) return;
+
+    fetch('/api/quarantine/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email_ids: selected})
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(err => alert('Error with bulk delete'));
+}
+</script>
+{% endblock %}

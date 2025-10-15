@@ -53,12 +53,7 @@ HOST = "localhost"
 
 # Centralized hosted domains configuration
 # This will be populated from database at startup via get_hosted_domains()
-# Updated during installation with configured domains
-HOSTED_DOMAINS = [
-    # Add your client domains here during installation
-    # Example: 'example.com', 'client1.com', 'client2.com'
-    # These should match domains in your client_domains database table
-]
+HOSTED_DOMAINS = ['openefa.org', 'seguelogic.com']
 
 def get_hosted_domains():
     """
@@ -1828,9 +1823,9 @@ def compliance_dashboard():
     # Try to get domain from URL parameter, or use the user's primary domain
     selected_domain = request.args.get('domain')
     if not selected_domain:
-        # For admin, default to first available domain
-        if current_user.role == 'admin' and user_domains:
-            selected_domain = user_domains[0]
+        # For admin, default to seguelogic.com if available
+        if current_user.role == 'admin' and 'seguelogic.com' in user_domains:
+            selected_domain = 'seguelogic.com'
         else:
             selected_domain = user_domains[0] if user_domains else None
     
@@ -3099,10 +3094,6 @@ def blocking_rules_config():
 @login_required
 def add_blocking_rule():
     """Add a blocking rule"""
-    # SECURITY: Only admins can modify blocking rules
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Only administrators can modify blocking rules'}), 403
-
     try:
         data = request.get_json()
         domain = data.get('domain')
@@ -3168,10 +3159,6 @@ def add_blocking_rule():
 @app.route('/api/blocking-rules/delete/<int:rule_id>', methods=['POST'])
 @login_required
 def delete_blocking_rule(rule_id):
-    # SECURITY: Only admins can modify blocking rules
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Only administrators can modify blocking rules'}), 403
-
     """Delete a blocking rule"""
     try:
         conn = get_db_connection()
@@ -3223,10 +3210,6 @@ def delete_blocking_rule(rule_id):
 @app.route('/api/blocking-rules/toggle/<int:rule_id>', methods=['POST'])
 @login_required
 def toggle_blocking_rule(rule_id):
-    # SECURITY: Only admins can modify blocking rules
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Only administrators can modify blocking rules'}), 403
-
     """Toggle active status of a blocking rule"""
     try:
         conn = get_db_connection()
@@ -3576,12 +3559,6 @@ def quarantine_view():
         if status_filter == 'active':
             # Active = only held emails (not released or deleted)
             query += " AND quarantine_status = 'held'"
-        elif status_filter == 'spam':
-            # Spam = emails with spam_score >= 5.0
-            query += " AND spam_score >= 5.0 AND quarantine_status != 'deleted'"
-        elif status_filter == 'clean':
-            # Clean = emails with spam_score < 3.0
-            query += " AND spam_score < 3.0 AND quarantine_status != 'deleted'"
         elif status_filter == 'all':
             # All = exclude deleted emails
             query += " AND quarantine_status != 'deleted'"
@@ -3787,22 +3764,21 @@ def quarantine_detail(email_id):
 @login_required
 def api_quarantine_release(email_id):
     """Release email from quarantine and relay to destination"""
-    conn = None
-    cursor = None
     try:
         # Get release destination config
-        relay_host = os.getenv('SPACY_RELAY_HOST', '192.168.50.37')
-        relay_port = 25
+        with open('/opt/spacyserver/config/quarantine_config.json', 'r') as f:
+            config = json.load(f)
 
-        # Try to load from config file if exists
-        config_file = '/opt/spacyserver/config/quarantine_config.json'
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                config = json.load(f)
-            release_config = config.get('release', {})
-            mailguard_config = release_config.get('mailguard', {})
-            relay_host = mailguard_config.get('host', relay_host)
-            relay_port = mailguard_config.get('port', relay_port)
+        release_config = config.get('release_destination', {})
+        mode = release_config.get('mode', 'mailguard')
+
+        if mode == 'mailguard':
+            dest = release_config.get('mailguard', {})
+        else:
+            dest = release_config.get('zimbra', {})
+
+        relay_host = dest.get('host', '192.168.50.37')
+        relay_port = dest.get('port', 25)
 
         # Get email from database
         conn = get_db_connection()

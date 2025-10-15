@@ -23,7 +23,7 @@
                     <h3 class="text-primary">{{ current.effectiveness_score|default(0)|round(1) }}%</h3>
                     <h6 class="text-muted mb-2">Overall Effectiveness</h6>
                     <div class="progress" style="height: 10px;">
-                        <div class="progress-bar {{ 'bg-success' if (current.effectiveness_score|default(0)) >= 85 else 'bg-warning' if (current.effectiveness_score|default(0)) >= 70 else 'bg-danger' }}" 
+                        <div class="progress-bar {{ 'bg-success' if current.effectiveness_score >= 85 else 'bg-warning' if current.effectiveness_score >= 70 else 'bg-danger' }}" 
                              role="progressbar" 
                              style="width: {{ current.effectiveness_score|default(0) }}%"></div>
                     </div>
@@ -35,9 +35,9 @@
         <div class="col-md-3">
             <div class="card h-100">
                 <div class="card-body text-center">
-                    <h3 class="text-success">{{ ((current.detection_rate|default(0)) * 100)|round(1) }}%</h3>
+                    <h3 class="text-success">{{ (current.detection_rate * 100)|default(0)|round(1) }}%</h3>
                     <h6 class="text-muted mb-2">Detection Rate</h6>
-                    <small class="text-muted">{{ current.spam_caught|default(0) }} / {{ ((current.spam_caught|default(0)) + (current.false_negatives|default(0)))|default(1) }} spam caught</small>
+                    <small class="text-muted">{{ current.spam_caught|default(0) }} / {{ (current.spam_caught + current.false_negatives)|default(1) }} spam caught</small>
                 </div>
             </div>
         </div>
@@ -45,7 +45,7 @@
         <div class="col-md-3">
             <div class="card h-100">
                 <div class="card-body text-center">
-                    <h3 class="text-info">{{ ((current.false_positive_rate|default(0)) * 100)|round(2) }}%</h3>
+                    <h3 class="text-info">{{ (current.false_positive_rate * 100)|default(0)|round(2) }}%</h3>
                     <h6 class="text-muted mb-2">False Positive Rate</h6>
                     <small class="text-muted">{{ current.false_positives|default(0) }} legitimate emails blocked</small>
                 </div>
@@ -139,8 +139,8 @@
                                     <td>{{ module.module_name }}</td>
                                     <td class="text-center">{{ module.triggers }}</td>
                                     <td class="text-center">
-                                        <span class="badge {{ 'bg-success' if (module.accuracy|default(0)) >= 0.9 else 'bg-warning' if (module.accuracy|default(0)) >= 0.7 else 'bg-danger' }}">
-                                            {{ ((module.accuracy|default(0)) * 100)|round(1) }}%
+                                        <span class="badge {{ 'bg-success' if module.accuracy >= 0.9 else 'bg-warning' if module.accuracy >= 0.7 else 'bg-danger' }}">
+                                            {{ (module.accuracy * 100)|round(1) }}%
                                         </span>
                                     </td>
                                 </tr>
@@ -166,14 +166,14 @@
                     <div class="row mb-3">
                         <div class="col-6">
                             <small class="text-muted">Week Average</small>
-                            <h4 class="text-primary">{{ (weekly_summary.avg_effectiveness|default(0))|round(1) }}%</h4>
+                            <h4 class="text-primary">{{ weekly_summary.avg_effectiveness|round(1) }}%</h4>
                         </div>
                         <div class="col-6">
                             <small class="text-muted">Improvement</small>
-                            <h4 class="{{ 'text-success' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'text-danger' }}">
-                                {% if (weekly_summary.improvement_from_previous|default(none)) is not none %}
-                                    {{ (weekly_summary.improvement_from_previous|default(0))|round(1)|abs }}%
-                                    <i class="fas fa-arrow-{{ 'up' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'down' }}"></i>
+                            <h4 class="{{ 'text-success' if weekly_summary.improvement_from_previous > 0 else 'text-danger' }}">
+                                {% if weekly_summary.improvement_from_previous is not none %}
+                                    {{ weekly_summary.improvement_from_previous|round(1)|abs }}%
+                                    <i class="fas fa-arrow-{{ 'up' if weekly_summary.improvement_from_previous > 0 else 'down' }}"></i>
                                 {% else %}
                                     N/A
                                 {% endif %}
@@ -228,8 +228,8 @@
                         <div class="col-md-4">
                             <h6 class="text-muted">Learning Rate</h6>
                             <div class="d-flex align-items-center">
-                                <h3 class="mb-0 me-3 {{ 'text-success' if (current.learning_rate|default(0)) > 0 else 'text-muted' }}">
-                                    {{ ((current.learning_rate|default(0)) * 100)|round(2) }}%
+                                <h3 class="mb-0 me-3 {{ 'text-success' if current.learning_rate > 0 else 'text-muted' }}">
+                                    {{ (current.learning_rate * 100)|default(0)|round(2) }}%
                                 </h3>
                                 <small class="text-muted">weekly improvement</small>
                             </div>

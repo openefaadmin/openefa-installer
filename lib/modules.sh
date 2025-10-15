@@ -120,6 +120,12 @@ install_module_configs() {
         debug "Installed: .app_config.ini"
     fi
 
+    # Update quarantine_config.json with actual relay host
+    if [[ -f "${config_dir}/quarantine_config.json" ]] && [[ -n "${RELAY_HOST}" ]]; then
+        sed -i "s/YOUR_RELAY_HOST/${RELAY_HOST}/g" "${config_dir}/quarantine_config.json"
+        debug "Updated quarantine_config.json with relay host: ${RELAY_HOST}"
+    fi
+
     success "Module configurations installed"
     return 0
 }
