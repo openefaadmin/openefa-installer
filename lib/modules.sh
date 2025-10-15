@@ -209,6 +209,44 @@ configure_module_tier() {
 }
 
 #
+# Create email_filter_config.json with user's domains
+#
+create_email_filter_config() {
+    info "Creating email_filter_config.json with configured domains..."
+
+    local config_file="/opt/spacyserver/config/email_filter_config.json"
+    local config_dir="/opt/spacyserver/config"
+
+    # Build domain list for JSON
+    local domains_json=""
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        domains_json=$(printf '"%s",' "${INSTALL_DOMAINS[@]}")
+        domains_json=${domains_json%,}  # Remove trailing comma
+    else
+        domains_json="\"${INSTALL_DOMAIN}\""
+    fi
+
+    # Create config file
+    cat > "${config_file}" <<EOF
+{
+    "processed_domains": [${domains_json}],
+    "enable_debug_logging": ${ENABLE_DEBUG_LOGGING:-0}
+}
+EOF
+
+    chown spacy-filter:spacy-filter "${config_file}"
+    chmod 640 "${config_file}"
+
+    local domain_count=1
+    if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
+        domain_count=${#INSTALL_DOMAINS[@]}
+    fi
+
+    success "Email filter config created with ${domain_count} domain(s)"
+    return 0
+}
+
+#
 # Set up module logging
 #
 configure_module_logging() {
@@ -223,12 +261,6 @@ configure_module_logging() {
 
     chown -R spacy-filter:spacy-filter "${log_dir}"
     chmod 644 "${log_dir}"/*.log
-
-    # Enable debug logging if requested
-    if [[ "${ENABLE_DEBUG_LOGGING}" == "1" ]]; then
-        info "Debug logging enabled"
-        # This will be handled by email_filter_config.json
-    fi
 
     success "Module logging configured"
     return 0
@@ -247,6 +279,7 @@ install_modules() {
 
     copy_module_files || return 1
     install_module_configs || return 1
+    create_email_filter_config || return 1
     update_hosted_domains || return 1
     configure_module_tier || return 1
     configure_module_logging || return 1
@@ -257,5 +290,5 @@ install_modules() {
 }
 
 # Export functions
-export -f copy_module_files install_module_configs update_hosted_domains
+export -f copy_module_files install_module_configs create_email_filter_config update_hosted_domains
 export -f configure_module_tier configure_module_logging install_modules
