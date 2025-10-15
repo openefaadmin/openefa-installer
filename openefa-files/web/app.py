@@ -3835,11 +3835,17 @@ def api_quarantine_release(email_id):
         # Parse recipients
         recipients = json.loads(email['recipients']) if email['recipients'] else []
 
+        # Extract email address from sender (handle "Name <email@domain.com>" format)
+        sender = email['sender']
+        if '<' in sender and '>' in sender:
+            # Extract email from "Name <email@domain.com>" format
+            sender = sender.split('<')[1].split('>')[0].strip()
+
         # Relay email using SMTP
         try:
             # Connect and send
             with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
-                smtp.sendmail(email['sender'], recipients, email['raw_email'])
+                smtp.sendmail(sender, recipients, email['raw_email'])
 
             # Update database
             update_query = """
