@@ -1494,6 +1494,17 @@ def effectiveness_dashboard():
         """)
         current = cursor.fetchone() or {}
 
+        # Check if we have enough data
+        cursor.execute("SELECT COUNT(*) as count FROM email_analysis")
+        email_count = cursor.fetchone()
+        has_data = email_count and email_count.get('count', 0) > 10
+
+        if not has_data:
+            cursor.close()
+            conn.close()
+            flash("Not enough data yet to calculate effectiveness metrics. Process at least 10 emails first.", "info")
+            return redirect(url_for('dashboard'))
+
         # Get 30-day trend data
         cursor.execute("""
             SELECT
@@ -1512,10 +1523,11 @@ def effectiveness_dashboard():
         trend_month_avg = []
 
         for trend in trends:
-            trend_dates.append(trend['metric_date'].strftime('%Y-%m-%d'))
-            trend_scores.append(float(trend['effectiveness_score'] or 0))
-            trend_week_avg.append(float(trend['week_avg'] or 0))
-            trend_month_avg.append(float(trend['month_avg'] or 0))
+            if trend and 'metric_date' in trend:
+                trend_dates.append(trend['metric_date'].strftime('%Y-%m-%d'))
+                trend_scores.append(float(trend.get('effectiveness_score', 0) or 0))
+                trend_week_avg.append(float(trend.get('week_avg', 0) or 0))
+                trend_month_avg.append(float(trend.get('month_avg', 0) or 0))
 
         # Get module stats for today
         cursor.execute("""
