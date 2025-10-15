@@ -100,16 +100,12 @@ class AliasManager:
                 safe_log(f"Loaded {len(self.alias_to_primary)} alias mappings")
             else:
                 safe_log(f"Alias config not found at {config_path}, using defaults", "WARNING")
-                # Default internal domains if config not found
-                self.internal_domains = {
-                    'seguelogic.com', 'securedata247.com', 'covereddata.com'
-                }
+                # Default internal domains if config not found (empty - will be populated from system config)
+                self.internal_domains = set()
         except Exception as e:
             safe_log(f"Error loading alias config: {e}", "ERROR")
-            # Fallback to defaults
-            self.internal_domains = {
-                'seguelogic.com', 'securedata247.com', 'covereddata.com'
-            }
+            # Fallback to empty set (will be populated from system config)
+            self.internal_domains = set()
     
     def get_primary_account(self, email: str) -> str:
         """Get primary account for an email address"""
@@ -341,19 +337,15 @@ class EnhancedThreadAnalyzer:
         
         # Common quote patterns in legitimate replies
         quote_patterns = [
-            # Outlook/Exchange style
-            r'From:\s*([^\n]+@(?:seguelogic\.com|securedata247\.com|covereddata\.com))',
-            r'Sent:\s*[^\n]+\s+To:\s*([^\n]+@(?:seguelogic\.com|securedata247\.com|covereddata\.com))',
-            
-            # Gmail/standard style  
-            r'On .+ <([^>]+@(?:seguelogic\.com|securedata247\.com|covereddata\.com))> wrote:',
-            
+            # Outlook/Exchange style - generic domain matching
+            r'From:\s*([^\n]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'Sent:\s*[^\n]+\s+To:\s*([^\n]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+
+            # Gmail/standard style - generic domain matching
+            r'On .+ <([^>]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})> wrote:',
+
             # Generic email patterns in quoted content (with > prefix)
-            r'>.*?([a-zA-Z0-9._%+-]+@(?:seguelogic\.com|securedata247\.com|covereddata\.com))',
-            
-            # Scott's specific emails
-            r'scott@(?:seguelogic\.com|securedata247\.com|covereddata\.com)',
-            r'sbarbour@(?:seguelogic\.com|securedata247\.com|covereddata\.com)',
+            r'>.*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
         ]
         
         # Check for quoted internal emails

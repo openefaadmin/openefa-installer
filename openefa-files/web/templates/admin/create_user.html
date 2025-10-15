@@ -91,22 +91,7 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Quick Setup Options:</strong>
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-sm btn-outline-info me-2" 
-                                    onclick="fillUser('dustin@barbour.tech', 'Dustin', 'User', 'Barbour Tech')">
-                                Fill Dustin@barbour.tech
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-info" 
-                                    onclick="fillUser('teresa@safesoundins.com', 'Teresa', 'User', 'Safe Sound Insurance')">
-                                Fill Teresa@safesoundins.com
-                            </button>
-                        </div>
-                    </div>
-                    
+
                     <hr>
                     
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -140,25 +125,6 @@ document.getElementById('email').addEventListener('change', function() {
         }
     }
 });
-
-// Quick fill function
-function fillUser(email, firstName, lastName, company) {
-    document.getElementById('email').value = email;
-    document.getElementById('first_name').value = firstName;
-    document.getElementById('last_name').value = lastName;
-    document.getElementById('company_name').value = company;
-    document.getElementById('password').value = 'client123';
-    
-    // Auto-select domain
-    const domain = email.split('@')[1];
-    const domainSelect = document.getElementById('domain');
-    for (let option of domainSelect.options) {
-        if (option.value === domain) {
-            option.selected = true;
-            break;
-        }
-    }
-}
 
 // Generate random password
 function generatePassword() {

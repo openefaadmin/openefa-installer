@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - GuardianMail - Email Sentiment Analyzer{% endblock %}
+{% block title %}Dashboard - OpenEFA - Email Sentiment Analyzer{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
@@ -274,17 +274,8 @@
             <div class="card-body">
                 <p class="card-text">Generate professional PDF reports for your hosted client domains.</p>
                 
-                {% set hosted_domains = [
-                    'seguelogic.com', 
-                    'offgriddynamics.com', 
-                    'covereddata.com', 
-                    'securedata247.com', 
-                    'rdjohnsonlaw.com', 
-                    'safesoundins.com', 
-                    'openefa.com', 
-                    'barbour.tech',
-		    'chrystinakatz.com'
-                ] %}
+                {# Use HOSTED_DOMAINS from app.py - populated from client_domains table #}
+                {% set hosted_domains = config.get('HOSTED_DOMAINS', []) %}
                 
                 {% set available_hosted_domains = [] %}
                 {% for domain in hosted_domains %}
@@ -320,7 +311,7 @@
                 {% else %}
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i> No hosted domains have processed emails yet. 
-                    <br><small class="text-muted">Reports are only available for: seguelogic.com, offgriddynamics.com, covereddata.com, securedata247.com, rdjohnsonlaw.com, safesoundins.com, openefa.com, barbour.tech, chrystinakatz.com</small>
+                    <br><small class="text-muted">Reports are available for your configured domains</small>
                 </div>
                 {% endif %}
                 

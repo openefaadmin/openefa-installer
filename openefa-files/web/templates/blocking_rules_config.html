@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Blocking Rules - GuardianMail{% endblock %}
+{% block title %}Blocking Rules - OpenEFA{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -78,9 +78,11 @@
                     </ul>
                 </div>
                 {% endif %}
+                {% if current_user.is_admin() %}
                 <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#addRuleModal">
                     <i class="fas fa-plus"></i> Add Rule
                 </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -161,6 +163,7 @@
                                         {% if rule.created_by %}by {{ rule.created_by }}{% endif %}
                                     </small>
                                 </div>
+                                {% if current_user.is_admin() %}
                                 <div>
                                     <button class="btn btn-sm {% if rule.active %}btn-warning{% else %}btn-success{% endif %} me-1"
                                             onclick="toggleRule({{ rule.id }})"
@@ -173,6 +176,11 @@
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
+                                {% else %}
+                                <div>
+                                    <span class="badge bg-secondary">View Only</span>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}
@@ -181,9 +189,13 @@
                     <div class="p-4 text-center text-muted">
                         <i class="fas fa-inbox fa-3x mb-3"></i>
                         <p>No blocking rules configured for {{ selected_domain }}.</p>
+                        {% if current_user.is_admin() %}
                         <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#addRuleModal">
                             <i class="fas fa-plus"></i> Add Your First Rule
                         </button>
+                        {% else %}
+                        <p class="text-muted mt-2"><i class="fas fa-info-circle"></i> If you need a blocking rule, please contact your domain administrator.</p>
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

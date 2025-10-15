@@ -1,32 +1,11 @@
 {
   "executives": {
-    "scott@seguelogic.com": {
-      "name": "Scott Barbour",
-      "title": "Chief Executive Officer",
-      "aliases": ["CEO", "Chief Executive", "President", "Owner"],
-      "typical_hours": {"start": 8, "end": 18},
-      "timezone": "Pacific/Los_Angeles",
-      "common_topics": ["strategy", "board", "investor", "acquisition"],
-      "communication_style": "formal"
-    },
-    "sierra@seguelogic.com": {
-      "name": "Sierra Izumi",
-      "title": "Operations Director",
-      "aliases": ["CFO", "Finance Director"],
-      "typical_hours": {"start": 7, "end": 19},
-      "timezone": "America/New_York",
-      "common_topics": ["budget", "financial", "accounting", "audit"],
-      "communication_style": "formal"
-    }
+    "_comment": "Add your executive/VIP email addresses here for enhanced BEC protection"
   },
-  "company_domains": [
-    "seguelogic.com",
-    "covereddata.com"
-  ],
+  "company_domains": [],
   "trusted_vendors": [
     "dattobackup.com",
-    "apollomx.com",
-    "suitecrm.covereddata.com"
+    "apollomx.com"
   ],
   "trusted_domains": [
     "gmail.com",
@@ -69,7 +48,7 @@
     "senders": [
       "noreply@dattobackup.com",
       "reporting@dattobackup.com",
-      "suitecrm@seguelogic.com"
+      "crm@yourdomain.com"
     ],
     "subjects": [
       "automated report",

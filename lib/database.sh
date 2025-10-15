@@ -72,6 +72,19 @@ import_database_schema() {
 
     # Import as root to handle views with DEFINER clauses
     if mysql -u root "${DB_NAME}" < "${schema_file}" >> "${LOG_FILE}" 2>&1; then
+        success "Main database schema imported"
+
+        # Import quarantine schema if it exists
+        local quarantine_schema="${SCRIPT_DIR}/sql/quarantine_schema.sql"
+        if [[ -f "${quarantine_schema}" ]]; then
+            info "Importing quarantine schema..."
+            if mysql -u root "${DB_NAME}" < "${quarantine_schema}" >> "${LOG_FILE}" 2>&1; then
+                success "Quarantine schema imported"
+            else
+                warning "Failed to import quarantine schema (non-fatal)"
+            fi
+        fi
+
         # Grant permissions to spacy_user after import
         mysql -u root << EOSQL >> "${LOG_FILE}" 2>&1
 GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';

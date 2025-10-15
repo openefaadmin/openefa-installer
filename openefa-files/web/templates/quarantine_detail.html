@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block title %}Email Detail - Quarantine{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail-section {
+        margin-bottom: 2rem;
+    }
+    .detail-label {
+        font-weight: 600;
+        color: #6c757d;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+    .detail-value {
+        padding: 0.75rem;
+        background-color: #f8f9fa;
+        border-radius: 0.25rem;
+        border-left: 3px solid #0d6efd;
+    }
+    .email-content-box {
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 0.875rem;
+    }
+    .action-timeline {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .action-timeline::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #dee2e6;
+    }
+    .action-item {
+        position: relative;
+        margin-bottom: 1rem;
+        padding-left: 1rem;
+    }
+    .action-item::before {
+        content: '';
+        position: absolute;
+        left: -1.25rem;
+        top: 0.5rem;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #0d6efd;
+        border: 2px solid #fff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3">
+        <div class="col">
+            <a href="{{ url_for('quarantine_view') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Back to Quarantine
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Email Header -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-envelope"></i> Email Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="detail-section">
+                        <div class="detail-label">Subject</div>
+                        <div class="detail-value">{{ email.subject or '(No Subject)' }}</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="detail-section">
+                                <div class="detail-label">From</div>
+                                <div class="detail-value">{{ email.sender }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="detail-section">
+                                <div class="detail-label">Date</div>
+                                <div class="detail-value">{{ email.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <div class="detail-label">To</div>
+                        <div class="detail-value">
+                            {% for recipient in email.recipients_list %}
+                            <div>{{ recipient }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% if email.attachment_names_list %}
+                    <div class="detail-section">
+                        <div class="detail-label">Attachments ({{ email.attachment_count }})</div>
+                        <div class="detail-value">
+                            {% for attachment in email.attachment_names_list %}
+                            <div><i class="fas fa-paperclip"></i> {{ attachment }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Email Content -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-file-alt"></i> Email Content</h6>
+                </div>
+                <div class="card-body">
+                    <div class="email-content-box detail-value">{{ email.text_preview or '(No text content available)' }}</div>
+                    {% if email.text_content|length > 10000 %}
+                    <div class="mt-2">
+                        <small class="text-muted"><em>Content truncated (showing first 10KB)</em></small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Email Headers (Collapsible) -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="fas fa-code"></i> Email Headers</h6>
+                        <button class="btn btn-sm btn-outline-primary" onclick="toggleHeaders()" id="headerToggleBtn">
+                            <i class="fas fa-eye"></i> Show Headers
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" id="headersContent" style="display: none;">
+                    <div class="email-content-box detail-value" style="max-height: 500px;">
+                        {{ email.headers or 'Headers not available' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Actions -->
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0"><i class="fas fa-tools"></i> Actions</h6>
+                </div>
+                <div class="card-body d-grid gap-2">
+                    {% if email.quarantine_status == 'held' %}
+                    <button class="btn btn-success" onclick="releaseEmail()">
+                        <i class="fas fa-check"></i> Release & Deliver
+                    </button>
+                    <button class="btn btn-warning" onclick="markNotSpam()">
+                        <i class="fas fa-exclamation"></i> Mark Not Spam
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteEmail()">
+                        <i class="fas fa-trash"></i> Delete (Spam)
+                    </button>
+                    {% else %}
+                    <div class="alert alert-info mb-0">
+                        <strong>Status:</strong> {{ email.quarantine_status|upper }}
+                        {% if email.released_at %}
+                        <br><small>Released {{ email.released_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Spam Analysis -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Spam Analysis</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="detail-label">Spam Score</div>
+                        <h3 class="
+                            {% if email.spam_score >= 8.0 %}text-danger
+                            {% elif email.spam_score >= 5.0 %}text-warning
+                            {% else %}text-success{% endif %}">
+                            {{ "%.2f"|format(email.spam_score or 0) }} / 10.0
+                        </h3>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="detail-label">Reason</div>
+                        <span class="badge bg-secondary">{{ email.quarantine_reason }}</span>
+                    </div>
+
+                    {% if email.virus_detected %}
+                    <div class="alert alert-danger">
+                        <i class="fas fa-virus"></i> <strong>VIRUS DETECTED</strong>
+                    </div>
+                    {% endif %}
+
+                    {% if email.phishing_detected %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-fish"></i> <strong>PHISHING DETECTED</strong>
+                    </div>
+                    {% endif %}
+
+                    <div class="mt-3">
+                        <div class="detail-label">Expires</div>
+                        <div class="{% if email.days_until_expiry <= 7 %}text-danger{% endif %}">
+                            {{ email.quarantine_expires_at.strftime('%Y-%m-%d') }}
+                            ({{ email.days_until_expiry }} days)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if current_user.is_admin() %}
+            <!-- Authentication (Admin Only) -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-shield-alt"></i> Authentication</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <strong>SPF:</strong>
+                        <span class="badge bg-{{ 'success' if email.spf_result == 'pass' else 'danger' }}">
+                            {{ email.spf_result or 'none' }}
+                        </span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>DKIM:</strong>
+                        <span class="badge bg-{{ 'success' if email.dkim_result == 'pass' else 'danger' }}">
+                            {{ email.dkim_result or 'none' }}
+                        </span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>DMARC:</strong>
+                        <span class="badge bg-{{ 'success' if email.dmarc_result == 'pass' else 'danger' }}">
+                            {{ email.dmarc_result or 'none' }}
+                        </span>
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">Auth Score: {{ "%.1f"|format(email.auth_score or 0) }}</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action History -->
+            {% if email.action_history %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-history"></i> Action History</h6>
+                </div>
+                <div class="card-body">
+                    <div class="action-timeline">
+                        {% for action in email.action_history %}
+                        <div class="action-item">
+                            <div><strong>{{ action.action_type|replace('_', ' ')|title }}</strong></div>
+                            <div><small class="text-muted">
+                                by {{ action.performed_by }}<br>
+                                {{ action.action_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                            </small></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const emailId = {{ email.id }};
+
+function toggleHeaders() {
+    const content = document.getElementById('headersContent');
+    const btn = document.getElementById('headerToggleBtn');
+
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Headers';
+    } else {
+        content.style.display = 'none';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Show Headers';
+    }
+}
+
+function releaseEmail() {
+    if (!confirm('Release this email and deliver to recipients?')) return;
+
+    fetch(`/api/quarantine/${emailId}/release`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.href = '{{ url_for("quarantine_view") }}';
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error releasing email'));
+}
+
+function deleteEmail() {
+    if (!confirm('Delete this email permanently? This cannot be undone.')) return;
+
+    fetch(`/api/quarantine/${emailId}/delete`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.href = '{{ url_for("quarantine_view") }}';
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error deleting email'));
+}
+
+function markNotSpam() {
+    if (!confirm('Mark this email as NOT SPAM? This will train the spam filter.')) return;
+
+    fetch(`/api/quarantine/${emailId}/not-spam`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message + '\n\nUse "Release" button to deliver the email.');
+    })
+    .catch(err => alert('Error marking email'));
+}
+</script>
+{% endblock %}

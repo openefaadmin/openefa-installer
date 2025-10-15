@@ -736,13 +736,10 @@ def enhanced_domain_report_route(app):
                 flash('Access denied for this domain report', 'error')
                 return redirect(url_for('dashboard'))
         
-        # Check if domain is in hosted domains
-        hosted_domains = [
-            'seguelogic.com', 'offgriddynamics.com', 'covereddata.com', 
-            'securedata247.com', 'rdjohnsonlaw.com', 'safesoundins.com', 
-            'openefa.com', 'barbour.tech', 'chrystinakatz.com'
-        ]
-        
+        # Check if domain is in hosted domains (populated from client_domains table)
+        from app import HOSTED_DOMAINS
+        hosted_domains = HOSTED_DOMAINS if HOSTED_DOMAINS else []
+
         if domain not in hosted_domains:
             flash('Enhanced reports are only available for hosted domains', 'error')
             return redirect(url_for('dashboard'))
