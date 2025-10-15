@@ -1183,6 +1183,47 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
     }
     
     try:
+        # =================================================================
+        # ANTIVIRUS SCANNING - ClamAV Integration (CRITICAL - RUN FIRST)
+        # =================================================================
+        if MODULE_MANAGER.is_available('antivirus_scanner'):
+            try:
+                with timeout_handler(module_timeout):
+                    scan_email = MODULE_MANAGER.get_module('antivirus_scanner')
+                    av_results = scan_email(msg, monitor)
+
+                    if av_results and isinstance(av_results, dict):
+                        if av_results.get('detected', False):
+                            # VIRUS DETECTED - High priority
+                            virus_score = av_results.get('score_penalty', 20.0)
+                            analysis_results['spam_score'] += virus_score
+                            virus_name = av_results.get('virus_name', 'Unknown')
+                            infected_files = av_results.get('infected_files', [])
+
+                            safe_log(f"🦠 VIRUS DETECTED: {virus_name}")
+                            safe_log(f"   Infected files: {len(infected_files)}")
+                            for infected in infected_files:
+                                safe_log(f"   - {infected['filename']}: {infected['virus']}")
+                            safe_log(f"   Added {virus_score} spam points")
+
+                            # Add virus detection headers
+                            msg.add_header('X-SpaCy-Virus-Detected', 'true')
+                            msg.add_header('X-SpaCy-Virus-Name', virus_name)
+                            msg.add_header('X-SpaCy-Virus-Score', str(virus_score))
+
+                        elif av_results.get('scanned_files', 0) > 0:
+                            # Files scanned, no virus
+                            safe_log(f"✅ Antivirus scan: {av_results['scanned_files']} file(s) clean")
+                            msg.add_header('X-SpaCy-Virus-Scanned', str(av_results['scanned_files']))
+
+                        analysis_results['modules_run'].append('antivirus')
+                        monitor.record_module('antivirus')
+
+            except TimeoutException:
+                safe_log(f"⚠️ Antivirus scan timed out after {module_timeout}s")
+            except Exception as e:
+                safe_log(f"Antivirus scanner module error: {e}")
+
         # DNS validation with timeout
         if MODULE_MANAGER.is_available('email_dns') and not is_trusted:
             try:
