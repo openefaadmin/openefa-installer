@@ -118,21 +118,17 @@ class EmailFilterConfig:
             # Domain configuration
             "domains": {
                 "internal_domains": {
-                    'covereddata.com', 'seguelogic.com', 'safesoundins.com', 'offgriddynamics.com',
-                    'rdjohnsonlaw.com', 'escudolaw.com', 'barbour.tech', 'securedata247.com',
-                    'chrystinakatz.com', 'epolaw.ai', 'epobot.ai', 'sd247.guardiannet.world',
-                    'openefa.com', 'openefa.org', 'guardiannet.world', 'statvu.com'
+                    # Add your internal/client domains here
+                    # Example: 'example.com', 'client1.com', 'client2.com'
                 },
                 "processed_domains": {
-                    'seguelogic.com', 'offgriddynamics.com', 'covereddata.com', 'securedata247.com',
-                    'rdjohnsonlaw.com', 'safesoundins.com', 'openefa.com', 'openefa.org',
-                    'barbour.tech', 'escudolaw.com', 'chrystinakatz.com', 'epolaw.ai',
-                    'epobot.ai', 'sd247.guardiannet.world', 'guardiannet.world',
-                    'phoenixdefence.com', 'chipotlepublishing.com', 'statvu.com'
+                    # Add domains to process for email filtering
+                    # These should match domains in your client_domains database table
+                    # Example: 'example.com', 'client1.com', 'client2.com'
                 },
                 "journal_addresses": {
-                    'journal@spacy.covereddata.com',
-                    'journal@covereddata.com'
+                    # Add your journal/logging email addresses here
+                    # Example: 'journal@yourdomain.com'
                 },
                 "trusted_domains": set()  # Will be loaded from config file
             },
@@ -140,7 +136,8 @@ class EmailFilterConfig:
             # NEW: System bypass configuration to prevent mail loops
             "system_bypass": {
                 "bypass_domains": [
-                    'spacy.covereddata.com',
+                    # Add your OpenEFA server hostname here to prevent mail loops
+                    # Example: 'spacy.yourdomain.com'
                     'localhost',
                     'localhost.localdomain'
                 ],
@@ -168,11 +165,11 @@ class EmailFilterConfig:
             
             # Server configuration
             "servers": {
-                "mailguard_host": os.getenv('SPACY_MAILGUARD_HOST', '192.168.50.37'),
+                "mailguard_host": os.getenv('SPACY_MAILGUARD_HOST', 'YOUR_EFA_SERVER_IP'),
                 "mailguard_port": int(os.getenv('SPACY_MAILGUARD_PORT', 25)),
                 "internal_ips": [
-                    '192.168.50.114', '192.168.50.37',
-                    'zimbra.apollomx.com', 'mailguard.covereddata.com'
+                    # Add your internal server IPs and hostnames here
+                    # Example: '192.168.1.10', 'mail.example.com'
                 ]
             },
             
@@ -687,8 +684,9 @@ def detect_original_authentication(msg: EmailMessage, from_header: str) -> Dict[
 
             auth_str = str(auth_header).lower()
 
-            # Only process headers from our mail servers
-            if 'mailguard.covereddata.com' in auth_str or 'spacy.covereddata.com' in auth_str:
+            # Only process headers from our mail servers (configure your hostnames)
+            # Check if auth header is from your trusted mail infrastructure
+            if False:  # Replace with your hostname checks, e.g.: 'mail.yourdomain.com' in auth_str
                 # Only log once, not for every header
                 if not found_existing_auth:
                     safe_log(f"Processing existing auth results from {len(auth_results_headers)} header(s)")
@@ -2198,8 +2196,12 @@ def main():
                         safe_log(f"🔐 Microsoft MFA recipients: {recipients}")
 
                         # Direct relay using RAW BYTES - skip ALL validation
+                        # Get relay host from config
+                        relay_host = os.getenv('SPACY_MAILGUARD_HOST', 'YOUR_EFA_SERVER_IP')
+                        relay_port = int(os.getenv('SPACY_MAILGUARD_PORT', 25))
+
                         try:
-                            with smtplib.SMTP('192.168.50.37', 25, timeout=30) as smtp:
+                            with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
                                 # Get sender
                                 sender = 'msonlineservicesteam@microsoftonline.com'
 
@@ -2213,7 +2215,7 @@ def main():
                             safe_log(f"⚠️ Microsoft MFA raw relay failed: {relay_error}")
                             # Try with as_bytes as fallback
                             try:
-                                with smtplib.SMTP('192.168.50.37', 25, timeout=30) as smtp:
+                                with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
                                     smtp.sendmail(sender, recipients, msg.as_bytes())
                                     safe_log(f"✅ Microsoft MFA email EMERGENCY RELAYED (as_bytes) to {recipients}")
                                     sys.exit(0)
@@ -2296,8 +2298,9 @@ def main():
             safe_add_header(msg, 'X-SpaCy-Processed', 'bypassed', monitor)
             safe_add_header(msg, 'X-SpaCy-Timestamp', datetime.datetime.now().isoformat(), monitor)
             
-            # CRITICAL: Don't relay emails from spacy.covereddata.com back to ourselves
-            if sender_domain == 'spacy.covereddata.com':
+            # CRITICAL: Don't relay emails from your OpenEFA server back to itself
+            # Replace 'your-openefa-hostname.com' with your actual server hostname
+            if sender_domain in ['localhost', 'localhost.localdomain']:  # Add your hostname here
                 safe_log("✅ System email from SpaCy itself - dropping to prevent loop")
                 signal.alarm(0)
                 sys.exit(0)  # Success but don't relay back to ourselves
@@ -2407,9 +2410,8 @@ def main():
         
         for received in received_headers:
             received_str = str(received)
-            if ('for <journal@spacy.covereddata.com>' in received_str or 
-                'for <journal@covereddata.com>' in received_str or
-                'to=journal@spacy.covereddata.com' in received_str.lower()):
+            # Check for journal email addresses (configure your journal addresses)
+            if False:  # Replace with your journal address checks
                 safe_log("📋 JOURNAL EMAIL DETECTED - Archiving via queue")
                 is_journal = True
                 
@@ -2547,8 +2549,9 @@ def main():
         auth_results = perform_real_authentication(msg, from_header, monitor, arc_auth=auth_status)
         safe_log(f"📧 Auth completed, generating headers...")
         
-        # Generate Authentication-Results header
-        auth_header = f"spacy.covereddata.com; spf={auth_results['spf']}; dkim={auth_results['dkim']}; dmarc={auth_results['dmarc']}"
+        # Generate Authentication-Results header (replace with your hostname)
+        hostname = os.getenv('SPACY_HOSTNAME', 'openefa.yourdomain.com')
+        auth_header = f"{hostname}; spf={auth_results['spf']}; dkim={auth_results['dkim']}; dmarc={auth_results['dmarc']}"
         if auth_results['dmarc_policy'] != 'none':
             auth_header += f" (p={auth_results['dmarc_policy']})"
         safe_add_header(msg, 'X-SpaCy-Auth-Results', auth_header, monitor)

@@ -5,8 +5,8 @@
 # Notifies SpaCy to learn from user feedback
 #
 
-# SpaCy API endpoint
-SPACY_API="http://192.168.50.89:5001/api/feedback/release"
+# SpaCy API endpoint - replace YOUR_OPENEFA_IP with your OpenEFA server IP
+SPACY_API="${SPACY_API_URL:-http://YOUR_OPENEFA_IP:5001/api/feedback/release}"
 
 # Function to notify SpaCy of release
 notify_spacy_release() {

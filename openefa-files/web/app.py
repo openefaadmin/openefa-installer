@@ -55,21 +55,9 @@ HOST = "localhost"
 # This will be populated from database at startup via get_hosted_domains()
 # Updated during installation with configured domains
 HOSTED_DOMAINS = [
-    'seguelogic.com',
-    'offgriddynamics.com',
-    'covereddata.com',
-    'securedata247.com',
-    'rdjohnsonlaw.com',
-    'safesoundins.com',
-    'openefa.com',
-    'openefa.org',
-    'barbour.tech',
-    'escudolaw.com',
-    'chrystinakatz.com',
-    'phoenixdefence.com',
-    'chipotlepublishing.com',
-    'spacy.covereddata.com',
-    'statvu.com'
+    # Add your client domains here during installation
+    # Example: 'example.com', 'client1.com', 'client2.com'
+    # These should match domains in your client_domains database table
 ]
 
 def get_hosted_domains():
@@ -3812,7 +3800,7 @@ def api_quarantine_release(email_id):
         else:
             dest = release_config.get('zimbra', {})
 
-        relay_host = dest.get('host', '192.168.50.37')
+        relay_host = dest.get('host', os.getenv('SPACY_RELAY_HOST', 'YOUR_EFA_SERVER_IP'))
         relay_port = dest.get('port', 25)
 
         # Get email from database

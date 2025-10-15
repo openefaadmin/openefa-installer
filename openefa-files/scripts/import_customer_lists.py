@@ -347,7 +347,7 @@ def main():
     print("1. Test email flow with: echo 'Test' | mail -s 'Test' user@" + args.customer_domain)
     print("2. Monitor logs: tail -f /var/log/mail.log")
     print("3. Check effectiveness: /opt/spacyserver/tools/OpenSpacyMenu option 22")
-    print("4. View in web UI: https://100.83.45.26:5500")
+    print("4. View in web UI: https://YOUR_SERVER_IP:5500")
 
 if __name__ == '__main__':
     main()
