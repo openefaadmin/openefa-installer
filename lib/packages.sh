@@ -41,6 +41,9 @@ install_core_packages() {
         "build-essential"
         "libmariadb-dev"
         "pkg-config"
+        "clamav"
+        "clamav-daemon"
+        "clamav-freshclam"
     )
 
     info "Installing: ${packages[*]}"
@@ -137,6 +140,7 @@ install_python_packages() {
         "py3dns==4.0.2"
         "dkimpy==1.1.8"
         "email-validator==2.3.0"
+        "pyclamd==0.4.0"
     )
 
     # Install base packages
@@ -244,6 +248,83 @@ configure_redis() {
 }
 
 #
+# Configure ClamAV service
+#
+configure_clamav() {
+    info "Configuring ClamAV antivirus service..."
+
+    # Stop freshclam if running (it conflicts during initial setup)
+    systemctl stop clamav-freshclam 2>/dev/null || true
+
+    # Update virus definitions
+    info "Downloading virus definitions (this may take a few minutes)..."
+    if run_cmd "freshclam" "Failed to download virus definitions"; then
+        success "Virus definitions downloaded"
+    else
+        warn "Failed to download definitions, will try via service"
+    fi
+
+    # Enable and start freshclam service
+    if run_cmd "systemctl enable clamav-freshclam" "Failed to enable freshclam"; then
+        success "Freshclam enabled"
+    else
+        return 1
+    fi
+
+    if run_cmd "systemctl start clamav-freshclam" "Failed to start freshclam"; then
+        success "Freshclam started"
+    else
+        warn "Freshclam service issue (non-fatal)"
+    fi
+
+    # Wait for virus definitions
+    info "Waiting for virus definitions to be available..."
+    local retries=0
+    while [[ $retries -lt 60 ]]; do
+        if [[ -f /var/lib/clamav/daily.cvd ]] || [[ -f /var/lib/clamav/daily.cld ]]; then
+            success "Virus definitions available"
+            break
+        fi
+        sleep 2
+        ((retries++))
+    done
+
+    # Enable and start ClamAV daemon
+    if run_cmd "systemctl enable clamav-daemon" "Failed to enable ClamAV daemon"; then
+        success "ClamAV daemon enabled"
+    else
+        return 1
+    fi
+
+    if run_cmd "systemctl start clamav-daemon" "Failed to start ClamAV daemon"; then
+        success "ClamAV daemon started"
+    else
+        warn "ClamAV daemon will start automatically"
+    fi
+
+    # Add spacy-filter user to clamav group
+    if run_cmd "usermod -a -G clamav spacy-filter" "Failed to add user to clamav group"; then
+        success "Permissions configured"
+    else
+        warn "Permission configuration failed (non-fatal)"
+    fi
+
+    # Verify ClamAV is working
+    info "Verifying ClamAV installation..."
+    sleep 5  # Give daemon time to start
+
+    if systemctl is-active --quiet clamav-daemon; then
+        success "ClamAV daemon is running"
+    else
+        warn "ClamAV daemon not yet started (will start automatically)"
+    fi
+
+    save_state "clamav_configured"
+    success "ClamAV antivirus configured"
+    return 0
+}
+
+#
 # Install all packages
 #
 install_all_packages() {
@@ -257,6 +338,7 @@ install_all_packages() {
     install_utility_packages || return 1
     configure_mariadb || return 1
     configure_redis || return 1
+    configure_clamav || return 1
     install_python_packages || return 1
 
     save_state "all_packages_installed"
@@ -266,5 +348,5 @@ install_all_packages() {
 
 # Export functions
 export -f update_package_lists install_core_packages install_utility_packages
-export -f install_python_packages configure_mariadb configure_redis
+export -f install_python_packages configure_mariadb configure_redis configure_clamav
 export -f install_all_packages

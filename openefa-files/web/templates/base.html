@@ -64,6 +64,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('quarantine_view') }}">
+                            <i class="fas fa-inbox"></i> Recent Messages
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/learning">
                             <i class="fas fa-brain"></i> Learning
                         </a>
@@ -154,6 +159,27 @@
 
     <!-- Main Content -->
     <div class="container main-content">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {% if category == 'success' %}
+                            <i class="fas fa-check-circle"></i>
+                        {% elif category == 'error' %}
+                            <i class="fas fa-exclamation-circle"></i>
+                        {% elif category == 'warning' %}
+                            <i class="fas fa-exclamation-triangle"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle"></i>
+                        {% endif %}
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
         {% block content %}{% endblock %}
     </div>
 

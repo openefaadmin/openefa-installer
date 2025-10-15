@@ -50,32 +50,12 @@ DB_NAME = "spacy_email_db"
 HOST = "localhost"
 
 # Centralized hosted domains configuration
-# This will be populated from database at startup via get_hosted_domains()
-HOSTED_DOMAINS = []
-
-def get_hosted_domains():
-    """
-    Dynamically fetch active domains from database.
-    Called at app startup to populate HOSTED_DOMAINS list.
-    This makes the system configuration-driven instead of hardcoded.
-    """
-    try:
-        db_connection = mysql.connector.connect(option_files=MY_CNF_PATH)
-        cursor = db_connection.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT domain
-            FROM client_domains
-            WHERE is_active = 1
-            ORDER BY domain
-        """)
-        domains = [row['domain'] for row in cursor.fetchall()]
-        cursor.close()
-        db_connection.close()
-        return domains
-    except Exception as e:
-        logger.error(f"Failed to load hosted domains from database: {e}")
-        # Return empty list on failure - will be populated when DB is available
-        return []
+HOSTED_DOMAINS = [
+    'seguelogic.com', 'offgriddynamics.com', 'covereddata.com',
+    'securedata247.com', 'rdjohnsonlaw.com', 'safesoundins.com',
+    'openefa.com', 'barbour.tech', 'escudolaw.com', 'chrystinakatz.com',
+    'phoenixdefence.com', 'chipotlepublishing.com'
+]
 
 def load_app_config():
     """Load application configuration from config file"""
@@ -757,6 +737,10 @@ def emails():
 
     where_clause = " AND ".join(where_conditions)
 
+    # DEBUG: Log the query for Teresa
+    if current_user.email == 'teresa@safesoundins.com':
+        print(f"DEBUG: User teresa@safesoundins.com - WHERE clause: {where_clause}")
+
     # Get pagination parameters
     page = int(request.args.get('page', 1))
     per_page = 50
@@ -1370,43 +1354,52 @@ def admin_edit_user(user_id):
 @admin_required
 def admin_reset_password(user_id):
     """Reset a user's password"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get user info
         cursor.execute("SELECT email, first_name FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
         if not user:
             flash('User not found', 'error')
+            cursor.close()
+            conn.close()
             return redirect(url_for('admin_users'))
-        
+
         email, first_name = user
-        
+
         # Generate new password
         new_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
         password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        
+
         # Update password and reset failed attempts
         cursor.execute("""
-            UPDATE users 
+            UPDATE users
             SET password_hash = %s, failed_login_attempts = 0, locked_until = NULL
             WHERE id = %s
         """, (password_hash, user_id))
-        
+
         # Log the action
         cursor.execute("""
             INSERT INTO audit_log (user_id, action, details, ip_address)
             VALUES (%s, 'PASSWORD_RESET_BY_ADMIN', %s, %s)
         """, (current_user.id, f'Reset password for user {email}', request.remote_addr))
-        
+
         conn.commit()
+        cursor.close()
         conn.close()
-        
+
         flash(f'Password reset for {email}. New password: {new_password}', 'success')
         return redirect(url_for('admin_users'))
-        
+
     except Exception as e:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
         flash(f'Error resetting password: {e}', 'error')
         return redirect(url_for('admin_users'))
 
@@ -3531,15 +3524,7 @@ if __name__ == '__main__':
         else:
             logger.error("Failed to connect to database on startup")
             sys.exit(1)
-
-        # Load hosted domains from database
-        HOSTED_DOMAINS = get_hosted_domains()
-        logger.info(f"Loaded {len(HOSTED_DOMAINS)} hosted domains from database")
-        if HOSTED_DOMAINS:
-            logger.info(f"Active domains: {', '.join(HOSTED_DOMAINS)}")
-        else:
-            logger.warning("No hosted domains found in database - please configure domains via SpacyWeb")
-
+        
         # Check if SSL certificates exist
         cert_path = '/opt/spacyserver/web/certs/cert.pem'
         key_path = '/opt/spacyserver/web/certs/key.pem'
@@ -3551,7 +3536,7 @@ if __name__ == '__main__':
                 context.load_cert_chain(cert_path, key_path)
                 
                 logger.info(f"Starting Flask app with HTTPS on port 5500")
-                logger.info(f"Access via: https://localhost:5500 (local) or https://<server-ip>:5500 (remote)")
+                logger.info(f"Access via: https://100.83.45.26:5500 (Tailscale) or https://localhost:5500 (local)")
                 
                 # Run with SSL
                 app.run(host='0.0.0.0', port=5500, debug=False, ssl_context=context)

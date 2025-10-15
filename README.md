@@ -27,6 +27,7 @@ sudo ./install.sh
 ## Features
 
 ### Core Security Features
+- **ClamAV Antivirus**: Real-time virus scanning of all email attachments (2M+ signatures)
 - **AI-Powered Spam Detection**: Advanced machine learning models for superior spam identification
 - **SPF/DKIM/DMARC Authentication**: Complete email authentication as the sole provider
 - **BEC Detection**: Business Email Compromise detection with trust scoring (0-5 scale)
