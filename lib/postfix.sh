@@ -154,13 +154,15 @@ EOVIRTUAL
 configure_email_filter() {
     info "Configuring email filter integration..."
 
-    # Ensure email_filter.py has correct permissions
-    chown spacy-filter:spacy-filter /opt/spacyserver/email_filter.py
-    chmod 755 /opt/spacyserver/email_filter.py
+    # Ensure email_filter.py has correct permissions (if it exists - may not be deployed yet)
+    if [[ -f /opt/spacyserver/email_filter.py ]]; then
+        chown spacy-filter:spacy-filter /opt/spacyserver/email_filter.py
+        chmod 755 /opt/spacyserver/email_filter.py
 
-    # Make sure Python shebang is correct
-    if ! grep -q "^#!/opt/spacyserver/venv/bin/python3" /opt/spacyserver/email_filter.py; then
-        warn "email_filter.py may need shebang update"
+        # Make sure Python shebang is correct
+        if ! grep -q "^#!/opt/spacyserver/venv/bin/python3" /opt/spacyserver/email_filter.py; then
+            warn "email_filter.py may need shebang update"
+        fi
     fi
 
     success "Email filter integration configured"
