@@ -3793,6 +3793,7 @@ def api_quarantine_release(email_id):
         # Get release destination config
         relay_host = os.getenv('SPACY_RELAY_HOST', '192.168.50.37')
         relay_port = 25
+        mode = 'mailguard'  # Default release mode
 
         # Try to load from config file if exists
         config_file = '/opt/spacyserver/config/quarantine_config.json'
