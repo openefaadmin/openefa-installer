@@ -41,11 +41,12 @@
                                     <i class="fas fa-globe"></i> Domain *
                                 </label>
                                 <select class="form-select" id="domain" name="domain" required>
-                                    <option value="">Select Domain</option>
+                                    <option value="" selected>Select Domain</option>
                                     {% for domain in hosted_domains %}
                                     <option value="{{ domain }}">{{ domain }}</option>
                                     {% endfor %}
                                 </select>
+                                <small class="form-text text-muted">⚠️ Please verify the domain is correct before creating the user</small>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -109,22 +110,8 @@
 </div>
 
 <script>
-// Auto-populate domain based on email
-document.getElementById('email').addEventListener('change', function() {
-    const email = this.value;
-    if (email.includes('@')) {
-        const domain = email.split('@')[1];
-        const domainSelect = document.getElementById('domain');
-        
-        // Check if domain exists in options
-        for (let option of domainSelect.options) {
-            if (option.value === domain) {
-                option.selected = true;
-                break;
-            }
-        }
-    }
-});
+// Auto-populate domain feature disabled to prevent accidental wrong domain assignment
+// Users must manually select the domain from the dropdown
 
 // Generate random password
 function generatePassword() {

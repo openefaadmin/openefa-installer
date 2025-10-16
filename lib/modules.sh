@@ -121,9 +121,18 @@ install_module_configs() {
     fi
 
     # Update quarantine_config.json with actual relay host
-    if [[ -f "${config_dir}/quarantine_config.json" ]] && [[ -n "${RELAY_HOST}" ]]; then
-        sed -i "s/YOUR_RELAY_HOST/${RELAY_HOST}/g" "${config_dir}/quarantine_config.json"
-        debug "Updated quarantine_config.json with relay host: ${RELAY_HOST}"
+    if [[ -f "${config_dir}/quarantine_config.json" ]] && [[ -n "${RELAY_SERVER_IP:-}" ]]; then
+        sed -i "s/YOUR_RELAY_HOST/${RELAY_SERVER_IP}/g" "${config_dir}/quarantine_config.json"
+        debug "Updated quarantine_config.json with relay host: ${RELAY_SERVER_IP}"
+    fi
+
+    # Update authentication_config.json with actual values
+    if [[ -f "${config_dir}/authentication_config.json" ]] && [[ -n "${RELAY_SERVER_IP:-}" ]]; then
+        sed -i "s|YOUR_RELAY_SERVER|${RELAY_SERVER_IP}|g" "${config_dir}/authentication_config.json"
+        # Calculate network from relay IP (e.g., 192.168.50.37 -> 192.168.50.0/24)
+        local network_prefix=$(echo "${RELAY_SERVER_IP}" | cut -d. -f1-3)
+        sed -i "s|YOUR_INTERNAL_NETWORK/24|${network_prefix}.0/24|g" "${config_dir}/authentication_config.json"
+        debug "Updated authentication_config.json with relay: ${RELAY_SERVER_IP}, network: ${network_prefix}.0/24"
     fi
 
     success "Module configurations installed"
@@ -236,7 +245,11 @@ create_email_filter_config() {
     cat > "${config_file}" <<EOF
 {
     "processed_domains": [${domains_json}],
-    "enable_debug_logging": ${ENABLE_DEBUG_LOGGING:-0}
+    "enable_debug_logging": ${ENABLE_DEBUG_LOGGING:-0},
+    "servers": {
+        "mailguard_host": "${RELAY_SERVER_IP}",
+        "mailguard_port": ${RELAY_SERVER_PORT:-25}
+    }
 }
 EOF
 

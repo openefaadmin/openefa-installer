@@ -49,7 +49,7 @@ main() {
         
         # Log statistics to show impact
         log "Checking MailGuard SpamAssassin configuration..."
-        if ssh -o ConnectTimeout=10 spacy@192.168.50.37 "sudo spamassassin --lint" >/dev/null 2>&1; then
+        if ssh -o ConnectTimeout=10 spacy@YOUR_MAILGUARD_SERVER "sudo spamassassin --lint" >/dev/null 2>&1; then
             log "MailGuard SpamAssassin configuration verified successfully"
         else
             notify "WARNING" "MailGuard SpamAssassin configuration check failed"

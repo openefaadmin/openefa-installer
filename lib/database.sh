@@ -44,6 +44,7 @@ create_database_and_user() {
 CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
+GRANT SELECT ON mysql.proc TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOSQL
 
@@ -139,9 +140,9 @@ insert_initial_domain() {
 
         for domain in "${INSTALL_DOMAINS[@]}"; do
             mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
-INSERT INTO client_domains (domain, client_name, active, created_at)
-VALUES ('${domain}', '${domain}', 1, NOW())
-ON DUPLICATE KEY UPDATE active = 1;
+INSERT INTO client_domains (domain, client_name, relay_host, active, created_at)
+VALUES ('${domain}', '${domain}', '${RELAY_SERVER_IP}', 1, NOW())
+ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}';
 EOSQL
 
             if [[ $? -eq 0 ]]; then
@@ -155,9 +156,9 @@ EOSQL
         info "Adding initial domain: ${INSTALL_DOMAIN}"
 
         mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
-INSERT INTO client_domains (domain, client_name, active, created_at)
-VALUES ('${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', 1, NOW())
-ON DUPLICATE KEY UPDATE active = 1;
+INSERT INTO client_domains (domain, client_name, relay_host, active, created_at)
+VALUES ('${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', '${RELAY_SERVER_IP}', 1, NOW())
+ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}';
 EOSQL
 
         if [[ $? -eq 0 ]]; then

@@ -173,17 +173,49 @@
     <!-- Email List -->
     <div class="col-md-9">
         <div class="card">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-envelope"></i> Emails ({{ total_count }} total)</h5>
-                <div>
-                    <span class="badge bg-light text-dark">Page {{ page }} of {{ total_pages }}</span>
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-envelope"></i> Emails ({{ total_count }} total)</h5>
+                    <div>
+                        <span class="badge bg-light text-dark">Page {{ page }} of {{ total_pages }}</span>
+                    </div>
                 </div>
+
+                <!-- Bulk Actions Toolbar (Admin Only) -->
+                {% if current_user.is_admin() %}
+                <div class="mt-3 p-2 bg-white text-dark rounded" id="bulk-actions-toolbar">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <small><span id="selected-count">0</span> email(s) selected</small>
+                        </div>
+                        <div class="col-md-8 text-end">
+                            <button class="btn btn-sm btn-warning" onclick="bulkMarkSpam()" disabled id="bulk-spam-btn">
+                                <i class="fas fa-ban"></i> Mark as Spam
+                            </button>
+                            <button class="btn btn-sm btn-success" onclick="bulkWhitelist()" disabled id="bulk-whitelist-btn">
+                                <i class="fas fa-check-circle"></i> Whitelist Sender
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="bulkDelete()" disabled id="bulk-delete-btn">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="clearSelection()">
+                                <i class="fas fa-times"></i> Clear Selection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-striped table-hover mb-0" style="font-size: 0.9rem;">
                         <thead class="table-light">
                             <tr>
+                                {% if current_user.is_admin() %}
+                                <th style="width: 30px;">
+                                    <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)">
+                                </th>
+                                {% endif %}
                                 <th style="width: 60px;">ID</th>
                                 <th style="width: 80px;">Date</th>
                                 <th style="width: 120px;">Sender</th>
@@ -201,13 +233,20 @@
                                 {% if schema_info.has_manipulation %}
                                 <th style="width: 60px;">Manip.</th>
                                 {% endif %}
-                                <th style="width: 60px;">Actions</th>
+                                <th style="width: 80px;">Spam Score</th>
+                                <th style="width: 100px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% if emails %}
                                 {% for email in emails %}
                                 <tr>
+                                    {% if current_user.is_admin() %}
+                                    <td>
+                                        <input type="checkbox" class="email-checkbox" value="{{ email.id }}"
+                                               data-sender="{{ email.sender }}" onclick="updateSelectedCount()">
+                                    </td>
+                                    {% endif %}
                                     <td>{{ email.id }}</td>
                                     <td>{{ email.timestamp.strftime('%m-%d %H:%M') if email.timestamp else 'N/A' }}</td>
                                     <td title="{{ email.sender }}">{{ email.sender|truncate(20, true) if email.sender else 'N/A' }}</td>
@@ -264,11 +303,44 @@
                                         {% endif %}
                                     </td>
                                     {% endif %}
-                                    
+
                                     <td>
-                                        <a href="/email/{{ email.id }}" class="btn btn-sm btn-primary">
+                                        {% if email.spam_score is not none %}
+                                            {% if email.spam_score >= 5.0 %}
+                                            <span class="badge bg-danger">{{ "%.1f"|format(email.spam_score) }}</span>
+                                            {% elif email.spam_score >= 3.0 %}
+                                            <span class="badge bg-warning text-dark">{{ "%.1f"|format(email.spam_score) }}</span>
+                                            {% else %}
+                                            <span class="badge bg-success">{{ "%.1f"|format(email.spam_score) }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                        N/A
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        <a href="/email/{{ email.id }}" class="btn btn-sm btn-primary" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        {% if current_user.is_admin() %}
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <i class="fas fa-cog"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                <li><button class="dropdown-item" type="button" onclick="markAsSpam({{ email.id }})">
+                                                    <i class="fas fa-ban text-warning"></i> Mark as Spam
+                                                </button></li>
+                                                <li><button class="dropdown-item" type="button" onclick="whitelistSender('{{ email.sender }}')">
+                                                    <i class="fas fa-check-circle text-success"></i> Whitelist Sender
+                                                </button></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><button class="dropdown-item text-danger" type="button" onclick="deleteEmail({{ email.id }})">
+                                                    <i class="fas fa-trash"></i> Delete Email
+                                                </button></li>
+                                            </ul>
+                                        </div>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -334,7 +406,7 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
+{% block extra_js %}
 <script>
     $(document).ready(function() {
         // Handle export button clicks
@@ -350,13 +422,189 @@
         
         $('#export-csv-btn').click(function(e) {
             e.preventDefault();
-            
+
             // Get all filter form inputs
             var filterParams = $('#filter-form').serialize();
-            
+
             // Redirect to export URL with filters
             window.location.href = '/export/csv?' + filterParams;
         });
     });
+
+    // Email Management Functions
+    function toggleSelectAll(checkbox) {
+        console.log('toggleSelectAll called, checkbox checked:', checkbox.checked);
+        const checkboxes = document.querySelectorAll('.email-checkbox');
+        console.log('Found', checkboxes.length, 'email checkboxes');
+
+        checkboxes.forEach(cb => {
+            cb.checked = checkbox.checked;
+        });
+
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const selected = document.querySelectorAll('.email-checkbox:checked');
+        document.getElementById('selected-count').textContent = selected.length;
+
+        // Enable/disable bulk action buttons
+        const disabled = selected.length === 0;
+        document.getElementById('bulk-spam-btn').disabled = disabled;
+        document.getElementById('bulk-whitelist-btn').disabled = disabled;
+        document.getElementById('bulk-delete-btn').disabled = disabled;
+    }
+
+    function getSelectedEmails() {
+        const selected = document.querySelectorAll('.email-checkbox:checked');
+        return Array.from(selected).map(cb => ({
+            id: parseInt(cb.value),
+            sender: cb.dataset.sender
+        }));
+    }
+
+    function clearSelection() {
+        document.querySelectorAll('.email-checkbox').forEach(cb => cb.checked = false);
+        document.getElementById('select-all').checked = false;
+        updateSelectedCount();
+    }
+
+    // Individual Actions
+    function markAsSpam(emailId) {
+        if (!confirm('Mark this email as spam and increase its spam score?')) return;
+
+        fetch(`/api/emails/${emailId}/mark-spam`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Email marked as spam');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+
+    function whitelistSender(sender) {
+        if (!confirm(`Add "${sender}" to whitelist?`)) return;
+
+        fetch('/api/emails/whitelist-sender', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sender: sender})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Sender "${sender}" added to whitelist`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+
+    function deleteEmail(emailId) {
+        console.log('Delete function called for email ID:', emailId);
+
+        if (!confirm('Delete this email permanently?')) {
+            console.log('User cancelled delete');
+            return;
+        }
+
+        console.log('Sending DELETE request to:', `/api/emails/${emailId}/delete`);
+
+        fetch(`/api/emails/${emailId}/delete`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.success) {
+                alert('Email deleted');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error during delete:', error);
+            alert('Failed to delete email: ' + error);
+        });
+    }
+
+    // Bulk Actions
+    function bulkMarkSpam() {
+        const emails = getSelectedEmails();
+        if (emails.length === 0) return;
+
+        if (!confirm(`Mark ${emails.length} email(s) as spam?`)) return;
+
+        fetch('/api/emails/bulk-mark-spam', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email_ids: emails.map(e => e.id)})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Marked ${data.count} email(s) as spam`);
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+
+    function bulkWhitelist() {
+        const emails = getSelectedEmails();
+        if (emails.length === 0) return;
+
+        const uniqueSenders = [...new Set(emails.map(e => e.sender))];
+        if (!confirm(`Add ${uniqueSenders.length} unique sender(s) to whitelist?`)) return;
+
+        fetch('/api/emails/bulk-whitelist', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({senders: uniqueSenders})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Added ${data.count} sender(s) to whitelist`);
+                clearSelection();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+
+    function bulkDelete() {
+        const emails = getSelectedEmails();
+        if (emails.length === 0) return;
+
+        if (!confirm(`Delete ${emails.length} email(s) permanently?`)) return;
+
+        fetch('/api/emails/bulk-delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email_ids: emails.map(e => e.id)})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Deleted ${data.count} email(s)`);
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
 </script>
 {% endblock %}

@@ -112,6 +112,7 @@ CREATE TABLE `client_domains` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `domain` varchar(255) NOT NULL,
   `client_name` varchar(255) DEFAULT NULL,
+  `relay_host` varchar(255) DEFAULT NULL,
   `created_at` datetime DEFAULT NULL,
   `updated_at` datetime DEFAULT NULL,
   `active` tinyint(1) DEFAULT NULL,
@@ -424,6 +425,7 @@ CREATE TABLE `email_analysis` (
   `original_sender_ip` varchar(45) DEFAULT NULL,
   `pii_detected` tinyint(1) DEFAULT 0,
   `pii_types` text DEFAULT NULL,
+  `raw_email` longtext DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=149491 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

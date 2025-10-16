@@ -224,7 +224,7 @@ if __name__ == "__main__":
     Dear Client,
     
     Thank you for your payment of $500.00 for legal services provided by R.D. Johnson Law Offices.
-    Please contact us at rob@rdjohnsonlaw.com or call (555) 123-4567 if you have any questions.
+    Please contact us at lawyer@example.com or call (555) 123-4567 if you have any questions.
     
     This invoice covers services provided on June 15, 2025 for contract review.
     
@@ -246,5 +246,5 @@ if __name__ == "__main__":
     print(f"Summary: {summary}")
     
     print("\nTesting full analysis...")
-    full_analysis = analyze_email_content(test_text, "RE: Invoice for Legal Services", "rob@rdjohnsonlaw.com")
+    full_analysis = analyze_email_content(test_text, "RE: Invoice for Legal Services", "lawyer@example.com")
     print(f"Full analysis: {json.dumps(full_analysis, indent=2)}")

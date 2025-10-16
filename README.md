@@ -460,7 +460,7 @@ OpenEFA is developed as the modern successor to the EFA Project (efa-project.org
 
 **Project Lead**: Scott Barbour
 **Organization**: Segue Logic LLC
-**Contact**: scott@seguelogic.com
+**Contact**: contact@openefa.com
 
 ---
 

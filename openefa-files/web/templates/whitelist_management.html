@@ -85,10 +85,14 @@
         <div class="row align-items-center">
             <div class="col-md-8">
                 <h1><i class="fas fa-user-check"></i> Whitelist Management</h1>
+                <div class="d-flex align-items-center gap-2">
+                    <p class="mb-0">Current Domain:</p>
+                    <span class="badge bg-light text-dark fs-6 px-3 py-2">
+                        <i class="fas fa-globe"></i> {{ domain }}
+                    </span>
+                </div>
                 {% if multi_domain %}
-                <p class="mb-0">Managing whitelists for all your domains: {{ user_domains|join(', ') }}</p>
-                {% else %}
-                <p class="mb-0">Managing whitelist for: {{ domain }}</p>
+                <small class="text-white-50">Available domains: {{ user_domains|join(', ') }}</small>
                 {% endif %}
             </div>
             <div class="col-md-4 text-md-end">
@@ -106,9 +110,13 @@
                     </button>
                     <ul class="dropdown-menu">
                         {% for d in user_domains %}
-                            {% if d != domain %}
-                            <li><a class="dropdown-item" href="/whitelist/{{ d }}">{{ d }}</a></li>
-                            {% endif %}
+                            <li>
+                                <a class="dropdown-item {% if d == domain %}active fw-bold{% endif %}" href="/whitelist/{{ d }}">
+                                    {% if d == domain %}<i class="fas fa-check text-success"></i> {% endif %}
+                                    {{ d }}
+                                    {% if d == domain %}<span class="badge bg-success ms-2">Current</span>{% endif %}
+                                </a>
+                            </li>
                         {% endfor %}
                     </ul>
                 </div>

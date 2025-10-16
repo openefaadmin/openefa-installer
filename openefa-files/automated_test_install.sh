@@ -5,8 +5,8 @@
 #
 
 echo "Starting automated OpenEFA installation test..."
-echo "Test domain: openefa.org"
-echo "Relay server: 192.168.50.37"
+echo "Test domain: example.com"
+echo "Relay server: YOUR_RELAY_SERVER"
 echo ""
 
 # Provide all answers to the installer prompts
@@ -25,14 +25,14 @@ echo ""
 # 12. Proceed with installation? (y/n)
 
 cat << EOF | sudo bash install.sh
-openefa.org
+example.com
 OpenEFA_DB_Test_2025!
 OpenEFA_DB_Test_2025!
 
-admin@openefa.org
+admin@example.com
 OpenEFA_Admin_2025!
 OpenEFA_Admin_2025!
-192.168.50.37
+YOUR_RELAY_SERVER
 
 y
 y

@@ -54,11 +54,7 @@ HOST = "localhost"
 # Centralized hosted domains configuration
 # This will be populated from database at startup via get_hosted_domains()
 # Updated during installation with configured domains
-HOSTED_DOMAINS = [
-    # Add your client domains here during installation
-    # Example: 'example.com', 'client1.com', 'client2.com'
-    # These should match domains in your client_domains database table
-]
+HOSTED_DOMAINS = ['openefa.org']
 
 def get_hosted_domains():
     """
@@ -67,22 +63,102 @@ def get_hosted_domains():
     This makes the system configuration-driven instead of hardcoded.
     """
     try:
-        db_connection = mysql.connector.connect(option_files=MY_CNF_PATH)
-        cursor = db_connection.cursor(dictionary=True)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT domain
             FROM client_domains
-            WHERE is_active = 1
+            WHERE active = 1
             ORDER BY domain
         """)
         domains = [row['domain'] for row in cursor.fetchall()]
         cursor.close()
-        db_connection.close()
+        conn.close()
         return domains
     except Exception as e:
         logger.error(f"Failed to load hosted domains from database: {e}")
         # Return empty list on failure - will be populated when DB is available
         return []
+
+def reload_hosted_domains():
+    """
+    Reload HOSTED_DOMAINS from database.
+    Call this after add/edit/delete domain operations to make changes immediate.
+    """
+    global HOSTED_DOMAINS
+    try:
+        new_domains = get_hosted_domains()
+        HOSTED_DOMAINS = new_domains
+        logger.info(f"Reloaded {len(HOSTED_DOMAINS)} hosted domains from database")
+        logger.info(f"Active domains: {', '.join(HOSTED_DOMAINS)}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to reload hosted domains: {e}")
+        return False
+
+def update_postfix_transport():
+    """
+    Update Postfix transport file from database.
+    Reads all active domains with relay_hosts and writes to /etc/postfix/transport
+    """
+    import subprocess
+    transport_file = '/etc/postfix/transport'
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get all active domains with relay hosts
+        cursor.execute("""
+            SELECT domain, relay_host
+            FROM client_domains
+            WHERE active = 1 AND relay_host IS NOT NULL AND relay_host != ''
+            ORDER BY domain
+        """)
+
+        domains = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Build transport file content
+        lines = [
+            "# OpenEFA Transport Map",
+            "# Routes configured domains to relay server",
+            "# Auto-generated from database - do not edit manually",
+            ""
+        ]
+
+        for domain_row in domains:
+            domain = domain_row['domain']
+            relay_host = domain_row['relay_host']
+            lines.append(f"{domain}    smtp:[{relay_host}]")
+
+        # Write transport file
+        with open(transport_file, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+
+        # Run postmap to compile the transport map
+        result = subprocess.run(['postmap', transport_file],
+                              capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            # Reload Postfix to apply changes (requires sudo)
+            reload_result = subprocess.run(['sudo', '/usr/sbin/postfix', 'reload'],
+                                          capture_output=True, text=True, timeout=10)
+
+            if reload_result.returncode == 0:
+                logger.info(f"Updated Postfix transport file with {len(domains)} domains and reloaded Postfix")
+                return True
+            else:
+                logger.warning(f"Transport updated but Postfix reload failed: {reload_result.stderr}")
+                return True  # Still return True since transport was updated
+        else:
+            logger.error(f"postmap failed: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to update Postfix transport: {e}")
+        return False
 
 def load_app_config():
     """Load application configuration from config file"""
@@ -601,13 +677,38 @@ def dashboard():
     print(f"DEBUG: overall_stats being passed to template: {overall_stats}")
     print(f"DEBUG: current_user.is_admin(): {current_user.is_admin()}")
 
+    # Get recent emails for the selected domain
+    recent_emails = []
+    try:
+        engine = get_db_engine()
+        if engine:
+            with engine.connect() as conn:
+                # Build domain filter for recent emails
+                domain_filter = f"recipients LIKE '%@{selected_domain}%'"
+
+                recent_query = text(f"""
+                    SELECT id, message_id, timestamp, sender, recipients, subject,
+                           spam_score, email_category
+                    FROM email_analysis
+                    WHERE {domain_filter}
+                    ORDER BY id DESC
+                    LIMIT 10
+                """)
+
+                recent_results = conn.execute(recent_query).fetchall()
+                recent_emails = [dict(row._mapping) for row in recent_results]
+                print(f"DEBUG: Fetched {len(recent_emails)} recent emails for {selected_domain}")
+    except Exception as e:
+        print(f"Error fetching recent emails: {e}")
+
     return render_template('enhanced_dashboard.html',
                          stats=stats,
                          schema_info=schema_info,
                          sentiment_chart=sentiment_chart,
                          user_domains=user_domains,
                          selected_domain=selected_domain,
-                         overall_stats=overall_stats)
+                         overall_stats=overall_stats,
+                         recent_emails=recent_emails)
 
 @app.route('/debug/stats')
 @login_required
@@ -799,23 +900,12 @@ def emails():
 
             # Get available receiving domains for filter (user-specific and hosted domains only)
             if current_user.is_admin():
-                # Admin sees all hosted domains that have emails
-                domains_query = text("SELECT DISTINCT recipients FROM email_analysis WHERE recipients IS NOT NULL")
-                all_recipients = conn.execute(domains_query).fetchall()
-                
-                all_domains = set()
-                for row in all_recipients:
-                    receiving_domains = extract_receiving_domains(row[0])
-                    # Only include hosted domains
-                    for domain in receiving_domains:
-                        if domain in HOSTED_DOMAINS:
-                            all_domains.add(domain)
-                
-                available_domains = sorted(list(all_domains))
+                # Admin sees all hosted domains (from client_domains table via HOSTED_DOMAINS)
+                available_domains = sorted(HOSTED_DOMAINS)
             else:
                 # Non-admin users see their authorized domains
                 user_authorized_domains = get_user_authorized_domains(current_user)
-                available_domains = [domain for domain in user_authorized_domains if domain in HOSTED_DOMAINS]
+                available_domains = sorted([domain for domain in user_authorized_domains if domain in HOSTED_DOMAINS])
 
             total_pages = (total_count + per_page - 1) // per_page
 
@@ -977,6 +1067,45 @@ def email_detail(email_id):
                     flash('Access denied to this email', 'error')
                     return redirect(url_for('emails'))
 
+            # Parse email body and headers from raw_email
+            from email import message_from_string
+            if email.get('raw_email'):
+                try:
+                    msg = message_from_string(email['raw_email'])
+
+                    # Extract email body
+                    email['full_text_content'] = ''
+                    if msg.is_multipart():
+                        text_parts = []
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            if content_type == 'text/plain':
+                                try:
+                                    text_parts.append(part.get_payload(decode=True).decode('utf-8', errors='ignore'))
+                                except:
+                                    pass
+                        if text_parts:
+                            email['full_text_content'] = '\n\n'.join(text_parts)
+                    else:
+                        try:
+                            email['full_text_content'] = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        except:
+                            pass
+
+                    # Extract headers
+                    headers_text = ""
+                    for key, value in msg.items():
+                        headers_text += f"{key}: {value}\n"
+                    email['headers'] = headers_text
+
+                except Exception as e:
+                    logger.warning(f"Could not parse email for email {email.get('id')}: {e}")
+                    email['full_text_content'] = email.get('content_summary', '')
+                    email['headers'] = ''
+            else:
+                email['full_text_content'] = email.get('content_summary', '')
+                email['headers'] = ''
+
             return render_template('email_detail.html',
                                  email=email,
                                  schema_info=schema_info)
@@ -984,6 +1113,235 @@ def email_detail(email_id):
     except Exception as e:
         flash(f'Database query failed: {e}', 'error')
         return render_template('error.html', error=f"Database query failed: {e}")
+
+# ============================================================================
+# EMAIL MANAGEMENT API ROUTES (Admin Only)
+# ============================================================================
+
+@app.route('/api/emails/<int:email_id>/mark-spam', methods=['POST'])
+@login_required
+@admin_required
+def api_mark_spam(email_id):
+    """Mark an email as spam and increase its spam score"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update spam score and category
+        cursor.execute("""
+            UPDATE email_analysis
+            SET spam_score = GREATEST(spam_score + 5.0, 10.0),
+                email_category = 'spam'
+            WHERE id = %s
+        """, (email_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Email marked as spam'})
+    except Exception as e:
+        logger.error(f"Error marking email as spam: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/<int:email_id>/release', methods=['POST'])
+@login_required
+@admin_required
+def api_release_email(email_id):
+    """Release an email (mark as safe, reduce spam score)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Mark email as safe by reducing spam score and updating category
+        cursor.execute("""
+            UPDATE email_analysis
+            SET spam_score = LEAST(spam_score - 5.0, 0.0),
+                email_category = CASE
+                    WHEN email_category IN ('spam', 'phishing') THEN 'legitimate'
+                    ELSE email_category
+                END
+            WHERE id = %s
+        """, (email_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Email released and marked as safe'})
+    except Exception as e:
+        logger.error(f"Error releasing email: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/whitelist-sender', methods=['POST'])
+@login_required
+@admin_required
+def api_whitelist_sender():
+    """Add a sender to the whitelist"""
+    try:
+        data = request.get_json()
+        sender = data.get('sender')
+
+        if not sender:
+            return jsonify({'success': False, 'error': 'Sender required'}), 400
+
+        # Load bec_config.json
+        config_path = '/opt/spacyserver/config/bec_config.json'
+        with open(config_path, 'r') as f:
+            bec_config = json.load(f)
+
+        # Add to authentication_aware whitelist
+        if 'whitelist' not in bec_config:
+            bec_config['whitelist'] = {}
+        if 'authentication_aware' not in bec_config['whitelist']:
+            bec_config['whitelist']['authentication_aware'] = {}
+        if 'senders' not in bec_config['whitelist']['authentication_aware']:
+            bec_config['whitelist']['authentication_aware']['senders'] = {}
+
+        # Add sender with default trust settings
+        bec_config['whitelist']['authentication_aware']['senders'][sender] = {
+            "trust_score_bonus": 5,
+            "description": f"Whitelisted via admin panel",
+            "bypass_bec_checks": True
+        }
+
+        # Save back to file
+        with open(config_path, 'w') as f:
+            json.dump(bec_config, f, indent=2)
+
+        return jsonify({'success': True, 'message': f'Sender {sender} added to whitelist'})
+    except Exception as e:
+        logger.error(f"Error whitelisting sender: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/<int:email_id>/delete', methods=['DELETE'])
+@login_required
+@admin_required
+def api_delete_email(email_id):
+    """Delete an email from the database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Delete the email
+        cursor.execute("DELETE FROM email_analysis WHERE id = %s", (email_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Email deleted'})
+    except Exception as e:
+        logger.error(f"Error deleting email: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/bulk-mark-spam', methods=['POST'])
+@login_required
+@admin_required
+def api_bulk_mark_spam():
+    """Mark multiple emails as spam"""
+    try:
+        data = request.get_json()
+        email_ids = data.get('email_ids', [])
+
+        if not email_ids:
+            return jsonify({'success': False, 'error': 'No emails selected'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update spam scores for all selected emails
+        placeholders = ','.join(['%s'] * len(email_ids))
+        cursor.execute(f"""
+            UPDATE email_analysis
+            SET spam_score = GREATEST(spam_score + 5.0, 10.0),
+                email_category = 'spam'
+            WHERE id IN ({placeholders})
+        """, email_ids)
+
+        affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'count': affected, 'message': f'Marked {affected} emails as spam'})
+    except Exception as e:
+        logger.error(f"Error bulk marking spam: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/bulk-whitelist', methods=['POST'])
+@login_required
+@admin_required
+def api_bulk_whitelist():
+    """Add multiple senders to whitelist"""
+    try:
+        data = request.get_json()
+        senders = data.get('senders', [])
+
+        if not senders:
+            return jsonify({'success': False, 'error': 'No senders selected'}), 400
+
+        # Load bec_config.json
+        config_path = '/opt/spacyserver/config/bec_config.json'
+        with open(config_path, 'r') as f:
+            bec_config = json.load(f)
+
+        # Ensure structure exists
+        if 'whitelist' not in bec_config:
+            bec_config['whitelist'] = {}
+        if 'authentication_aware' not in bec_config['whitelist']:
+            bec_config['whitelist']['authentication_aware'] = {}
+        if 'senders' not in bec_config['whitelist']['authentication_aware']:
+            bec_config['whitelist']['authentication_aware']['senders'] = {}
+
+        # Add all senders
+        count = 0
+        for sender in senders:
+            if sender not in bec_config['whitelist']['authentication_aware']['senders']:
+                bec_config['whitelist']['authentication_aware']['senders'][sender] = {
+                    "trust_score_bonus": 5,
+                    "description": f"Bulk whitelisted via admin panel",
+                    "bypass_bec_checks": True
+                }
+                count += 1
+
+        # Save back to file
+        with open(config_path, 'w') as f:
+            json.dump(bec_config, f, indent=2)
+
+        return jsonify({'success': True, 'count': count, 'message': f'Added {count} sender(s) to whitelist'})
+    except Exception as e:
+        logger.error(f"Error bulk whitelisting: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/bulk-delete', methods=['POST'])
+@login_required
+@admin_required
+def api_bulk_delete():
+    """Delete multiple emails"""
+    try:
+        data = request.get_json()
+        email_ids = data.get('email_ids', [])
+
+        if not email_ids:
+            return jsonify({'success': False, 'error': 'No emails selected'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Delete all selected emails
+        placeholders = ','.join(['%s'] * len(email_ids))
+        cursor.execute(f"DELETE FROM email_analysis WHERE id IN ({placeholders})", email_ids)
+
+        affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'count': affected, 'message': f'Deleted {affected} emails'})
+    except Exception as e:
+        logger.error(f"Error bulk deleting: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/volume-metrics/<domain>')
 @login_required
@@ -2580,6 +2938,7 @@ def domain_management():
                 cd.id,
                 cd.domain,
                 cd.client_name,
+                cd.relay_host,
                 cd.active,
                 cd.created_at,
                 cd.updated_at,
@@ -2589,7 +2948,7 @@ def domain_management():
             LEFT JOIN blocking_rules br ON cd.id = br.client_domain_id AND br.active = 1
             LEFT JOIN blocked_attempts ba ON cd.id = ba.client_domain_id
                 AND ba.timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-            GROUP BY cd.id, cd.domain, cd.client_name, cd.active, cd.created_at, cd.updated_at
+            GROUP BY cd.id, cd.domain, cd.client_name, cd.relay_host, cd.active, cd.created_at, cd.updated_at
             ORDER BY cd.domain
         """)
 
@@ -2628,6 +2987,7 @@ def add_domain():
         data = request.get_json()
         domain = data.get('domain', '').strip().lower()
         client_name = data.get('client_name', '').strip()
+        relay_host = data.get('relay_host', '').strip()
 
         if not domain:
             return jsonify({'success': False, 'error': 'Domain is required'}), 400
@@ -2652,9 +3012,9 @@ def add_domain():
                 # Reactivate existing domain
                 cursor.execute("""
                     UPDATE client_domains
-                    SET active = 1, client_name = %s, updated_at = NOW()
+                    SET active = 1, client_name = %s, relay_host = %s, updated_at = NOW()
                     WHERE domain = %s
-                """, (client_name or domain, domain))
+                """, (client_name or domain, relay_host or None, domain))
                 conn.commit()
 
                 # Log audit
@@ -2666,13 +3026,20 @@ def add_domain():
 
                 cursor.close()
                 conn.close()
+
+                # Reload HOSTED_DOMAINS to make change immediate
+                reload_hosted_domains()
+
+                # Update Postfix transport file
+                update_postfix_transport()
+
                 return jsonify({'success': True, 'message': f'Domain {domain} reactivated successfully'})
 
         # Insert new domain
         cursor.execute("""
-            INSERT INTO client_domains (domain, client_name, active, created_at, updated_at)
-            VALUES (%s, %s, 1, NOW(), NOW())
-        """, (domain, client_name or domain))
+            INSERT INTO client_domains (domain, client_name, relay_host, active, created_at, updated_at)
+            VALUES (%s, %s, %s, 1, NOW(), NOW())
+        """, (domain, client_name or domain, relay_host or None))
 
         conn.commit()
 
@@ -2685,6 +3052,12 @@ def add_domain():
         conn.commit()
         cursor.close()
         conn.close()
+
+        # Reload HOSTED_DOMAINS to make change immediate
+        reload_hosted_domains()
+
+        # Update Postfix transport file
+        update_postfix_transport()
 
         return jsonify({'success': True, 'message': f'Domain {domain} added successfully'})
 
@@ -2701,6 +3074,7 @@ def edit_domain(domain_id):
     try:
         data = request.get_json()
         client_name = data.get('client_name', '').strip()
+        relay_host = data.get('relay_host', '').strip()
 
         if not client_name:
             return jsonify({'success': False, 'error': 'Client name is required'}), 400
@@ -2718,9 +3092,9 @@ def edit_domain(domain_id):
         # Update domain
         cursor.execute("""
             UPDATE client_domains
-            SET client_name = %s, updated_at = NOW()
+            SET client_name = %s, relay_host = %s, updated_at = NOW()
             WHERE id = %s
-        """, (client_name, domain_id))
+        """, (client_name, relay_host or None, domain_id))
 
         conn.commit()
 
@@ -2733,6 +3107,9 @@ def edit_domain(domain_id):
         conn.commit()
         cursor.close()
         conn.close()
+
+        # Update Postfix transport file (in case relay_host changed)
+        update_postfix_transport()
 
         return jsonify({'success': True, 'message': 'Domain updated successfully'})
 
@@ -2779,6 +3156,12 @@ def toggle_domain(domain_id):
         cursor.close()
         conn.close()
 
+        # Reload HOSTED_DOMAINS to make change immediate
+        reload_hosted_domains()
+
+        # Update Postfix transport file (in case domain was activated/deactivated)
+        update_postfix_transport()
+
         status_text = 'activated' if new_status else 'deactivated'
         return jsonify({'success': True, 'message': f'Domain {status_text} successfully'})
 
@@ -2823,6 +3206,12 @@ def delete_domain(domain_id):
         conn.commit()
         cursor.close()
         conn.close()
+
+        # Reload HOSTED_DOMAINS to make change immediate
+        reload_hosted_domains()
+
+        # Update Postfix transport file (remove deleted domain)
+        update_postfix_transport()
 
         return jsonify({'success': True, 'message': f'Domain {domain_info["domain"]} deleted successfully'})
 
@@ -3043,11 +3432,12 @@ def update_trusted_domain_note():
 def blocking_rules_config():
     """Blocking rules configuration page"""
     user_domains = get_user_authorized_domains(current_user)
-    selected_domain = request.args.get('domain', user_domains[0] if user_domains else None)
+    selected_domain = request.args.get('domain', None)
 
+    # If no domain selected, show domain selection page
     if not selected_domain:
-        flash('No domain selected', 'error')
-        return redirect(url_for('dashboard'))
+        return render_template('blocking_rules_select_domain.html',
+                             user_domains=user_domains)
 
     # Verify user has access to this domain
     if selected_domain not in user_domains and not current_user.is_admin():
@@ -3553,11 +3943,11 @@ def add_whitelist_domain(domain):
 @app.route('/quarantine')
 @login_required
 def quarantine_view():
-    """Main quarantine view - list of quarantined emails"""
+    """Email Status Page - list of all processed emails (like EFA status.php)"""
     try:
         # Get filter parameters
         domain_filter = request.args.get('domain', '')
-        status_filter = request.args.get('status', 'active')  # Changed default to 'active'
+        status_filter = request.args.get('status', 'all')  # Default to 'all' emails
         search_query = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         per_page = 50
@@ -3569,60 +3959,61 @@ def quarantine_view():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Base query
+        # Base query - query email_analysis table (all emails)
         query = """
             SELECT
-                id, message_id, timestamp, sender, sender_domain,
-                recipients, subject, spam_score, quarantine_status,
-                quarantine_reason, quarantine_expires_at, has_attachments,
-                attachment_count, virus_detected, phishing_detected,
-                reviewed_by, reviewed_at,
-                DATEDIFF(quarantine_expires_at, NOW()) as days_until_expiry,
-                text_content, html_content, raw_email
-            FROM email_quarantine
+                id, message_id, timestamp, sender,
+                recipients, subject, spam_score, email_category,
+                detected_language, sentiment_polarity,
+                '' as sender_domain,
+                'delivered' as quarantine_status,
+                'N/A' as quarantine_reason,
+                NULL as quarantine_expires_at,
+                has_attachments,
+                0 as attachment_count,
+                CASE WHEN email_category = 'spam' OR email_category = 'phishing' THEN 1 ELSE 0 END as virus_detected,
+                CASE WHEN email_category = 'phishing' THEN 1 ELSE 0 END as phishing_detected,
+                NULL as reviewed_by,
+                NULL as reviewed_at,
+                999 as days_until_expiry,
+                content_summary as text_content,
+                '' as html_content,
+                raw_email
+            FROM email_analysis
             WHERE 1=1
         """
         params = []
 
-        # Filter by status
-        if status_filter == 'active':
-            # Active = only held emails (not released or deleted)
-            query += " AND quarantine_status = 'held'"
-        elif status_filter == 'spam':
+        # Filter by spam score (status filter)
+        if status_filter == 'spam':
             # Spam = emails with spam_score >= 5.0
-            query += " AND spam_score >= 5.0 AND quarantine_status != 'deleted'"
+            query += " AND spam_score >= 5.0"
         elif status_filter == 'clean':
             # Clean = emails with spam_score < 3.0
-            query += " AND spam_score < 3.0 AND quarantine_status != 'deleted'"
-        elif status_filter == 'all':
-            # All = exclude deleted emails
-            query += " AND quarantine_status != 'deleted'"
-        elif status_filter and status_filter != 'all':
-            # Specific status (held, released, deleted)
-            query += " AND quarantine_status = %s"
-            params.append(status_filter)
+            query += " AND spam_score < 3.0"
+        elif status_filter == 'suspicious':
+            # Suspicious = emails with spam_score 3.0-4.9
+            query += " AND spam_score >= 3.0 AND spam_score < 5.0"
+        # 'all' = no additional filter
 
         # Filter by domain (user access control)
         if not current_user.is_admin():
             # Non-admin users only see emails for their authorized domains
             if user_domains:
-                domain_placeholders = ','.join(['%s'] * len(user_domains))
-                query += f" AND (sender_domain IN ({domain_placeholders})"
-                params.extend(user_domains)
-
-                # Also check recipient domains
+                # Check recipient domains
+                domain_conditions = []
                 for domain in user_domains:
-                    query += " OR recipients LIKE %s"
-                    params.append(f'%{domain}%')
-                query += ")"
+                    domain_conditions.append("recipients LIKE %s")
+                    params.append(f'%@{domain}%')
+                query += f" AND ({' OR '.join(domain_conditions)})"
             else:
                 # User has no domains - show nothing
                 query += " AND 1=0"
         else:
             # Admin can filter by specific domain if requested
             if domain_filter:
-                query += " AND (sender_domain = %s OR recipients LIKE %s)"
-                params.extend([domain_filter, f'%{domain_filter}%'])
+                query += " AND recipients LIKE %s"
+                params.append(f'%@{domain_filter}%')
 
         # Search filter
         if search_query:
@@ -3633,9 +4024,6 @@ def quarantine_view():
             )"""
             search_param = f'%{search_query}%'
             params.extend([search_param, search_param, search_param])
-
-        # Only show non-expired
-        query += " AND quarantine_expires_at > NOW()"
 
         # Order by timestamp (newest first)
         query += " ORDER BY timestamp DESC"
@@ -3653,32 +4041,84 @@ def quarantine_view():
         cursor.execute(query, params)
         quarantined_emails = cursor.fetchall()
 
+        # Parse email bodies from raw_email for brief content preview (first 3-5 lines)
+        from email import message_from_string
+        for email in quarantined_emails:
+            if email.get('raw_email'):
+                try:
+                    msg = message_from_string(email['raw_email'])
+                    # Extract email body
+                    email_text = ''
+                    if msg.is_multipart():
+                        # Get text/plain parts
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            if content_type == 'text/plain':
+                                try:
+                                    email_text = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break  # Just get the first text part
+                                except:
+                                    pass
+                    else:
+                        # Single part message
+                        try:
+                            email_text = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        except:
+                            pass
+
+                    # Extract just first 3-5 lines (approximately 200 chars)
+                    if email_text:
+                        lines = email_text.strip().split('\n')
+                        preview_lines = []
+                        char_count = 0
+                        for line in lines[:10]:  # Check first 10 lines
+                            line = line.strip()
+                            if line:  # Skip empty lines
+                                preview_lines.append(line)
+                                char_count += len(line)
+                                if len(preview_lines) >= 3 or char_count >= 200:
+                                    break
+                        email['content_preview'] = ' '.join(preview_lines)[:250] + '...' if preview_lines else email.get('text_content', '')
+                    else:
+                        email['content_preview'] = email.get('text_content', '')
+                except Exception as e:
+                    logger.warning(f"Could not parse email body for preview: {e}")
+                    email['content_preview'] = email.get('text_content', '')
+            else:
+                email['content_preview'] = email.get('text_content', '')
+
         # Calculate pagination
         total_pages = (total_count + per_page - 1) // per_page
 
-        # Get statistics
+        # Get statistics for email_analysis table
         stats_query = """
             SELECT
                 COUNT(*) as total_held,
-                COUNT(CASE WHEN quarantine_expires_at < DATE_ADD(NOW(), INTERVAL 7 DAY) THEN 1 END) as expiring_soon,
+                COUNT(CASE WHEN spam_score >= 5.0 THEN 1 END) as expiring_soon,
                 AVG(spam_score) as avg_spam_score,
-                SUM(CASE WHEN virus_detected = 1 THEN 1 ELSE 0 END) as virus_count
-            FROM email_quarantine
-            WHERE quarantine_status = 'held'
-            AND quarantine_expires_at > NOW()
+                SUM(CASE WHEN email_category = 'spam' OR email_category = 'phishing' THEN 1 ELSE 0 END) as virus_count
+            FROM email_analysis
+            WHERE 1=1
         """
 
+        stats_params = []
         if not current_user.is_admin():
             if user_domains:
-                domain_placeholders = ','.join(['%s'] * len(user_domains))
-                stats_query += f" AND sender_domain IN ({domain_placeholders})"
-                cursor.execute(stats_query, user_domains)
+                domain_conditions = []
+                for domain in user_domains:
+                    domain_conditions.append("recipients LIKE %s")
+                    stats_params.append(f'%@{domain}%')
+                stats_query += f" AND ({' OR '.join(domain_conditions)})"
+                cursor.execute(stats_query, stats_params)
             else:
                 # User has no domains - return zero stats
                 stats_query += " AND 1=0"
                 cursor.execute(stats_query)
         else:
-            cursor.execute(stats_query)
+            if domain_filter:
+                stats_query += " AND recipients LIKE %s"
+                stats_params.append(f'%@{domain_filter}%')
+            cursor.execute(stats_query, stats_params)
 
         stats = cursor.fetchone()
 
@@ -3803,7 +4243,7 @@ def api_quarantine_release(email_id):
     cursor = None
     try:
         # Get release destination config
-        relay_host = os.getenv('SPACY_RELAY_HOST', '192.168.50.37')
+        relay_host = os.getenv('SPACY_RELAY_HOST', 'YOUR_RELAY_SERVER')
         relay_port = 25
         mode = 'mailguard'  # Default release mode
 
@@ -3996,13 +4436,47 @@ def api_quarantine_headers(email_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Get email
+        # Try email_quarantine first (has raw_email and recipient_domains)
         cursor.execute("SELECT raw_email, recipient_domains FROM email_quarantine WHERE id = %s", (email_id,))
         email = cursor.fetchone()
 
+        # If not in quarantine, try email_analysis (now also has raw_email)
         if not email:
-            return jsonify({'success': False, 'error': 'Email not found'}), 404
+            cursor.execute("SELECT raw_email, recipients FROM email_analysis WHERE id = %s", (email_id,))
+            email_analysis = cursor.fetchone()
 
+            if not email_analysis:
+                return jsonify({'success': False, 'error': 'Email not found'}), 404
+
+            # Check permissions for email_analysis
+            if not current_user.is_admin():
+                user_domains = get_user_authorized_domains(current_user)
+                recipients = email_analysis.get('recipients', '')
+
+                # Check if any authorized domain is in recipients
+                has_access = any(f"@{domain}" in recipients for domain in user_domains)
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+            # Parse headers from email_analysis raw_email
+            from email import message_from_string
+            try:
+                raw_email = email_analysis.get('raw_email', '')
+                if not raw_email:
+                    headers_text = "Headers not available (raw email not stored)"
+                else:
+                    msg = message_from_string(raw_email)
+                    headers_text = ""
+                    for key, value in msg.items():
+                        headers_text += f"{key}: {value}\n"
+            except Exception as parse_error:
+                headers_text = f"Could not parse headers: {str(parse_error)}"
+
+            cursor.close()
+            conn.close()
+            return jsonify({'success': True, 'headers': headers_text or 'No headers available'})
+
+        # Original quarantine logic
         # Check permissions
         if not current_user.is_admin():
             user_domains = get_user_authorized_domains(current_user)
@@ -4278,7 +4752,7 @@ if __name__ == '__main__':
             sys.exit(1)
 
         # Load hosted domains from database
-        # HOSTED_DOMAINS = get_hosted_domains()  # Disabled - using hardcoded list
+        HOSTED_DOMAINS = get_hosted_domains()
         logger.info(f"Loaded {len(HOSTED_DOMAINS)} hosted domains from database")
         if HOSTED_DOMAINS:
             logger.info(f"Active domains: {', '.join(HOSTED_DOMAINS)}")

@@ -15,55 +15,30 @@
     "standard_analysis_size": 50000
   },
   "domains": {
-    "internal_domains": [
-      "covereddata.com",
-      "seguelogic.com",
-      "safesoundins.com",
-      "offgriddynamics.com",
-      "rdjohnsonlaw.com",
-      "escudolaw.com",
-      "barbour.tech",
-      "securedata247.com",
-      "chrystinakatz.com",
-      "statvu.com"
-    ],
-    "processed_domains": [
-      "seguelogic.com",
-      "offgriddynamics.com",
-      "covereddata.com",
-      "securedata247.com",
-      "rdjohnsonlaw.com",
-      "safesoundins.com",
-      "openefa.com",
-      "barbour.tech",
-      "escudolaw.com",
-      "chrystinakatz.com",
-      "phoenixdefence.com",
-      "chipotlepublishing.com",
-      "spacy.covereddata.com",
-      "statvu.com"
-    ],
-    "journal_addresses": [
-      "journal@spacy.covereddata.com",
-      "journal@covereddata.com"
-    ],
+    "internal_domains": [],
+    "processed_domains": [],
+    "journal_addresses": [],
     "trusted_domains": [
       "datto.com",
       "dattobackup.com",
       "microsoft.com",
-      "microsoftonline.com"
+      "microsoftonline.com",
+      "google.com",
+      "gmail.com"
     ]
   },
   "servers": {
-    "mailguard_host": "192.168.50.37",
+    "mailguard_host": "YOUR_RELAY_SERVER",
     "mailguard_port": 25,
-    "internal_ips": [
-      "192.168.50.114",
-      "192.168.50.37",
-      "zimbra.apollomx.com",
-      "mailguard.covereddata.com"
-    ]
+    "internal_ips": []
   },
   "created": "$(date -Iseconds)",
-  "version": "1.0"
+  "version": "1.0",
+  "_comments": {
+    "internal_domains": "Add your client domains here - domains you are protecting",
+    "processed_domains": "Same as internal_domains - domains processed by this server",
+    "journal_addresses": "Email addresses for journal/archiving (optional)",
+    "internal_ips": "Internal mail server IPs and hostnames",
+    "mailguard_host": "Relay destination server IP or hostname"
+  }
 }

@@ -160,12 +160,96 @@
                         </ul>
                         <div class="tab-content" id="emailTabContent">
                             <div class="tab-pane fade show active" id="content" role="tabpanel" aria-labelledby="content-tab">
-                                <div class="card">
+                                <!-- Email Body Section (Collapsible) -->
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0"><i class="fas fa-file-alt"></i> Email Body</h6>
+                                            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#emailBodyCollapse" aria-expanded="false" aria-controls="emailBodyCollapse">
+                                                <i class="fas fa-chevron-down"></i> Show/Hide
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="collapse" id="emailBodyCollapse">
+                                        <div class="card-body">
+                                            {% if email.full_text_content %}
+                                            <div style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{ email.full_text_content }}</div>
+                                            {% else %}
+                                            <p class="text-muted">No email content available</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Email Headers Section (Collapsible) -->
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0"><i class="fas fa-code"></i> Email Headers</h6>
+                                            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#emailHeadersCollapse" aria-expanded="false" aria-controls="emailHeadersCollapse">
+                                                <i class="fas fa-chevron-down"></i> Show/Hide
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="collapse" id="emailHeadersCollapse">
+                                        <div class="card-body">
+                                            {% if email.headers %}
+                                            <div style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.75rem; background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{ email.headers }}</div>
+                                            {% else %}
+                                            <p class="text-muted">Email headers not available</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- AI Summary Section (Collapsible, Expanded by Default) -->
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0"><i class="fas fa-robot"></i> AI Summary</h6>
+                                            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#aiSummaryCollapse" aria-expanded="true" aria-controls="aiSummaryCollapse">
+                                                <i class="fas fa-chevron-down"></i> Show/Hide
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="collapse show" id="aiSummaryCollapse">
+                                        <div class="card-body">
+                                            {% if email.content_summary %}
+                                            <p class="card-text">{{ email.content_summary }}</p>
+                                            {% else %}
+                                            <p class="text-muted">No summary available</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Email Management Actions -->
+                                <div class="card mt-3 border-primary">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0"><i class="fas fa-cog"></i> Email Actions</h6>
+                                    </div>
                                     <div class="card-body">
-                                        {% if email.content_summary %}
-                                        <h6 class="card-subtitle mb-2 text-muted">Content Summary</h6>
-                                        <p class="card-text">{{ email.content_summary }}</p>
-                                        {% endif %}
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <button class="btn btn-primary" onclick="releaseEmail({{ email.id }})">
+                                                <i class="fas fa-paper-plane"></i> Release (Mark as Safe)
+                                            </button>
+                                            <button class="btn btn-success" onclick="whitelistSender({{ email.id }}, '{{ email.sender }}')">
+                                                <i class="fas fa-check-circle"></i> Whitelist Sender
+                                            </button>
+                                            <button class="btn btn-warning" onclick="markAsSpam({{ email.id }})">
+                                                <i class="fas fa-exclamation-triangle"></i> Mark as Spam
+                                            </button>
+                                            <button class="btn btn-danger" onclick="deleteEmail({{ email.id }})">
+                                                <i class="fas fa-trash"></i> Delete Email
+                                            </button>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">
+                                                <i class="fas fa-info-circle"></i>
+                                                <strong>Release:</strong> Mark email as safe and reduce spam score.
+                                                <strong>Whitelist:</strong> Trust all future emails from this sender.
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -288,4 +372,115 @@
         </div>
     </div>
 </div>
+
+<script>
+// Release email (mark as safe)
+function releaseEmail(emailId) {
+    if (!confirm('Are you sure you want to release this email?\n\nThis will mark it as safe and reduce the spam score.')) {
+        return;
+    }
+
+    fetch(`/api/emails/${emailId}/release`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Email released successfully!\n\nThe email has been marked as safe.');
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to release email'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error releasing email');
+    });
+}
+
+// Whitelist sender
+function whitelistSender(emailId, sender) {
+    if (!confirm(`Are you sure you want to whitelist "${sender}"?\n\nFuture emails from this sender will bypass spam filtering.`)) {
+        return;
+    }
+
+    fetch('/api/emails/whitelist-sender', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sender: sender })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Sender whitelisted successfully!\n\nFuture emails from ' + sender + ' will be trusted.');
+            window.location.href = '/emails';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to whitelist sender'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error whitelisting sender');
+    });
+}
+
+// Mark as spam
+function markAsSpam(emailId) {
+    if (!confirm('Are you sure you want to mark this email as spam?\n\nThis will increase the spam score and may affect future emails from this sender.')) {
+        return;
+    }
+
+    fetch(`/api/emails/${emailId}/mark-spam`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Email marked as spam successfully!');
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to mark as spam'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error marking email as spam');
+    });
+}
+
+// Delete email
+function deleteEmail(emailId) {
+    if (!confirm('Are you sure you want to delete this email?\n\nThis action cannot be undone.')) {
+        return;
+    }
+
+    fetch(`/api/emails/${emailId}/delete`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Email deleted successfully!');
+            window.location.href = '/emails';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete email'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting email');
+    });
+}
+</script>
 {% endblock %}

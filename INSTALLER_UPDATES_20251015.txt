@@ -1,0 +1,68 @@
+OpenEFA Installer Updates - October 15, 2025
+============================================
+
+All session changes have been integrated into the installer.
+
+UPDATED FILES IN /opt/openefa-installer/openefa-files/:
+-------------------------------------------------------
+
+1. web/app.py
+   - Headers API to check both email_analysis and email_quarantine tables
+   - Email detail view with body/header parsing from raw_email
+   - Release email API endpoint
+   - Quarantine view with brief content preview (3-5 lines)
+   - All previous session changes
+
+2. services/db_processor.py
+   - SPF/DKIM/DMARC authentication extraction from raw emails
+   - Stores raw_email, original_spf, original_dkim, original_dmarc in database
+
+3. modules/email_database.py
+   - SQLAlchemy model updated with 4 new columns:
+     * raw_email (LONGTEXT) - Complete raw MIME email
+     * original_spf (VARCHAR 50) - SPF authentication result
+     * original_dkim (VARCHAR 50) - DKIM authentication result
+     * original_dmarc (VARCHAR 50) - DMARC authentication result
+
+4. web/templates/email_detail.html
+   - Complete rewrite of Content tab
+   - Collapsible sections for Email Body and Headers
+   - Email management action buttons (Release, Whitelist, Mark as Spam, Delete)
+   - JavaScript handlers for all actions
+
+5. web/templates/quarantine.html
+   - Shows brief content preview instead of full content
+   - Uses content_preview field (first 3-5 lines, max 250 chars)
+
+6. web/templates/admin/create_user.html
+   - Domain dropdown defaults to "Select Domain"
+   - Auto-population feature disabled to prevent wrong domain assignments
+   - Warning message added: "Please verify the domain is correct"
+
+7. web/templates/whitelist_management.html
+   - Prominent current domain indicator badge
+   - Improved domain switcher dropdown
+   - Shows all domains with current one marked (checkmark, badge)
+
+DATABASE SCHEMA UPDATES (Already in installer):
+-----------------------------------------------
+
+sql/schema_v1.sql:
+   - raw_email column added to email_analysis table
+   - raw_email column added to email_quarantine table
+
+lib/database.sh:
+   - GRANT SELECT ON mysql.proc privilege for backup functionality
+
+SUMMARY:
+--------
+All changes from the October 15, 2025 session have been integrated.
+Future installations will include:
+- Full email content display with headers
+- SPF/DKIM/DMARC authentication data
+- Email management actions
+- Brief content previews in quarantine view
+- Improved domain selection in user creation
+- Clear domain indicators in whitelist management
+
+Installation tested and confirmed working.

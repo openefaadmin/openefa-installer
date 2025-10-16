@@ -88,7 +88,7 @@ add_domain() {
         echo -e "${YELLOW}⚠ Domain $domain already exists in Postfix virtual${NC}"
     else
         # Add to Postfix virtual (before the journal line)
-        sed -i "/^journal@spacy.covereddata.com/i @$domain @$domain" "$POSTFIX_VIRTUAL"
+        sed -i "/^journal@mailserver.local/i @$domain @$domain" "$POSTFIX_VIRTUAL"
         echo -e "${GREEN}✓ Added $domain to Postfix virtual${NC}"
     fi
     

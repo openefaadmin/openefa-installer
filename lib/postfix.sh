@@ -91,15 +91,19 @@ EOTRANSPORT
     # Add transport entry for each domain
     if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
         for domain in "${INSTALL_DOMAINS[@]}"; do
-            echo "${domain}    smtp:[${RELAY_SERVER_IP}]:${RELAY_SERVER_PORT}" >> "${transport_file}"
+            echo "${domain}    smtp:[${RELAY_SERVER_IP}]" >> "${transport_file}"
         done
     else
         # Fallback to single domain if array not set
-        echo "${INSTALL_DOMAIN}    smtp:[${RELAY_SERVER_IP}]:${RELAY_SERVER_PORT}" >> "${transport_file}"
+        echo "${INSTALL_DOMAIN}    smtp:[${RELAY_SERVER_IP}]" >> "${transport_file}"
     fi
 
     # Hash the transport map
     if run_cmd "postmap ${transport_file}" "Failed to hash transport map"; then
+        # Set permissions so spacy-filter can update the transport file
+        chown spacy-filter:postfix "${transport_file}" "${transport_file}.db"
+        chmod 660 "${transport_file}" "${transport_file}.db"
+
         local domain_count=1
         if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
             domain_count=${#INSTALL_DOMAINS[@]}
@@ -277,6 +281,20 @@ configure_postfix() {
     configure_email_filter || return 1
     configure_aliases || return 1
     start_postfix || return 1
+
+    # Configure sudoers for Postfix reload
+    info "Configuring sudoers for Postfix management..."
+    cat > /etc/sudoers.d/spacy-postfix << 'EOSUDO'
+# Allow spacy-filter to reload Postfix for transport map updates
+spacy-filter ALL=(ALL) NOPASSWD: /usr/sbin/postfix reload
+EOSUDO
+    chmod 440 /etc/sudoers.d/spacy-postfix
+    if visudo -c -f /etc/sudoers.d/spacy-postfix >> "${LOG_FILE}" 2>&1; then
+        success "Postfix sudoers configured"
+    else
+        error "Failed to configure sudoers"
+        return 1
+    fi
 
     save_state "postfix_configured"
     success "Postfix configuration complete"

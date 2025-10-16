@@ -213,12 +213,12 @@ if __name__ == "__main__":
     manager = ModuleAccessManager()
     
     # Test module checking
-    print("Testing module access for seguelogic.com:")
-    modules = manager.check_client_modules('seguelogic.com')
+    print("Testing module access for example.com:")
+    modules = manager.check_client_modules('example.com')
     print(json.dumps(modules, indent=2))
     
     # Test alert fetching
     print("\nConfigured alerts:")
-    alerts = manager.get_client_alerts('seguelogic.com')
+    alerts = manager.get_client_alerts('example.com')
     for alert in alerts:
         print(f"- {alert['alert_name']}: {alert['alert_type']}")

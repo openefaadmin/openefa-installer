@@ -626,7 +626,7 @@ class EmailBlockingEngine:
             description: Optional description
             whitelist: If True, this is an exception rule
             priority: Lower number = higher priority
-            recipient_pattern: Optional recipient pattern (e.g., douglas@covereddata.com)
+            recipient_pattern: Optional recipient pattern (e.g., douglas@example.com)
         """
         if not self.SessionLocal:
             return False
@@ -933,7 +933,7 @@ def main():
     add_rule.add_argument('--description', help='Rule description')
     add_rule.add_argument('--whitelist', action='store_true', help='This is a whitelist rule')
     add_rule.add_argument('--priority', type=int, default=100, help='Rule priority (lower = higher)')
-    add_rule.add_argument('--recipient', help='Specific recipient pattern (e.g., douglas@covereddata.com)')
+    add_rule.add_argument('--recipient', help='Specific recipient pattern (e.g., douglas@example.com)')
     
     # Test blocking
     test = subparsers.add_parser('test', help='Test if an email would be blocked')

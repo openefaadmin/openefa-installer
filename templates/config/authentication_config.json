@@ -1,9 +1,9 @@
 {
   "real_auth_enabled": true,
   "auth_priority": "real_first",
-  "default_sender_ip": "192.168.50.37",
+  "default_sender_ip": "YOUR_RELAY_SERVER",
   "trusted_networks": [
-    "192.168.50.0/24",
+    "YOUR_INTERNAL_NETWORK/24",
     "127.0.0.0/8",
     "::1/128"
   ],
@@ -14,5 +14,9 @@
     "trust_microsoft_arc": true
   },
   "created": "$(date -Iseconds)",
-  "version": "1.1"
+  "version": "1.1",
+  "_comments": {
+    "default_sender_ip": "IP address of your relay server (typically same as mailguard_host)",
+    "trusted_networks": "CIDR notation for your internal network (e.g., 10.0.0.0/24, 192.168.1.0/24)"
+  }
 }

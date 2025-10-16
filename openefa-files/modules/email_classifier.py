@@ -46,9 +46,9 @@ class EmailClassifier:
 
         # Email addresses that receive system notifications
         self.SYSTEM_NOTIFICATION_RECIPIENTS = {
-            'alerts@seguelogic.com',
+            'alerts@example.com',
             'alerts@offgriddynamics.com',
-            'alerts@covereddata.com',
+            'alerts@example.com',
             'alerts@securedata247.com',
         }
 

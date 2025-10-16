@@ -12,7 +12,7 @@ cat > /tmp/victoria_spacy_test.eml << 'EOF'
 Return-Path: <bounce-12345_HTML-67890_ABC-123@bounce.s2.mc.pd25.com>
 Delivered-To: scott@securedata247.com
 Received: from mc.pd25.com (mc.pd25.com [192.0.2.100])
-	by spacy.covereddata.com (Postfix) with ESMTP id 12345
+	by mailserver.example.com (Postfix) with ESMTP id 12345
 	for <scott@securedata247.com>; Mon, 22 Jul 2025 15:30:00 -0700 (PDT)
 Authentication-Results: mc.pd25.com;
 	spf=pass (mc.pd25.com: domain of bounce-12345_HTML-67890_ABC-123@bounce.s2.mc.pd25.com designates 192.0.2.100 as permitted sender);
@@ -96,7 +96,7 @@ cat > /tmp/datto_test.eml << 'EOF'
 Return-Path: <reporting@dattobackup.com>
 Delivered-To: scott@securedata247.com
 Received: from dattobackup.com (dattobackup.com [192.0.2.200])
-	by spacy.covereddata.com (Postfix) with ESMTP id 54321
+	by mailserver.example.com (Postfix) with ESMTP id 54321
 	for <scott@securedata247.com>; Mon, 22 Jul 2025 15:30:00 -0700 (PDT)
 Authentication-Results: dattobackup.com;
 	spf=pass;

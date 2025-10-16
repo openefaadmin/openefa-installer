@@ -62,9 +62,16 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('quarantine_view') }}">
-                            <i class="fas fa-inbox"></i> Recent Messages
+                            <i class="fas fa-inbox"></i> User Messages
                         </a>
                     </li>
+                    {% if current_user.is_admin() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('emails') }}">
+                            <i class="fas fa-envelope-open-text"></i> All Emails
+                        </a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="/learning">
                             <i class="fas fa-brain"></i> Learning

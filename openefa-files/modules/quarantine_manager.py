@@ -274,7 +274,7 @@ class QuarantineManager:
 
         return {
             'mode': mode,
-            'host': dest.get('host', '192.168.50.37'),
+            'host': dest.get('host', 'YOUR_RELAY_SERVER'),
             'port': dest.get('port', 25),
             'timeout': dest.get('timeout', 30),
             'use_tls': dest.get('use_tls', False)

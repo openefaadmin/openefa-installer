@@ -469,6 +469,76 @@
 </div>
 {% endif %}
 
+<!-- Recent Messages Section -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-inbox"></i> Recent Messages - {{ selected_domain }}
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if recent_emails %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Sender</th>
+                        <th>Subject</th>
+                        <th>Spam Score</th>
+                        <th>Category</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for email in recent_emails %}
+                    <tr>
+                        <td>
+                            {% if email.timestamp %}
+                                {{ email.timestamp.strftime('%Y-%m-%d %H:%M') if email.timestamp.strftime else email.timestamp }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ email.sender }}</td>
+                        <td>
+                            <a href="{{ url_for('email_detail', email_id=email.id) }}" class="text-decoration-none">
+                                {{ email.subject[:50] }}{% if email.subject|length > 50 %}...{% endif %}
+                            </a>
+                        </td>
+                        <td>
+                            {% if email.spam_score >= 5.0 %}
+                                <span class="badge bg-danger">{{ email.spam_score }}</span>
+                            {% elif email.spam_score >= 3.0 %}
+                                <span class="badge bg-warning text-dark">{{ email.spam_score }}</span>
+                            {% else %}
+                                <span class="badge bg-success">{{ email.spam_score }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if email.email_category %}
+                                <span class="badge bg-secondary">{{ email.email_category }}</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">unknown</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="text-end mt-2">
+            <a href="{{ url_for('emails') }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-list"></i> View All Emails
+            </a>
+        </div>
+        {% else %}
+        <div class="alert alert-info mb-0">
+            <i class="fas fa-info-circle"></i> No recent emails found for {{ selected_domain }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <!-- Actions Panel -->
 <div class="card">
     <div class="card-header">
@@ -482,15 +552,15 @@
             <i class="fas fa-file-pdf"></i> Generate Enhanced Report for {{ selected_domain }}
         </a>
         {% endif %}
-        
+
         <a href="{{ url_for('emails') }}" class="btn btn-primary me-2">
             <i class="fas fa-envelope"></i> View All Emails
         </a>
-        
+
         <a href="{{ url_for('export_data', format='csv') }}" class="btn btn-secondary me-2">
             <i class="fas fa-download"></i> Export Data (CSV)
         </a>
-        
+
         {% if current_user.is_admin() %}
         <a href="{{ url_for('admin_users') }}" class="btn btn-warning">
             <i class="fas fa-users-cog"></i> Manage Users

@@ -236,8 +236,8 @@ class DNSValidator:
             
             # Look for the first external sender (skip internal relays)
             if any(internal in received_str for internal in [
-                'spacy.covereddata.com', 'mailguard.covereddata.com', 
-                '192.168.', '127.0.0.1', 'localhost', 'zimbra.apollomx.com'
+                'mailserver.example.com', 'mailguard.example.com', 
+                '192.168.', '127.0.0.1', 'localhost', 'mailserver.local'
             ]):
                 continue
                 

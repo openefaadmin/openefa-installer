@@ -199,7 +199,7 @@ class ProductionSpaCyDatabaseProcessor:
                 if not message_id:
                     # Generate a message ID if none exists
                     timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S')
-                    message_id = f"<spacy-production-{timestamp_str}@covereddata.com>"
+                    message_id = f"<spacy-production-{timestamp_str}@example.com>"
                 
                 # FIXED: Better sender extraction logic
                 sender = ''
@@ -288,9 +288,72 @@ class ProductionSpaCyDatabaseProcessor:
                 has_attachments = parsed_email.get('has_attachments', 0)
                 training_data_saved = int(analysis_results.get('training_data_saved', 0))
                 
+                # Extract authentication headers (SPF, DKIM, DMARC) from raw email
+                original_spf = None
+                original_dkim = None
+                original_dmarc = None
+
+                if message_str:
+                    try:
+                        from email import message_from_string
+                        import re
+                        msg = message_from_string(message_str)
+
+                        # Check for custom X-SpaCy-Auth-Results header first (our system's results)
+                        spacy_auth = msg.get('X-SpaCy-Auth-Results', '')
+                        if spacy_auth:
+                            # Parse format: "openspacy; spf=pass; dkim=fail; dmarc=pass (p=reject)"
+                            if 'spf=' in spacy_auth:
+                                spf_match = re.search(r'spf=(\w+)', spacy_auth, re.IGNORECASE)
+                                if spf_match:
+                                    original_spf = spf_match.group(1)
+
+                            if 'dkim=' in spacy_auth:
+                                dkim_match = re.search(r'dkim=(\w+)', spacy_auth, re.IGNORECASE)
+                                if dkim_match:
+                                    original_dkim = dkim_match.group(1)
+
+                            if 'dmarc=' in spacy_auth:
+                                dmarc_match = re.search(r'dmarc=(\w+)', spacy_auth, re.IGNORECASE)
+                                if dmarc_match:
+                                    original_dmarc = dmarc_match.group(1)
+
+                        # Fallback: Check standard headers if custom headers not found
+                        if not original_spf:
+                            spf_header = msg.get('Received-SPF', '')
+                            if spf_header:
+                                spf_parts = spf_header.lower().split()
+                                if spf_parts:
+                                    original_spf = spf_parts[0]
+
+                        if not original_dkim or not original_dmarc:
+                            auth_results = msg.get('Authentication-Results', '')
+                            if auth_results:
+                                if not original_dkim:
+                                    if 'dkim=pass' in auth_results.lower():
+                                        original_dkim = 'pass'
+                                    elif 'dkim=fail' in auth_results.lower():
+                                        original_dkim = 'fail'
+                                    elif 'dkim=neutral' in auth_results.lower():
+                                        original_dkim = 'neutral'
+                                    elif 'dkim=none' in auth_results.lower():
+                                        original_dkim = 'none'
+
+                                if not original_dmarc:
+                                    if 'dmarc=pass' in auth_results.lower():
+                                        original_dmarc = 'pass'
+                                    elif 'dmarc=fail' in auth_results.lower():
+                                        original_dmarc = 'fail'
+                                    elif 'dmarc=none' in auth_results.lower():
+                                        original_dmarc = 'none'
+
+                        logger.info(f"🔐 Extracted auth headers: SPF={original_spf}, DKIM={original_dkim}, DMARC={original_dmarc}")
+                    except Exception as e:
+                        logger.warning(f"Could not extract auth headers: {e}")
+
                 # Log what we're about to insert
                 logger.info(f"📝 Inserting: sender='{sender}', subject='{subject}', category='{email_category}'")
-                
+
                 # Insert into database with comprehensive schema
                 insert_sql = """
                 INSERT INTO email_analysis (
@@ -300,13 +363,15 @@ class ProductionSpaCyDatabaseProcessor:
                     content_summary, detected_language, language_confidence, sentiment_polarity,
                     sentiment_subjectivity, sentiment_extremity, sentiment_manipulation,
                     manipulation_indicators, category_confidence, secondary_categories,
-                    classification_scores, has_attachments, training_data_saved
+                    classification_scores, has_attachments, training_data_saved, raw_email,
+                    original_spf, original_dkim, original_dmarc
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s
                 )
                 """
-                
+
                 # Execute the insert
                 cursor.execute(insert_sql, (
                     timestamp, message_id, sender, recipients, subject, spam_score,
@@ -315,7 +380,8 @@ class ProductionSpaCyDatabaseProcessor:
                     content_summary, detected_language, language_confidence, sentiment_polarity,
                     sentiment_subjectivity, sentiment_extremity, sentiment_manipulation,
                     manipulation_indicators, category_confidence, secondary_categories,
-                    classification_scores, has_attachments, training_data_saved
+                    classification_scores, has_attachments, training_data_saved, message_str,
+                    original_spf, original_dkim, original_dmarc
                 ))
                 
                 self.db_connection.commit()

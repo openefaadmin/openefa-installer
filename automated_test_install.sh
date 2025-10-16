@@ -9,8 +9,8 @@ echo "OpenEFA Automated Installation Test"
 echo "=========================================="
 echo ""
 echo "Test Configuration:"
-echo "  Domain:        openefa.org"
-echo "  Relay Server:  192.168.50.37"
+echo "  Domain:        example.com"
+echo "  Relay Server:  YOUR_RELAY_SERVER"
 echo "  Module Tier:   2 (Standard)"
 echo "  Debug Logging: Enabled"
 echo ""
@@ -19,11 +19,11 @@ echo ""
 export OPENEFA_NONINTERACTIVE=1
 
 # Required configuration
-export OPENEFA_DOMAIN="openefa.org"
+export OPENEFA_DOMAIN="example.com"
 export OPENEFA_DB_PASSWORD="OpenEFA_DB_Test_2025!"
-export OPENEFA_ADMIN_EMAIL="admin@openefa.org"
+export OPENEFA_ADMIN_EMAIL="admin@example.com"
 export OPENEFA_ADMIN_PASSWORD="OpenEFA_Admin_2025!"
-export OPENEFA_RELAY_IP="192.168.50.37"
+export OPENEFA_RELAY_IP="YOUR_RELAY_SERVER"
 
 # Optional configuration (with defaults)
 export OPENEFA_DB_NAME="spacy_email_db"

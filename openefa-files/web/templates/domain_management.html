@@ -130,6 +130,11 @@
                                         {% endif %}
                                     </div>
                                     <div class="client-name mt-1">{{ domain.client_name or 'No client name' }}</div>
+                                    {% if domain.relay_host %}
+                                    <div class="mt-1">
+                                        <small class="text-muted"><i class="fas fa-server"></i> Relay: <code>{{ domain.relay_host }}</code></small>
+                                    </div>
+                                    {% endif %}
                                     <div class="domain-stats mt-2">
                                         <i class="fas fa-shield-alt text-danger"></i> {{ domain.rule_count }} blocking rules
                                         <span class="ms-3"><i class="fas fa-ban text-warning"></i> {{ domain.blocked_count }} blocked (30d)</span>
@@ -138,8 +143,8 @@
                                 </div>
                                 <div>
                                     <button class="btn btn-sm btn-primary me-1"
-                                            onclick="editDomain({{ domain.id }}, '{{ domain.client_name or '' }}')"
-                                            title="Edit Client Name">
+                                            onclick="editDomain({{ domain.id }}, '{{ domain.client_name or '' }}', '{{ domain.relay_host or '' }}')"
+                                            title="Edit Domain">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                     <button class="btn btn-sm {% if domain.active %}btn-warning{% else %}btn-success{% endif %} me-1"
@@ -226,6 +231,12 @@
                                placeholder="Example Corporation">
                         <small class="text-muted">Optional friendly name for this organization</small>
                     </div>
+                    <div class="mb-3">
+                        <label for="relay_host" class="form-label">Relay Host (IP or Hostname)</label>
+                        <input type="text" class="form-control" id="relay_host" name="relay_host"
+                               placeholder="192.168.1.100 or mail.example.com">
+                        <small class="text-muted">Where to relay emails for this domain after processing</small>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -243,7 +254,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Client Name</h5>
+                <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Domain</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -252,6 +263,12 @@
                     <div class="mb-3">
                         <label for="edit_client_name" class="form-label">Client Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="edit_client_name" name="client_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_relay_host" class="form-label">Relay Host (IP or Hostname)</label>
+                        <input type="text" class="form-control" id="edit_relay_host" name="relay_host"
+                               placeholder="192.168.1.100 or mail.example.com">
+                        <small class="text-muted">Where to relay emails for this domain after processing</small>
                     </div>
                 </form>
             </div>
@@ -281,6 +298,7 @@ function showAlert(message, type = 'success') {
 function addDomain() {
     const domain = document.getElementById('domain').value.trim().toLowerCase();
     const clientName = document.getElementById('client_name').value.trim();
+    const relayHost = document.getElementById('relay_host').value.trim();
 
     if (!domain) {
         showAlert('<i class="fas fa-exclamation-circle"></i> Please enter a domain', 'warning');
@@ -292,7 +310,8 @@ function addDomain() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             domain: domain,
-            client_name: clientName
+            client_name: clientName,
+            relay_host: relayHost
         })
     })
     .then(response => response.json())
@@ -308,15 +327,17 @@ function addDomain() {
     .catch(error => showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger'));
 }
 
-function editDomain(domainId, currentName) {
+function editDomain(domainId, currentName, currentRelayHost) {
     document.getElementById('edit_domain_id').value = domainId;
     document.getElementById('edit_client_name').value = currentName;
+    document.getElementById('edit_relay_host').value = currentRelayHost || '';
     new bootstrap.Modal(document.getElementById('editDomainModal')).show();
 }
 
 function submitEditDomain() {
     const domainId = document.getElementById('edit_domain_id').value;
     const clientName = document.getElementById('edit_client_name').value.trim();
+    const relayHost = document.getElementById('edit_relay_host').value.trim();
 
     if (!clientName) {
         showAlert('<i class="fas fa-exclamation-circle"></i> Please enter a client name', 'warning');
@@ -327,7 +348,8 @@ function submitEditDomain() {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            client_name: clientName
+            client_name: clientName,
+            relay_host: relayHost
         })
     })
     .then(response => response.json())

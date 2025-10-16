@@ -72,6 +72,10 @@ class SpacyAnalysis(Base):
     classification_scores = Column(Text)  # JSON string
     has_attachments = Column(Boolean, default=False)
     training_data_saved = Column(Integer, default=0)
+    raw_email = Column(Text)  # Complete raw MIME email for headers and full content
+    original_spf = Column(String(50))  # SPF authentication result
+    original_dkim = Column(String(50))  # DKIM authentication result
+    original_dmarc = Column(String(50))  # DMARC authentication result
 
     def __repr__(self):
         return f"<SpacyAnalysis(id={self.id}, message_id='{self.message_id[:30]}...', timestamp='{self.timestamp}')>"
