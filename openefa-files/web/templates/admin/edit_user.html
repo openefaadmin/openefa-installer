@@ -122,9 +122,9 @@
                                     <i class="fas fa-shield-alt"></i> Role
                                 </label>
                                 <select class="form-select" id="role" name="role">
-                                    <option value="client" {% if user.role == 'client' %}selected{% endif %}>Client</option>
-                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrator</option>
-                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                    <option value="client" {% if user.role == 'client' %}selected{% endif %}>User</option>
+                                    <option value="domain_admin" {% if user.role == 'domain_admin' %}selected{% endif %}>Domain Admin</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>SuperAdmin</option>
                                 </select>
                             </div>
                         </div>

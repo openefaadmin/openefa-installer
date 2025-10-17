@@ -53,9 +53,9 @@ class BehavioralBaseline:
                 lines = f.readlines()
                 config = {}
                 for line in lines:
-                    if '=' in line:
+                    if '=' in line and not line.strip().startswith('['):
                         key, value = line.strip().split('=', 1)
-                        config[key] = value.strip('"')
+                        config[key.strip()] = value.strip().strip('"')
 
             # Create database connection
             connection_string = f"mysql+pymysql://{config.get('user', 'spacy_user')}:{config.get('password', '')}@localhost/spacy_email_db"
@@ -76,23 +76,31 @@ class BehavioralBaseline:
         if not self.session:
             return
 
+        # Default config values
+        default_config = {
+            'min_emails_for_baseline': '20',
+            'volume_spike_threshold': '3.0',
+            'new_recipient_threshold': '0.5',
+            'time_anomaly_hours': '3',
+            'anomaly_score_threshold': '7.0',
+            'auto_quarantine_score': '9.0'
+        }
+
         try:
             result = self.session.execute(
                 text("SELECT config_key, config_value FROM behavioral_config")
             )
             for row in result:
                 self.config[row[0]] = row[1]
+
+            # If no config loaded from database, use defaults
+            if not self.config:
+                logger.warning("No behavioral_config found in database, using defaults")
+                self.config = default_config
         except Exception as e:
             logger.error(f"Failed to load config: {e}")
-            # Default config
-            self.config = {
-                'min_emails_for_baseline': '20',
-                'volume_spike_threshold': '3.0',
-                'new_recipient_threshold': '0.5',
-                'time_anomaly_hours': '3',
-                'anomaly_score_threshold': '7.0',
-                'auto_quarantine_score': '9.0'
-            }
+            # Use default config on error
+            self.config = default_config
 
     def update_baseline(self, email_data: Dict) -> None:
         """

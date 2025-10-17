@@ -1,7 +1,290 @@
 # OpenEFA Project Memory
-**Last Updated:** October 15, 2025
+**Last Updated:** October 17, 2025
 
-## Recent Session Summary (October 15, 2025)
+## Recent Session Summary (October 16-17, 2025)
+
+### Major Installer Fixes and Integration
+
+#### Customer Issue Resolution
+**Status:** ✅ Complete and tested on minimal Ubuntu 24.04
+
+**Problem:** Customer experiencing "Command died with status 1" error on minimal Ubuntu installation
+- Email filter crashing when processing emails
+- Error: "No module named 'utils'"
+- Missing Python packages: spacy, textblob, geoip2, PyMuPDF
+- Pre-flight checks failing on minimal Ubuntu (missing iputils-ping, dnsutils)
+
+**Root Causes:**
+1. Minimal Ubuntu lacks diagnostic tools (iputils-ping, dnsutils, net-tools) causing pre-flight checks to fail
+2. Utils module not created during installation (marketing_spam_filter.py and analysis.py import from utils.logging)
+3. NumPy/Pandas/Matplotlib binary incompatibility (pandas compiled against NumPy 1.x, installer uses NumPy 2.x)
+4. MariaDB data directory not initialized on some minimal installations
+5. openefa-files directory excluded from installer package
+6. behavioral_baseline.py config parser not stripping whitespace from keys
+
+**Solutions Implemented:**
+
+1. **Diagnostic Tools Installation** ✅
+   - Install iputils-ping, dnsutils, net-tools BEFORE pre-flight checks
+   - New function: `install_diagnostic_tools()` in lib/dependencies.sh
+   - Called in install.sh lines 55-59
+
+2. **Utils Module Creation** ✅
+   - Automatically create /opt/spacyserver/utils/ directory
+   - Create utils/__init__.py and utils/logging.py with safe_log(), log_sentiment_debug()
+   - Function: `create_utils_module()` in lib/dependencies.sh
+
+3. **NumPy/Pandas Compatibility Fix** ✅
+   - Install numpy>=2.3.0 FIRST in pip packages list (lib/packages.sh line 117)
+   - Automatically rebuild pandas, matplotlib, seaborn after initial install
+   - Rebuild code in lib/packages.sh lines 180-191
+   - Ensures binary compatibility with NumPy 2.x
+
+4. **MariaDB Package Verification** ✅
+   - Verify MariaDB package installed before attempting to start
+   - Check data directory exists after package installation
+   - Improved error logging with journalctl output
+   - Code in lib/packages.sh lines 187-220
+
+5. **Complete Application Files** ✅
+   - Include openefa-files/ directory in installer package (was excluded)
+   - Contains all 36 Python modules, web templates, scripts
+   - Package size: 836KB (was 109KB without openefa-files)
+
+6. **Multi-Tenant Role System** ✅
+   - Updated web templates with correct role names
+   - Roles: User (client), Domain Admin (domain_admin), SuperAdmin (admin)
+   - Files updated:
+     - openefa-files/web/templates/admin/edit_user.html
+     - openefa-files/web/templates/admin/create_user.html
+     - openefa-files/web/templates/admin/users.html
+     - openefa-files/web/templates/auth/profile.html
+
+7. **Behavioral Baseline Config Parser Fix** ✅
+   - Fixed .my.cnf parsing to strip whitespace from keys
+   - Changed: `config[key.strip()] = value.strip().strip('"')`
+   - File: openefa-files/modules/behavioral_baseline.py line 57-58
+   - Resolves database authentication errors
+
+**Files Modified:**
+- `/opt/openefa-installer/install.sh` - Added diagnostic tools installation call
+- `/opt/openefa-installer/lib/packages.sh` - numpy first, pandas rebuild, MariaDB verification
+- `/opt/openefa-installer/lib/dependencies.sh` - Diagnostic tools, utils module, enhanced dependencies
+- `/opt/openefa-installer/openefa-files/modules/behavioral_baseline.py` - Config parser fix
+- `/opt/openefa-installer/openefa-files/web/templates/admin/*.html` - Role name updates
+
+**Testing Results:**
+- ✅ Fresh install on Ubuntu 24.04 Minimal Server
+- ✅ All pre-flight checks pass
+- ✅ MariaDB installs and starts successfully
+- ✅ All Python packages install without errors
+- ✅ Utils module created automatically
+- ✅ All 18 modules load successfully
+- ✅ SpacyWeb starts and accessible on port 5500
+- ✅ Correct role names displayed: User, Domain Admin, SuperAdmin
+- ✅ Email filter processes test emails without "Command died with status 1" error
+- ✅ Behavioral baseline connects to database successfully
+- ✅ Exit code 0 (success)
+
+**Installation Duration:** ~4-5 minutes on minimal Ubuntu
+
+**Final Package:** openefa-installer-v2.7-final.tar.gz (836KB)
+
+---
+
+### Database Schema Updates (Multi-Tenant)
+
+**New Table: `user_domain_assignments`**
+```sql
+CREATE TABLE user_domain_assignments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  domain VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_by INT DEFAULT NULL,
+  is_active TINYINT(1) DEFAULT 1,
+  UNIQUE KEY (user_id, domain),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+**New Stored Procedures:**
+- `sp_assign_domain_to_user` - Assign domain to domain_admin user
+- `sp_remove_domain_from_user` - Remove domain assignment
+- `sp_get_user_domains` - Get all domains for a user
+
+**New View:**
+- `v_user_domains` - Join users with their assigned domains
+
+**Migration Files:**
+- `/opt/openefa-installer/sql/migrations/000_create_migrations_table.sql`
+- `/opt/openefa-installer/sql/migrations/001_add_domain_admin_role.sql`
+
+**Updated Schema:**
+- `/opt/openefa-installer/sql/schema_v1.sql` - Added user_domain_assignments table (lines 820-833)
+
+---
+
+### Role System Implementation
+
+**Three Roles:**
+1. **admin** (SuperAdmin) - Full system access, all domains
+2. **domain_admin** (Domain Admin) - Assigned domains only, manage domain users
+3. **client** (User) - Own email address only, view own emails
+
+**Access Control Matrix:**
+
+| Feature | SuperAdmin | Domain Admin | User |
+|---------|------------|--------------|------|
+| View Emails | All domains | Assigned domains | Own emails |
+| Manage Quarantine | All | Assigned domains | Own emails |
+| User Management | All users | Domain users | None |
+| Domain Config | All | Assigned domains | None |
+| System Settings | Full access | None | None |
+
+**Web Templates Updated:**
+- Dropdown options show: User, Domain Admin, SuperAdmin
+- Badge colors:
+  - SuperAdmin: Red badge (bg-danger)
+  - Domain Admin: Yellow badge (bg-warning text-dark)
+  - User: Blue badge (bg-primary)
+
+---
+
+### Installer Architecture
+
+**Installation Order:**
+1. Initialize logging
+2. **Install diagnostic tools** (iputils-ping, dnsutils, net-tools, lsb-release) ← NEW
+3. Run pre-flight checks
+4. Gather installation config
+5. Create spacy-filter user
+6. Install system packages
+7. Install Python packages
+   - **numpy>=2.3.0 installed FIRST** ← NEW
+   - All other packages
+   - **Rebuild pandas/matplotlib/seaborn** ← NEW
+8. Install enhanced dependencies
+   - spacy, textblob, geoip2, PyMuPDF
+   - Download spaCy language models
+   - **Create utils module** ← NEW
+9. Setup database
+   - Create tables
+   - **Apply migrations** ← NEW
+10. Configure Postfix
+11. Install OpenSpacy modules
+12. Setup services
+13. Validate installation
+
+**Key Installer Functions:**
+
+`install_diagnostic_tools()` - lib/dependencies.sh
+```bash
+# Installs ping, nslookup, netstat, lsb_release before pre-flight checks
+# Ensures minimal Ubuntu compatibility
+```
+
+`create_utils_module()` - lib/dependencies.sh
+```bash
+# Creates /opt/spacyserver/utils/ directory
+# Generates __init__.py and logging.py with safe_log() function
+# Fixes "No module named 'utils'" import errors
+```
+
+`install_python_packages()` - lib/packages.sh
+```bash
+# numpy>=2.3.0 installed FIRST (line 117)
+# Then all other packages
+# Rebuild pandas, matplotlib, seaborn for NumPy 2.x compatibility (lines 180-191)
+```
+
+---
+
+### Documentation Created
+
+**INTEGRATION_SUMMARY.md** - Comprehensive technical documentation
+- Overview of all changes
+- Database schema updates
+- Installation flow diagram
+- Testing results
+- Rollout instructions
+
+**TESTING_GUIDE.md** - Detailed testing procedures
+- 7 test scenarios for minimal Ubuntu
+- Pre-installation checklist
+- Test results template
+- Common issues and fixes
+- Cleanup commands for re-testing
+
+**GIT_COMMIT_CHECKLIST.md** - Ready-to-use git workflow
+- Pre-commit checklist
+- Ready-to-use git commands (single or multiple commits)
+- Rollback plan
+- Post-commit tasks
+
+**TRANSFER_TO_TEST_SERVER.txt** - Step-by-step transfer guide
+- Package creation commands
+- SCP transfer instructions
+- Extraction and testing commands
+- Expected results checklist
+
+---
+
+### Known Issues and Resolutions
+
+**Issue 1: "Command died with status 1"**
+**Status:** ✅ Resolved
+- Missing utils module and Python packages
+- Fixed by automatic utils module creation and enhanced dependencies
+
+**Issue 2: Pre-flight checks fail on minimal Ubuntu**
+**Status:** ✅ Resolved
+- Missing diagnostic tools (iputils-ping, dnsutils)
+- Fixed by installing diagnostic tools before pre-flight checks run
+
+**Issue 3: NumPy/Pandas binary incompatibility**
+**Status:** ✅ Resolved
+- Pandas wheels compiled against NumPy 1.x, installer uses NumPy 2.x
+- Fixed by installing numpy first, then rebuilding pandas/matplotlib/seaborn
+
+**Issue 4: MariaDB fails to start**
+**Status:** ✅ Resolved
+- Data directory not initialized on some installations
+- Fixed by verifying package installation and improving error logging
+
+**Issue 5: openefa-files missing**
+**Status:** ✅ Resolved
+- Directory excluded from installer package
+- Fixed by removing exclusion (was --exclude='openefa-files')
+
+**Issue 6: Behavioral baseline database authentication fails**
+**Status:** ✅ Resolved
+- Config parser not stripping whitespace from keys in .my.cnf
+- Fixed by adding .strip() to key parsing
+
+---
+
+### Testing Environment
+
+**Test Server:** 192.168.50.66 (ubtemplate)
+**OS:** Ubuntu 24.04 LTS Minimal Server
+**RAM:** 4GB
+**Disk:** 40GB
+**Network:** Internet connected
+
+**Test Iterations:** 6 clean installations from snapshot
+- v2.0 - Initial integration attempt (failed: MariaDB)
+- v2.1 - Added MariaDB initialization (failed: still MariaDB issues)
+- v2.2 - MariaDB verification only (failed: missing openefa-files)
+- v2.3 - Added openefa-files (failed: numpy/pandas compatibility)
+- v2.4 - numpy first (failed: still compatibility issues)
+- v2.5 - Added pandas rebuild (failed: role names wrong)
+- v2.6 - Corrected role names (success: spacyweb warning only)
+- v2.7 - Fixed behavioral_baseline parser ✅ **COMPLETE SUCCESS**
+
+---
+
+## Previous Session Summary (October 15, 2025)
 
 ### Major Features Implemented
 

@@ -50,15 +50,19 @@
                                 <td>
                                     {% if user.role == 'admin' %}
                                     <span class="badge bg-danger">
-                                        <i class="fas fa-crown"></i> Admin
+                                        <i class="fas fa-crown"></i> SuperAdmin
+                                    </span>
+                                    {% elif user.role == 'domain_admin' %}
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fas fa-user-shield"></i> Domain Admin
                                     </span>
                                     {% elif user.role == 'client' %}
                                     <span class="badge bg-primary">
-                                        <i class="fas fa-user"></i> Client
+                                        <i class="fas fa-user"></i> User
                                     </span>
                                     {% else %}
                                     <span class="badge bg-secondary">
-                                        <i class="fas fa-eye"></i> Viewer
+                                        <i class="fas fa-question"></i> {{ user.role }}
                                     </span>
                                     {% endif %}
                                 </td>

@@ -114,6 +114,7 @@ install_python_packages() {
     info "Installing Python packages..."
     
     local pip_packages=(
+        "numpy>=2.3.0"
         "Flask==3.0.0"
         "Flask-CORS==4.0.0"
         "Flask-Login==0.6.3"
@@ -161,19 +162,32 @@ install_python_packages() {
     # Install SpaCy packages based on module tier
     if [[ "${MODULE_TIER:-2}" == "3" ]]; then
         info "Installing SpaCy AI models (Tier 3 - this may take a few minutes)..."
-        
+
         if run_cmd "${venv_path}/bin/pip install spacy==3.7.2" "Failed to install spacy"; then
             success "SpaCy installed"
         else
             return 1
         fi
 
-        # Download English language model
-        if run_cmd "${venv_path}/bin/python -m spacy download en_core_web_sm" "Failed to download SpaCy model"; then
+        # Download English language model (large for better accuracy)
+        if run_cmd "${venv_path}/bin/python -m spacy download en_core_web_lg" "Failed to download SpaCy model"; then
             success "SpaCy language model downloaded"
         else
             warn "SpaCy model download failed (can be installed later)"
         fi
+    fi
+
+    # Rebuild pandas, matplotlib, and seaborn against NumPy 2.x
+    # This ensures binary compatibility with the installed numpy version
+    info "Rebuilding data science packages for NumPy 2.x compatibility..."
+    if ${venv_path}/bin/pip uninstall -y pandas matplotlib seaborn >> "${LOG_FILE}" 2>&1; then
+        if ${venv_path}/bin/pip install --no-cache-dir pandas matplotlib seaborn >> "${LOG_FILE}" 2>&1; then
+            success "Data science packages rebuilt successfully"
+        else
+            warn "Package rebuild had issues (may affect SpacyWeb)"
+        fi
+    else
+        warn "Could not rebuild packages (continuing anyway)"
     fi
 
     success "Python environment configured"
@@ -187,6 +201,23 @@ install_python_packages() {
 configure_mariadb() {
     info "Configuring MariaDB service..."
 
+    # Verify MariaDB package is actually installed
+    if ! dpkg -l | grep -q "^ii.*mariadb-server"; then
+        error "MariaDB server package not installed"
+        info "Attempting to install MariaDB..."
+        if ! apt-get install -y mariadb-server mariadb-client; then
+            error "Failed to install MariaDB"
+            return 1
+        fi
+    fi
+
+    # Verify MariaDB data directory was created by package installation
+    if [[ ! -d /var/lib/mysql ]]; then
+        error "MariaDB data directory not created at /var/lib/mysql"
+        error "Package installation may have failed"
+        return 1
+    fi
+
     # Enable and start MariaDB
     if run_cmd "systemctl enable mariadb" "Failed to enable MariaDB"; then
         success "MariaDB enabled"
@@ -197,6 +228,8 @@ configure_mariadb() {
     if run_cmd "systemctl start mariadb" "Failed to start MariaDB"; then
         success "MariaDB started"
     else
+        error "MariaDB failed to start - checking logs..."
+        journalctl -xeu mariadb.service -n 20 --no-pager >> "${LOG_FILE}" 2>&1
         return 1
     fi
 
@@ -340,6 +373,7 @@ install_all_packages() {
     configure_redis || return 1
     configure_clamav || return 1
     install_python_packages || return 1
+    install_enhanced_dependencies || warn "Some enhanced dependencies failed (continuing)"
 
     save_state "all_packages_installed"
     success "All packages installed successfully"

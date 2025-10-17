@@ -25,6 +25,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/checks.sh"
 source "${SCRIPT_DIR}/lib/prompts.sh"
 source "${SCRIPT_DIR}/lib/packages.sh"
+source "${SCRIPT_DIR}/lib/dependencies.sh"
 source "${SCRIPT_DIR}/lib/database.sh"
 source "${SCRIPT_DIR}/lib/postfix.sh"
 source "${SCRIPT_DIR}/lib/modules.sh"
@@ -50,6 +51,12 @@ main() {
     info "Starting OpenEFA installation..."
     info "Log file: ${LOG_FILE}"
     echo ""
+
+    # Install diagnostic tools FIRST (minimal Ubuntu compatibility)
+    # This prevents pre-flight check failures on minimal Ubuntu installations
+    if ! install_diagnostic_tools; then
+        warn "Some diagnostic tools failed to install (continuing anyway)"
+    fi
 
     # Pre-flight checks
     if ! run_all_checks; then

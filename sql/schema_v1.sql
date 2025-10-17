@@ -62,6 +62,19 @@ CREATE TABLE `behavioral_config` (
   PRIMARY KEY (`config_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `behavioral_config`
+--
+
+INSERT INTO `behavioral_config` (`config_key`, `config_value`, `description`) VALUES
+('min_emails_for_baseline', '20', 'Minimum number of emails required to establish a behavioral baseline'),
+('volume_spike_threshold', '3.0', 'Multiplier for detecting unusual email volume (3.0 = 3x normal rate)'),
+('new_recipient_threshold', '0.5', 'Threshold for flagging unusual new recipient patterns (0.5 = 50% new)'),
+('time_anomaly_hours', '3', 'Hours outside normal sending pattern to trigger time anomaly'),
+('anomaly_score_threshold', '7.0', 'Score threshold for flagging behavioral anomalies'),
+('auto_quarantine_score', '9.0', 'Score threshold for automatic quarantine of suspicious emails');
+
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `blocked_attempts` (
@@ -220,6 +233,19 @@ CREATE TABLE `conversation_learning_config` (
   UNIQUE KEY `config_key` (`config_key`)
 ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `conversation_learning_config`
+--
+
+INSERT INTO `conversation_learning_config` (`config_key`, `config_value`, `description`) VALUES
+('max_adjustment', '2.0', 'Maximum spam score adjustment for legitimate conversation patterns'),
+('learning_enabled', 'true', 'Enable/disable conversation pattern learning'),
+('min_messages_for_learning', '10', 'Minimum messages required before applying learning adjustments'),
+('vocab_learning_threshold', '3', 'Minimum frequency before adding vocabulary to learning database'),
+('relationship_confidence_threshold', '5', 'Minimum message count for high confidence relationships'),
+('auto_cleanup_days', '365', 'Days to retain old conversation learning data');
+
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `conversation_learning_progress` (
@@ -809,6 +835,34 @@ CREATE TABLE `users` (
   KEY `idx_users_domain` (`domain`)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `user_domain_assignments`
+-- Multi-tenant domain assignment for domain_admin users
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_domain_assignments` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `domain` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `created_by` int(11) DEFAULT NULL COMMENT 'User ID who created this assignment',
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_domain` (`user_id`,`domain`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_domain` (`domain`),
+  KEY `idx_active` (`is_active`),
+  CONSTRAINT `fk_user_domain_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Maps users to domains they can manage (for domain_admin role)';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `whitelist_requests`
+--
+
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `whitelist_requests` (

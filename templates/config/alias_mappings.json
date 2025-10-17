@@ -1,0 +1,27 @@
+{
+  "comment": "Email alias mappings for thread awareness module",
+  "description": "Maps email aliases to primary accounts for proper thread tracking",
+  "internal_domains": [],
+  "primary_accounts": {},
+  "example": {
+    "comment": "Example configuration (remove this section when adding real accounts)",
+    "internal_domains_example": ["company.com", "subsidiary.com"],
+    "primary_accounts_example": {
+      "john.doe@company.com": {
+        "aliases": [
+          "j.doe@company.com",
+          "jdoe@company.com",
+          "john@company.com"
+        ],
+        "description": "John Doe - Sales Director"
+      },
+      "jane.smith@company.com": {
+        "aliases": [
+          "j.smith@company.com",
+          "jane@company.com"
+        ],
+        "description": "Jane Smith - Marketing Manager"
+      }
+    }
+  }
+}
