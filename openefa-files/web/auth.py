@@ -31,7 +31,21 @@ class User(UserMixin):
     
     def is_admin(self):
         return self.role == 'admin'
-    
+
+    def is_superadmin(self):
+        """Check if user is a superadmin (same as admin in this system)"""
+        return self.role == 'admin'
+
+    def is_client(self):
+        return self.role == 'client'
+
+    def is_domain_admin(self):
+        return self.role == 'domain_admin'
+
+    def has_admin_access(self):
+        """Check if user has admin or domain_admin access"""
+        return self.role in ['admin', 'domain_admin']
+
     def can_see_domain(self, domain):
         return self.is_admin() or self.domain.lower() == domain.lower()
     

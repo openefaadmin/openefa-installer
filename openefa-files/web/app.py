@@ -3836,6 +3836,221 @@ def signal_handler(signum, frame):
 from whitelist_manager import WhitelistManager
 
 # ============================================================================
+# Cleanup Settings Routes
+# ============================================================================
+
+@app.route('/config/cleanup')
+@login_required
+def cleanup_settings():
+    """Cleanup settings configuration page (SuperAdmin only)"""
+    # SECURITY: Only superadmins can access cleanup settings
+    if not current_user.is_superadmin():
+        flash('Access denied: SuperAdmin privileges required', 'error')
+        return redirect(url_for('config_dashboard'))
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get cleanup enabled setting
+        cursor.execute("""
+            SELECT setting_value
+            FROM system_settings
+            WHERE setting_key = 'cleanup_expired_emails_enabled'
+        """)
+        result = cursor.fetchone()
+        cleanup_enabled = result['setting_value'].lower() in ('true', '1', 'yes', 'enabled') if result else True
+
+        # Get retention days setting
+        cursor.execute("""
+            SELECT setting_value
+            FROM system_settings
+            WHERE setting_key = 'cleanup_retention_days'
+        """)
+        result = cursor.fetchone()
+        retention_days = int(result['setting_value']) if result else 30
+
+        # Get count of expired emails
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM email_quarantine
+            WHERE quarantine_expires_at < NOW()
+        """)
+        result = cursor.fetchone()
+        expired_count = result['count'] if result else 0
+
+        # Get count of emails expiring in next 7 days
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM email_quarantine
+            WHERE quarantine_expires_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
+        """)
+        result = cursor.fetchone()
+        expiring_count = result['count'] if result else 0
+
+        cursor.close()
+        conn.close()
+
+        # Calculate next cleanup time (2:00 AM tomorrow)
+        from datetime import datetime, timedelta
+        tomorrow = datetime.now() + timedelta(days=1)
+        next_cleanup = tomorrow.replace(hour=2, minute=0, second=0, microsecond=0)
+        next_cleanup_time = next_cleanup.strftime('%Y-%m-%d %H:%M')
+
+        return render_template('cleanup_settings.html',
+                             cleanup_enabled=cleanup_enabled,
+                             retention_days=retention_days,
+                             expired_count=expired_count,
+                             expiring_count=expiring_count,
+                             next_cleanup_time=next_cleanup_time,
+                             cleanup_logs=[])
+
+    except Exception as e:
+        logger.error(f"Error loading cleanup settings: {e}")
+        flash(f'Error loading cleanup settings: {str(e)}', 'error')
+        return redirect(url_for('config_dashboard'))
+
+@app.route('/api/cleanup-settings/toggle', methods=['POST'])
+@login_required
+def toggle_cleanup():
+    """Toggle cleanup enabled/disabled"""
+    # SECURITY: Only superadmins can modify cleanup settings
+    if not current_user.is_superadmin():
+        return jsonify({'success': False, 'error': 'Only SuperAdmins can modify cleanup settings'}), 403
+
+    try:
+        data = request.get_json()
+        enabled = data.get('enabled', True)
+        setting_value = 'true' if enabled else 'false'
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Update the setting
+        cursor.execute("""
+            UPDATE system_settings
+            SET setting_value = %s, updated_by = %s, updated_at = NOW()
+            WHERE setting_key = 'cleanup_expired_emails_enabled'
+        """, (setting_value, current_user.email))
+
+        # Log the action
+        cursor.execute("""
+            INSERT INTO audit_log (user_id, action, details, ip_address)
+            VALUES (%s, 'CLEANUP_SETTING_CHANGED', %s, %s)
+        """, (current_user.id, f'Cleanup {"enabled" if enabled else "disabled"}', request.remote_addr))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Cleanup setting changed by {current_user.email}: enabled={enabled}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Cleanup {"enabled" if enabled else "disabled"} successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error toggling cleanup: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/cleanup-settings/run-now', methods=['POST'])
+@login_required
+def run_cleanup_now():
+    """Manually trigger cleanup process"""
+    # SECURITY: Only superadmins can run cleanup manually
+    if not current_user.is_superadmin():
+        return jsonify({'success': False, 'error': 'Only SuperAdmins can run cleanup'}), 403
+
+    try:
+        import subprocess
+
+        # Run the cleanup script
+        result = subprocess.run(
+            ['/opt/spacyserver/venv/bin/python3', '/opt/spacyserver/cleanup_expired_emails.py'],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        # Log the action
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            INSERT INTO audit_log (user_id, action, details, ip_address)
+            VALUES (%s, 'CLEANUP_MANUAL_RUN', %s, %s)
+        """, (current_user.id, f'Manual cleanup triggered. Exit code: {result.returncode}', request.remote_addr))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        if result.returncode == 0:
+            # Parse output to get deleted count
+            deleted_count = 0
+            for line in result.stdout.split('\n'):
+                if 'Deleted:' in line:
+                    try:
+                        deleted_count = int(line.split('Deleted:')[1].split('emails')[0].strip())
+                    except:
+                        pass
+
+            logger.info(f"Manual cleanup run by {current_user.email}: deleted {deleted_count} emails")
+
+            return jsonify({
+                'success': True,
+                'message': f'Cleanup completed successfully. Deleted {deleted_count} emails.',
+                'deleted_count': deleted_count
+            })
+        else:
+            logger.error(f"Manual cleanup failed: {result.stderr}")
+            return jsonify({
+                'success': False,
+                'error': f'Cleanup failed: {result.stderr}'
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        logger.error("Manual cleanup timed out")
+        return jsonify({'success': False, 'error': 'Cleanup timed out (exceeded 5 minutes)'}), 500
+    except Exception as e:
+        logger.error(f"Error running cleanup: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/cleanup-settings/logs', methods=['GET'])
+@login_required
+def get_cleanup_logs():
+    """Get cleanup log contents"""
+    # SECURITY: Only superadmins can view cleanup logs
+    if not current_user.is_superadmin():
+        return jsonify({'success': False, 'error': 'Only SuperAdmins can view cleanup logs'}), 403
+
+    try:
+        log_file = '/opt/spacyserver/logs/cleanup.log'
+
+        # Read last 100 lines of log
+        with open(log_file, 'r') as f:
+            lines = f.readlines()
+            recent_logs = ''.join(lines[-100:])  # Last 100 lines
+
+        return jsonify({
+            'success': True,
+            'logs': recent_logs
+        })
+
+    except FileNotFoundError:
+        return jsonify({
+            'success': True,
+            'logs': 'No logs found. Cleanup has not run yet.'
+        })
+    except Exception as e:
+        logger.error(f"Error reading cleanup logs: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"Received signal {signum}, shutting down gracefully...")
+    sys.exit(0)
+
+# ============================================================================
 # Configuration Dashboard Routes
 # ============================================================================
 
@@ -4871,6 +5086,210 @@ def api_quarantine_bulk_delete():
             cursor.close()
         if conn:
             conn.close()
+
+# ============================================================================
+# Email Status Route (EFA-like)
+# ============================================================================
+
+@app.route('/emails-status')
+@login_required
+def emails_status_view():
+    """Email Status Page - list of all processed emails (like EFA status.php)"""
+    try:
+        # Get filter parameters
+        domain_filter = request.args.get('domain', '')
+        status_filter = request.args.get('status', 'all')  # Default to 'all' emails
+        search_query = request.args.get('search', '')
+        page = int(request.args.get('page', 1))
+        per_page = 50
+
+        # Get user's authorized domains
+        user_domains = get_user_authorized_domains(current_user)
+
+        # Build query
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Base query - query email_analysis table (all emails)
+        query = """
+            SELECT
+                id, message_id, timestamp, sender,
+                recipients, subject, spam_score, email_category,
+                detected_language, sentiment_polarity,
+                '' as sender_domain,
+                'delivered' as quarantine_status,
+                'N/A' as quarantine_reason,
+                NULL as quarantine_expires_at,
+                has_attachments,
+                0 as attachment_count,
+                CASE WHEN email_category = 'spam' OR email_category = 'phishing' THEN 1 ELSE 0 END as virus_detected,
+                CASE WHEN email_category = 'phishing' THEN 1 ELSE 0 END as phishing_detected,
+                NULL as reviewed_by,
+                NULL as reviewed_at,
+                999 as days_until_expiry,
+                content_summary as text_content,
+                '' as html_content,
+                raw_email
+            FROM email_analysis
+            WHERE 1=1
+        """
+        params = []
+
+        # Filter by spam score (status filter)
+        if status_filter == 'spam':
+            # Spam = emails with spam_score >= 5.0
+            query += " AND spam_score >= 5.0"
+        elif status_filter == 'clean':
+            # Clean = emails with spam_score < 3.0
+            query += " AND spam_score < 3.0"
+        elif status_filter == 'suspicious':
+            # Suspicious = emails with spam_score 3.0-4.9
+            query += " AND spam_score >= 3.0 AND spam_score < 5.0"
+        # 'all' = no additional filter
+
+        # Filter by domain (user access control)
+        if current_user.is_admin():
+            # Admin can filter by specific domain if requested
+            if domain_filter:
+                query += " AND recipients LIKE %s"
+                params.append(f'%@{domain_filter}%')
+        elif current_user.is_client():
+            # Clients ONLY see emails where they are sender or recipient
+            query += " AND (sender = %s OR recipients LIKE %s)"
+            params.append(current_user.email)
+            params.append(f'%{current_user.email}%')
+        else:
+            # Domain admins see their authorized domains
+            if user_domains:
+                # Check recipient domains
+                domain_conditions = []
+                for domain in user_domains:
+                    domain_conditions.append("recipients LIKE %s")
+                    params.append(f'%@{domain}%')
+                query += f" AND ({' OR '.join(domain_conditions)})"
+            else:
+                # User has no domains - show nothing
+                query += " AND 1=0"
+
+        # Search filter
+        if search_query:
+            query += """ AND (
+                sender LIKE %s OR
+                subject LIKE %s OR
+                recipients LIKE %s
+            )"""
+            search_param = f'%{search_query}%'
+            params.extend([search_param, search_param, search_param])
+
+        # Order by timestamp (newest first)
+        query += " ORDER BY timestamp DESC"
+
+        # Count total for pagination
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as filtered"
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()['total']
+
+        # Add pagination
+        offset = (page - 1) * per_page
+        query += f" LIMIT {per_page} OFFSET {offset}"
+
+        # Execute main query
+        cursor.execute(query, params)
+        quarantined_emails = cursor.fetchall()
+
+        # Parse email bodies from raw_email for brief content preview
+        from email import message_from_string
+        for email in quarantined_emails:
+            if email.get('raw_email'):
+                try:
+                    msg = message_from_string(email['raw_email'])
+                    # Extract email body
+                    email_text = ''
+                    if msg.is_multipart():
+                        # Get text/plain parts
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            if content_type == 'text/plain':
+                                try:
+                                    email_text = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                                except:
+                                    pass
+                    else:
+                        # Single part message
+                        try:
+                            email_text = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        except:
+                            pass
+
+                    # Extract first 3-5 lines
+                    if email_text:
+                        lines = email_text.strip().split('\n')
+                        preview_lines = []
+                        char_count = 0
+                        for line in lines[:10]:
+                            line = line.strip()
+                            if line:
+                                preview_lines.append(line)
+                                char_count += len(line)
+                                if len(preview_lines) >= 3 or char_count >= 200:
+                                    break
+                        email['content_preview'] = ' '.join(preview_lines)[:250] + '...' if preview_lines else email.get('text_content', '')
+                    else:
+                        email['content_preview'] = email.get('text_content', '')
+                except Exception as e:
+                    logger.warning(f"Could not parse email body for preview: {e}")
+                    email['content_preview'] = email.get('text_content', '')
+            else:
+                email['content_preview'] = email.get('text_content', '')
+
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page
+
+        # Get statistics
+        stats_query = """
+            SELECT
+                COUNT(DISTINCT ea.id) as total_held,
+                0 as expiring_soon,
+                AVG(ea.spam_score) as avg_spam_score,
+                SUM(CASE WHEN ea.email_category = 'spam' OR ea.email_category = 'phishing' THEN 1 ELSE 0 END) as virus_count
+            FROM email_analysis ea
+            WHERE 1=1
+        """
+
+        stats_params = []
+        if not current_user.is_admin():
+            if user_domains:
+                domain_conditions = []
+                for domain in user_domains:
+                    domain_conditions.append("ea.recipients LIKE %s")
+                    stats_params.append(f'%@{domain}%')
+                stats_query += f" AND ({' OR '.join(domain_conditions)})"
+            else:
+                stats_query += " AND 1=0"
+
+        cursor.execute(stats_query, stats_params)
+        stats = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        return render_template('quarantine.html',
+                             quarantined_emails=quarantined_emails,
+                             stats=stats,
+                             page=page,
+                             total_pages=total_pages,
+                             total_count=total_count,
+                             status_filter=status_filter,
+                             domain_filter=domain_filter,
+                             search_query=search_query,
+                             user_domains=user_domains,
+                             selected_domain=domain_filter or (user_domains[0] if user_domains else ''))
+
+    except Exception as e:
+        logger.error(f"Error loading quarantine view: {e}")
+        flash(f'Error loading quarantine: {str(e)}', 'danger')
+        return redirect(url_for('dashboard'))
 
 
 if __name__ == '__main__':

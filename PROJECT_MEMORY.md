@@ -3,6 +3,50 @@
 
 ## Recent Session Summary (October 18, 2025)
 
+### Yesterday's Features Integration (Production → Installer)
+
+#### Missing Features Added from Production
+**Status:** ✅ Complete
+
+**Integration:** Added all missing features from yesterday's production changes to installer
+- Added authentication methods to User class in auth.py
+- Implemented Cleanup Settings feature (4 routes + template)
+- Added Email Status route for EFA-like email listing
+- Files modified:
+  - `openefa-files/web/auth.py` - Added is_superadmin(), is_client(), is_domain_admin(), has_admin_access()
+  - `openefa-files/web/app.py` - Added cleanup routes (4) + emails-status route (419 lines added)
+  - `openefa-files/web/templates/cleanup_settings.html` - New template (13KB)
+- Version bumped to 1.3.0
+
+**Features Added:**
+
+1. **Auth Enhancements**:
+   - `is_superadmin()` - Check if user is superadmin (same as admin)
+   - `has_admin_access()` - Check if user has admin or domain_admin access
+   - `is_client()` - Check if user is client role
+   - `is_domain_admin()` - Check if user is domain admin
+
+2. **Cleanup Settings** (SuperAdmin only):
+   - `/config/cleanup` - Main cleanup settings page
+   - `/api/cleanup-settings/toggle` - Enable/disable automatic cleanup
+   - `/api/cleanup-settings/run-now` - Manual cleanup trigger
+   - `/api/cleanup-settings/logs` - View cleanup log history
+   - Shows expired email counts and expiration statistics
+
+3. **Email Status Route**:
+   - `/emails-status` - EFA-like status page showing all processed emails
+   - Supports filtering by status (all/spam/clean/suspicious)
+   - Permission-based access control
+   - Pagination and search functionality
+
+**Impact:**
+- Installer now in sync with production changes from yesterday
+- Added ~420 lines of code to match production features
+- SuperAdmin role properly implemented across all routes
+- Installer file size: 4,929 → 5,348 lines
+
+---
+
 ### User Managed Aliases Feature
 
 #### User Alias Management System

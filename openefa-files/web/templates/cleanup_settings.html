@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Cleanup Settings - OpenEFA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .cleanup-header {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .settings-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 34px;
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+        background-color: #28a745;
+    }
+
+    input:checked + .toggle-slider:before {
+        transform: translateX(26px);
+    }
+
+    .info-box {
+        background-color: #f8f9fa;
+        border-left: 4px solid #17a2b8;
+        padding: 1rem;
+        border-radius: 5px;
+    }
+
+    .warning-box {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Cleanup Settings Header -->
+<div class="cleanup-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="fas fa-broom"></i> Cleanup Settings</h1>
+                <p class="mb-0">Configure automatic cleanup of expired quarantine emails</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <a href="/config" class="btn btn-light">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Alert messages -->
+    <div id="alert-container"></div>
+
+    <!-- Main Settings -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card settings-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-trash-alt"></i> Automatic Cleanup</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+                        <div>
+                            <h6 class="mb-1">Enable Automatic Cleanup</h6>
+                            <p class="text-muted mb-0 small">
+                                Automatically delete expired quarantine emails after {{ retention_days }} days
+                            </p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="cleanup-toggle"
+                                   {% if cleanup_enabled %}checked{% endif %}
+                                   onchange="toggleCleanup()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="info-box mb-3">
+                        <h6><i class="fas fa-info-circle"></i> How It Works</h6>
+                        <ul class="mb-0">
+                            <li>Cleanup runs daily at 2:00 AM</li>
+                            <li>Only emails past their expiration date are removed</li>
+                            <li>Emails are kept for {{ retention_days }} days from quarantine date</li>
+                            <li>Deleted emails cannot be recovered after cleanup</li>
+                        </ul>
+                    </div>
+
+                    <div class="warning-box">
+                        <h6><i class="fas fa-exclamation-triangle"></i> Important</h6>
+                        <p class="mb-0">
+                            When cleanup is disabled, expired emails will remain in the database indefinitely.
+                            This may impact system performance over time.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Cleanup Activity -->
+            <div class="card settings-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> Recent Cleanup Activity</h5>
+                </div>
+                <div class="card-body">
+                    {% if cleanup_logs %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Emails Deleted</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in cleanup_logs %}
+                                <tr>
+                                    <td>{{ log.date }}</td>
+                                    <td>
+                                        {% if log.status == 'success' %}
+                                        <span class="badge bg-success">Success</span>
+                                        {% elif log.status == 'skipped' %}
+                                        <span class="badge bg-secondary">Skipped</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">Error</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ log.deleted_count }}</td>
+                                    <td class="small text-muted">{{ log.details }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center mb-0">
+                        <i class="fas fa-inbox"></i> No cleanup activity recorded yet
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar Info -->
+        <div class="col-md-4">
+            <div class="card settings-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-1">Current Status</h6>
+                        <h4>
+                            {% if cleanup_enabled %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Disabled</span>
+                            {% endif %}
+                        </h4>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-1">Retention Period</h6>
+                        <h4>{{ retention_days }} days</h4>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-1">Next Cleanup</h6>
+                        <h4>{{ next_cleanup_time }}</h4>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-1">Emails Expiring Soon</h6>
+                        <h4>{{ expiring_count }}</h4>
+                        <small class="text-muted">In next 7 days</small>
+                    </div>
+                    <hr>
+                    <div>
+                        <h6 class="text-muted mb-1">Total Expired</h6>
+                        <h4>{{ expired_count }}</h4>
+                        <small class="text-muted">Ready for cleanup</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card settings-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-cog"></i> Advanced</h5>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-outline-primary btn-sm w-100 mb-2" onclick="runCleanupNow()">
+                        <i class="fas fa-play"></i> Run Cleanup Now
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="viewLogs()">
+                        <i class="fas fa-file-alt"></i> View Full Logs
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logs Modal -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-alt"></i> Cleanup Logs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="logs-content" style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 1rem; border-radius: 5px;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showAlert(message, type = 'success') {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+    alertContainer.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function toggleCleanup() {
+    const enabled = document.getElementById('cleanup-toggle').checked;
+
+    fetch('/api/cleanup-settings/toggle', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+            // Revert toggle
+            document.getElementById('cleanup-toggle').checked = !enabled;
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger');
+        document.getElementById('cleanup-toggle').checked = !enabled;
+    });
+}
+
+function runCleanupNow() {
+    if (!confirm('Run cleanup now? This will delete all expired quarantine emails immediately.')) {
+        return;
+    }
+
+    showAlert('<i class="fas fa-spinner fa-spin"></i> Running cleanup...', 'info');
+
+    fetch('/api/cleanup-settings/run-now', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger');
+    });
+}
+
+function viewLogs() {
+    fetch('/api/cleanup-settings/logs')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('logs-content').textContent = data.logs;
+            new bootstrap.Modal(document.getElementById('logsModal')).show();
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger');
+    });
+}
+</script>
+{% endblock %}
