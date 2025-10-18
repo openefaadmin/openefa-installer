@@ -1,7 +1,30 @@
 # OpenEFA Project Memory
-**Last Updated:** October 17, 2025
+**Last Updated:** October 18, 2025
 
-## Recent Session Summary (October 16-17, 2025)
+## Recent Session Summary (October 18, 2025)
+
+### Domain Management Enhancement
+
+#### relay_port Column Addition
+**Status:** ✅ Complete
+
+**Enhancement:** Added configurable relay port support to domain management
+- Added `relay_port` column to `client_domains` table schema with default value of 25
+- Updated installer database functions to include relay_port in domain insertion
+- Allows per-domain relay port configuration via GUI (Domain Management page)
+- Files modified:
+  - `sql/schema_v1.sql` - Added relay_port column
+  - `lib/database.sh` - Updated insert_initial_domain() function
+- Version bumped to 1.1.0
+
+**Benefits:**
+- Supports relay servers using non-standard SMTP ports (e.g., 587, 2525)
+- Enables flexible multi-tenant configurations with different relay requirements
+- Fully integrated with existing domain management UI
+
+---
+
+## Previous Session Summary (October 16-17, 2025)
 
 ### Major Installer Fixes and Integration
 

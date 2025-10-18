@@ -126,6 +126,7 @@ CREATE TABLE `client_domains` (
   `domain` varchar(255) NOT NULL,
   `client_name` varchar(255) DEFAULT NULL,
   `relay_host` varchar(255) DEFAULT NULL,
+  `relay_port` int(11) DEFAULT 25,
   `created_at` datetime DEFAULT NULL,
   `updated_at` datetime DEFAULT NULL,
   `active` tinyint(1) DEFAULT NULL,

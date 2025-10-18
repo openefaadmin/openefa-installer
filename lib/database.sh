@@ -140,9 +140,9 @@ insert_initial_domain() {
 
         for domain in "${INSTALL_DOMAINS[@]}"; do
             mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
-INSERT INTO client_domains (domain, client_name, relay_host, active, created_at)
-VALUES ('${domain}', '${domain}', '${RELAY_SERVER_IP}', 1, NOW())
-ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}';
+INSERT INTO client_domains (domain, client_name, relay_host, relay_port, active, created_at)
+VALUES ('${domain}', '${domain}', '${RELAY_SERVER_IP}', 25, 1, NOW())
+ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}', relay_port = 25;
 EOSQL
 
             if [[ $? -eq 0 ]]; then
@@ -156,9 +156,9 @@ EOSQL
         info "Adding initial domain: ${INSTALL_DOMAIN}"
 
         mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
-INSERT INTO client_domains (domain, client_name, relay_host, active, created_at)
-VALUES ('${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', '${RELAY_SERVER_IP}', 1, NOW())
-ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}';
+INSERT INTO client_domains (domain, client_name, relay_host, relay_port, active, created_at)
+VALUES ('${INSTALL_DOMAIN}', '${INSTALL_DOMAIN}', '${RELAY_SERVER_IP}', 25, 1, NOW())
+ON DUPLICATE KEY UPDATE active = 1, relay_host = '${RELAY_SERVER_IP}', relay_port = 25;
 EOSQL
 
         if [[ $? -eq 0 ]]; then
