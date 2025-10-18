@@ -129,11 +129,77 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="row">
+
+                    <!-- Managed Email Aliases Section -->
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-envelope-open-text"></i> Managed Email Aliases
+                                        <small class="ms-2" style="font-size: 0.85rem; opacity: 0.9;">Additional email addresses this user can view/manage</small>
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Current Aliases List -->
+                                    <div id="aliases-list" class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6 class="mb-0">Current Aliases</h6>
+                                            <button type="button" class="btn btn-sm btn-success" onclick="showAddAliasForm()">
+                                                <i class="fas fa-plus"></i> Add Alias
+                                            </button>
+                                        </div>
+                                        <div id="aliases-table-container">
+                                            <div class="text-center text-muted py-3">
+                                                <i class="fas fa-spinner fa-spin"></i> Loading aliases...
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Add Alias Form (hidden by default) -->
+                                    <div id="add-alias-form" class="border rounded p-3 bg-light" style="display: none;">
+                                        <h6 class="mb-3">Add New Alias</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="mb-3">
+                                                    <label for="new-alias-email" class="form-label">
+                                                        <i class="fas fa-envelope"></i> Email Address *
+                                                    </label>
+                                                    <input type="email" class="form-control" id="new-alias-email"
+                                                           placeholder="sales@example.com" required>
+                                                    <div class="form-text">The email address to grant access to</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="mb-3">
+                                                    <label for="new-alias-label" class="form-label">
+                                                        <i class="fas fa-tag"></i> Label (Optional)
+                                                    </label>
+                                                    <input type="text" class="form-control" id="new-alias-label"
+                                                           placeholder="Sales Department">
+                                                    <div class="form-text">Descriptive label for this alias</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-primary" onclick="addAlias()">
+                                                <i class="fas fa-save"></i> Save Alias
+                                            </button>
+                                            <button type="button" class="btn btn-secondary" onclick="cancelAddAlias()">
+                                                <i class="fas fa-times"></i> Cancel
+                                            </button>
+                                        </div>
+                                        <div id="add-alias-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
                         <div class="col-md-6">
                             <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="is_active" name="is_active" 
+                                <input type="checkbox" class="form-check-input" id="is_active" name="is_active"
                                        {% if user.is_active %}checked{% endif %}>
                                 <label class="form-check-label" for="is_active">
                                     <i class="fas fa-check-circle"></i> Account Active
@@ -203,5 +269,186 @@ document.getElementById('domain').addEventListener('change', function() {
         primaryCheckbox.checked = true;
     }
 });
+
+// ============================================
+// Managed Email Aliases Functions
+// ============================================
+
+// Get the user ID from the URL
+const userId = {{ user.id }};
+
+// Load aliases when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadAliases();
+});
+
+// Load and display aliases
+function loadAliases() {
+    fetch(`/api/users/${userId}/managed-aliases`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayAliases(data.aliases);
+            } else {
+                showAliasError('Failed to load aliases: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading aliases:', error);
+            showAliasError('Error loading aliases: ' + error);
+        });
+}
+
+// Display aliases in a table
+function displayAliases(aliases) {
+    const container = document.getElementById('aliases-table-container');
+
+    if (aliases.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-3">
+                <i class="fas fa-inbox"></i> No managed aliases configured
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th style="width: 40%"><i class="fas fa-envelope"></i> Email Address</th>
+                    <th style="width: 30%"><i class="fas fa-tag"></i> Label</th>
+                    <th style="width: 20%"><i class="fas fa-clock"></i> Added</th>
+                    <th style="width: 10%" class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    aliases.forEach(alias => {
+        const createdDate = new Date(alias.created_at).toLocaleDateString();
+        const label = alias.alias_label || '<em class="text-muted">No label</em>';
+
+        html += `
+            <tr>
+                <td><span class="badge bg-primary">${alias.managed_email}</span></td>
+                <td>${label}</td>
+                <td><small class="text-muted">${createdDate}</small></td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-danger"
+                            onclick="deleteAlias(${alias.id}, '${alias.managed_email}')"
+                            title="Remove alias">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+// Show add alias form
+function showAddAliasForm() {
+    document.getElementById('add-alias-form').style.display = 'block';
+    document.getElementById('new-alias-email').focus();
+    document.getElementById('add-alias-error').style.display = 'none';
+}
+
+// Cancel add alias
+function cancelAddAlias() {
+    document.getElementById('add-alias-form').style.display = 'none';
+    document.getElementById('new-alias-email').value = '';
+    document.getElementById('new-alias-label').value = '';
+    document.getElementById('add-alias-error').style.display = 'none';
+}
+
+// Add a new alias
+function addAlias() {
+    const email = document.getElementById('new-alias-email').value.trim();
+    const label = document.getElementById('new-alias-label').value.trim();
+
+    if (!email || !email.includes('@')) {
+        showAliasError('Please enter a valid email address');
+        return;
+    }
+
+    // Disable the save button while processing
+    const saveBtn = event.target;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+    fetch(`/api/users/${userId}/managed-aliases`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            managed_email: email,
+            alias_label: label
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reset form and reload aliases
+            cancelAddAlias();
+            loadAliases();
+
+            // Show success message briefly
+            const container = document.getElementById('aliases-table-container');
+            const successMsg = document.createElement('div');
+            successMsg.className = 'alert alert-success';
+            successMsg.innerHTML = '<i class="fas fa-check-circle"></i> Alias added successfully!';
+            container.insertBefore(successMsg, container.firstChild);
+            setTimeout(() => successMsg.remove(), 3000);
+        } else {
+            showAliasError(data.error || 'Failed to add alias');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Alias';
+        }
+    })
+    .catch(error => {
+        console.error('Error adding alias:', error);
+        showAliasError('Error adding alias: ' + error);
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Alias';
+    });
+}
+
+// Delete an alias
+function deleteAlias(aliasId, email) {
+    if (!confirm(`Are you sure you want to remove access to "${email}"?`)) {
+        return;
+    }
+
+    fetch(`/api/users/${userId}/managed-aliases/${aliasId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadAliases();
+        } else {
+            alert('Failed to delete alias: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting alias:', error);
+        alert('Error deleting alias: ' + error);
+    });
+}
+
+// Show error message in add alias form
+function showAliasError(message) {
+    const errorDiv = document.getElementById('add-alias-error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
 </script>
 {% endblock %}

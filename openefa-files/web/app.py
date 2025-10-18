@@ -1815,10 +1815,151 @@ def admin_toggle_user_status(user_id):
         status_text = 'activated' if new_status else 'deactivated'
         flash(f'User {email} {status_text} successfully', 'success')
         return redirect(url_for('admin_users'))
-        
+
     except Exception as e:
         flash(f'Error updating user status: {e}', 'error')
         return redirect(url_for('admin_users'))
+
+#
+# User Managed Aliases API Routes
+#
+
+@app.route('/api/users/<int:user_id>/managed-aliases', methods=['GET'])
+@login_required
+def get_user_managed_aliases(user_id):
+    """Get aliases managed by a user"""
+    # Permission check
+    if not current_user.is_admin() and current_user.id != user_id:
+        if current_user.role != 'domain_admin':
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT id, managed_email, alias_label, created_at
+            FROM user_managed_aliases
+            WHERE user_id = %s AND active = 1
+            ORDER BY managed_email
+        """, (user_id,))
+
+        aliases = cursor.fetchall()
+
+        return jsonify({'success': True, 'aliases': aliases})
+
+    except Exception as e:
+        logger.error(f"Error fetching managed aliases for user {user_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/api/users/<int:user_id>/managed-aliases', methods=['POST'])
+@login_required
+def add_user_managed_alias(user_id):
+    """Add managed alias to user (admin only)"""
+    if not current_user.is_admin() and current_user.role != 'domain_admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    managed_email = data.get('managed_email', '').strip().lower()
+    alias_label = data.get('alias_label', '').strip()
+
+    if not managed_email or '@' not in managed_email:
+        return jsonify({'success': False, 'error': 'Invalid email address'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Check if alias already exists for this user
+        cursor.execute("""
+            SELECT id FROM user_managed_aliases
+            WHERE user_id = %s AND managed_email = %s
+        """, (user_id, managed_email))
+
+        if cursor.fetchone():
+            return jsonify({'success': False, 'error': 'This alias already exists for this user'}), 400
+
+        # Insert new alias
+        cursor.execute("""
+            INSERT INTO user_managed_aliases (user_id, managed_email, alias_label, created_by)
+            VALUES (%s, %s, %s, %s)
+        """, (user_id, managed_email, alias_label, current_user.id))
+
+        conn.commit()
+        alias_id = cursor.lastrowid
+
+        logger.info(f"Admin {current_user.email} added alias {managed_email} to user {user_id}")
+
+        return jsonify({
+            'success': True,
+            'alias_id': alias_id,
+            'message': 'Alias added successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error adding managed alias: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/api/users/<int:user_id>/managed-aliases/<int:alias_id>', methods=['DELETE'])
+@login_required
+def delete_user_managed_alias(user_id, alias_id):
+    """Remove managed alias from user (admin only)"""
+    if not current_user.is_admin() and current_user.role != 'domain_admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get alias details for logging
+        cursor.execute("""
+            SELECT managed_email FROM user_managed_aliases
+            WHERE id = %s AND user_id = %s
+        """, (alias_id, user_id))
+
+        alias = cursor.fetchone()
+
+        if not alias:
+            return jsonify({'success': False, 'error': 'Alias not found'}), 404
+
+        # Delete the alias
+        cursor.execute("""
+            DELETE FROM user_managed_aliases
+            WHERE id = %s AND user_id = %s
+        """, (alias_id, user_id))
+
+        conn.commit()
+
+        logger.info(f"Admin {current_user.email} removed alias {alias['managed_email']} from user {user_id}")
+
+        return jsonify({'success': True, 'message': 'Alias removed successfully'})
+
+    except Exception as e:
+        logger.error(f"Error deleting managed alias: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/debug/user-info')
 @login_required

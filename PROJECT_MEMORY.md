@@ -3,6 +3,35 @@
 
 ## Recent Session Summary (October 18, 2025)
 
+### User Managed Aliases Feature
+
+#### User Alias Management System
+**Status:** ✅ Complete
+
+**Enhancement:** Added user managed aliases functionality to allow users to manage additional email addresses
+- Added `user_managed_aliases` table to database schema
+- Implemented 3 API routes for alias management (GET, POST, DELETE)
+- Added complete UI for alias management in user edit page
+- Files modified:
+  - `sql/schema_v1.sql` - Added user_managed_aliases table with foreign keys
+  - `openefa-files/web/app.py` - Added alias API routes (lines 1823-1963)
+  - `openefa-files/web/templates/admin/edit_user.html` - Added alias UI and JavaScript
+- Version bumped to 1.2.0
+
+**Features:**
+- Users can manage multiple email aliases (e.g., sales@domain.com, info@domain.com)
+- Optional labels for each alias (e.g., "Sales Department")
+- Real-time UI updates when adding/removing aliases
+- Permission-based access control (admin and domain_admin only)
+- Audit trail with created_by tracking
+
+**Benefits:**
+- Allows users to view/manage shared mailboxes in addition to their primary email
+- Supports multi-tenant scenarios where users manage department emails
+- Integrates seamlessly with existing user management system
+
+---
+
 ### Domain Management Enhancement
 
 #### relay_port Column Addition
