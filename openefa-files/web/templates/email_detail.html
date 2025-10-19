@@ -295,6 +295,87 @@
                                             </div>
                                         </div>
 
+                                        <!-- SPAM SCORE BREAKDOWN SECTION -->
+                                        <div class="row mt-4">
+                                            <div class="col-12">
+                                                <div class="card border-{% if email.spam_score >= 5.0 %}danger{% elif email.spam_score >= 3.0 %}warning{% else %}success{% endif %}">
+                                                    <div class="card-header bg-{% if email.spam_score >= 5.0 %}danger{% elif email.spam_score >= 3.0 %}warning{% else %}success{% endif %} text-white">
+                                                        <h6 class="mb-0">
+                                                            <i class="fas fa-chart-bar"></i> Spam Score Breakdown
+                                                            <span class="badge bg-light text-dark float-end">Total: {{ "%.1f"|format(email.spam_score) }}</span>
+                                                        </h6>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {% if email.raw_email %}
+                                                            {% set spam_headers = {} %}
+                                                            {% for line in email.raw_email.split('\n') %}
+                                                                {% if line.startswith('X-Spam-Score-') %}
+                                                                    {% set header_parts = line.split(':', 1) %}
+                                                                    {% if header_parts|length == 2 %}
+                                                                        {% set header_name = header_parts[0].replace('X-Spam-Score-', '').strip() %}
+                                                                        {% set header_value = header_parts[1].strip() %}
+                                                                        {% set _ = spam_headers.update({header_name: header_value}) %}
+                                                                    {% endif %}
+                                                                {% endif %}
+                                                            {% endfor %}
+
+                                                            {% if spam_headers %}
+                                                                <div class="table-responsive">
+                                                                    <table class="table table-sm table-hover">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th>Module</th>
+                                                                                <th class="text-end">Score</th>
+                                                                                <th>Impact</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {% for module, score in spam_headers.items() %}
+                                                                                {% if module != 'Total' and module != 'Breakdown' %}
+                                                                                    {% set score_val = score|float %}
+                                                                                    <tr>
+                                                                                        <td><strong>{{ module }}</strong></td>
+                                                                                        <td class="text-end">
+                                                                                            <span class="badge bg-{% if score_val > 5 %}danger{% elif score_val > 2 %}warning{% elif score_val < 0 %}success{% else %}secondary{% endif %}">
+                                                                                                {{ score }}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td>
+                                                                                            {% if score_val > 5 %}
+                                                                                                <span class="text-danger">High Risk</span>
+                                                                                            {% elif score_val > 2 %}
+                                                                                                <span class="text-warning">Medium Risk</span>
+                                                                                            {% elif score_val < 0 %}
+                                                                                                <span class="text-success">Trusted</span>
+                                                                                            {% else %}
+                                                                                                <span class="text-muted">Low Risk</span>
+                                                                                            {% endif %}
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                {% endif %}
+                                                                            {% endfor %}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                                {% if spam_headers.get('Breakdown') %}
+                                                                    <div class="alert alert-info mt-2 small">
+                                                                        <strong>Summary:</strong> {{ spam_headers.get('Breakdown') }}
+                                                                    </div>
+                                                                {% endif %}
+                                                            {% else %}
+                                                                <p class="text-muted mb-0">
+                                                                    <i class="fas fa-info-circle"></i> No detailed score breakdown available.
+                                                                    <span class="small">Total spam score: <strong>{{ "%.1f"|format(email.spam_score) }}</strong></span>
+                                                                </p>
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <p class="text-muted mb-0">Raw email data not available for score breakdown.</p>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         <div class="mt-3">
                                             <h6>Raw JSON Data</h6>
                                             <details>

@@ -44,6 +44,7 @@ install_core_packages() {
         "clamav"
         "clamav-daemon"
         "clamav-freshclam"
+        "cron"
     )
 
     info "Installing: ${packages[*]}"

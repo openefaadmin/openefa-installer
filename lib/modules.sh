@@ -40,6 +40,14 @@ copy_module_files() {
         debug "Copied: email_filter.py"
     fi
 
+    # Copy cleanup_expired_emails.py (email retention cleanup script)
+    if [[ -f "${source_dir}/cleanup_expired_emails.py" ]]; then
+        cp "${source_dir}/cleanup_expired_emails.py" "${install_dir}/"
+        chown spacy-filter:spacy-filter "${install_dir}/cleanup_expired_emails.py"
+        chmod 755 "${install_dir}/cleanup_expired_emails.py"
+        debug "Copied: cleanup_expired_emails.py"
+    fi
+
     # Copy modules directory
     if [[ -d "${source_dir}/modules" ]]; then
         cp -r "${source_dir}/modules/"* "${install_dir}/modules/"

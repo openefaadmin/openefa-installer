@@ -1669,7 +1669,46 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
             safe_log(f"❌ Module access check error: {e}")
             import traceback
             safe_log(f"❌ Module traceback: {traceback.format_exc()}")
-        
+
+        # ========================================================================
+        # ANTIVIRUS SCANNING - ClamAV Integration
+        # ========================================================================
+        if MODULE_MANAGER.is_available('antivirus_scanner'):
+            try:
+                with timeout_handler(module_timeout):
+                    scan_email = MODULE_MANAGER.get_module('antivirus_scanner')
+                    av_results = scan_email(msg)
+
+                    if av_results and isinstance(av_results, dict):
+                        # Store virus detection results
+                        analysis_results['virus_detected'] = av_results.get('virus_detected', False)
+                        analysis_results['virus_names'] = av_results.get('virus_names', [])
+
+                        if av_results.get('virus_detected'):
+                            # Add significant spam score for virus detection
+                            virus_score = av_results.get('virus_score', 20.0)
+                            analysis_results['spam_score'] += virus_score
+                            safe_log(f"🦠 VIRUS DETECTED: {', '.join(av_results.get('virus_names', []))} - Added {virus_score} points")
+
+                            # Add headers for virus detection
+                            analysis_results['headers_to_add']['X-Virus-Detected'] = 'true'
+                            analysis_results['headers_to_add']['X-Virus-Names'] = ', '.join(av_results.get('virus_names', []))
+                        else:
+                            safe_log(f"✅ Antivirus scan clean - no threats detected")
+
+                        analysis_results['modules_run'].append('antivirus')
+                        monitor.record_module('antivirus')
+            except TimeoutException:
+                safe_log(f"⏱️ Antivirus module timed out after {module_timeout}s")
+                analysis_results['virus_detected'] = False  # Default to false on timeout
+            except Exception as e:
+                safe_log(f"❌ Antivirus module error: {e}")
+                analysis_results['virus_detected'] = False  # Default to false on error
+        else:
+            # Module not available - set default values
+            analysis_results['virus_detected'] = False
+            analysis_results['virus_names'] = []
+
         safe_log(f"Modules run: {', '.join(analysis_results['modules_run'])}")
         safe_log(f"Combined spam score: {analysis_results['spam_score']:.2f}")
 
@@ -2732,37 +2771,69 @@ def main():
         except Exception as e:
             safe_log(f"Thread trust reduction error: {e}")
 
-        # Store in database via Redis queue - RESTORED
-        if REDIS_QUEUE and hasattr(REDIS_QUEUE, 'connected') and REDIS_QUEUE.connected:
-            try:
-                store_email_analysis_via_queue(msg, text_content, analysis_results, monitor)
-                safe_log("✅ Analysis queued for database storage")
-            except Exception as e:
-                safe_log(f"Queue storage error: {e}")
-        
-        # Add analysis headers
-        safe_add_header(msg, 'X-SpaCy-Spam-Score', str(analysis_results['spam_score']), monitor)
+        # Add analysis headers FIRST (before storing to database)
         safe_add_header(msg, 'X-SpaCy-Processed', datetime.datetime.now().isoformat(), monitor)
         safe_add_header(msg, 'X-Analysis-Modules', ', '.join(analysis_results['modules_run']), monitor)
         
         for header_name, header_value in analysis_results.get('headers_to_add', {}).items():
             safe_add_header(msg, header_name, header_value, monitor)
-        
+
         monitor.record_final_score(analysis_results['spam_score'])
-        
-        # Add minimal thread headers even if analysis fails
-        if thread_info['is_reply']:
-            try:
-                subject = safe_get_header(msg, 'Subject', '')
-                is_reply = subject.startswith('Re:')
-                
-                safe_add_header(msg, 'X-Thread-Is-Reply', 'true' if is_reply else 'false', monitor)
-                safe_add_header(msg, 'X-Thread-Trust-Score', '1' if is_reply else '0', monitor)
-                safe_add_header(msg, 'X-Thread-Analysis', 'disabled', monitor)
-                
-            except Exception as e:
-                safe_log(f"🧵 Minimal headers failed: {e}")
-        
+
+        # ADD COMPREHENSIVE SPAM SCORE BREAKDOWN HEADERS
+        # This allows users to see exactly why an email was scored high
+        safe_add_header(msg, 'X-Spam-Score-Total', str(round(analysis_results.get('spam_score', 0), 2)), monitor)
+
+        # Add individual module score contributions
+        score_breakdown = []
+        if analysis_results.get('auth_abuse', {}).get('abuse_score', 0) != 0:
+            auth_score = analysis_results['auth_abuse']['abuse_score']
+            safe_add_header(msg, 'X-Spam-Score-Auth-Abuse', str(round(auth_score, 2)), monitor)
+            score_breakdown.append(f"auth_abuse:{auth_score:.1f}")
+
+        # Thread trust reduction (negative score)
+        if 'thread_trust_reduction' in analysis_results:
+            reduction = analysis_results['thread_trust_reduction']
+            safe_add_header(msg, 'X-Spam-Score-Thread-Trust', str(round(-reduction, 2)), monitor)
+            score_breakdown.append(f"thread_trust:-{reduction:.1f}")
+
+        # Learning adjustment
+        if analysis_results.get('learning_adjustment', 0) != 0:
+            adjustment = analysis_results['learning_adjustment']
+            safe_add_header(msg, 'X-Spam-Score-Learning', str(round(adjustment, 2)), monitor)
+            score_breakdown.append(f"learning:{adjustment:.1f}")
+
+        # Fake reply boost
+        if analysis_results.get('fake_reply_boost', 0) > 0:
+            boost = analysis_results['fake_reply_boost']
+            safe_add_header(msg, 'X-Spam-Score-Fake-Reply', str(round(boost, 2)), monitor)
+            score_breakdown.append(f"fake_reply:{boost:.1f}")
+
+        # Add module-specific scores from headers_to_add
+        module_scores = {
+            'dns_spam_score': 'DNS',
+            'phishing_score': 'Phishing',
+            'risk_score': 'Risk',
+            'url_risk_score': 'URL',
+            'behavioral_risk_score': 'Behavioral',
+            'spam_score_adjustment': 'Sentiment',
+            'obfuscation_score': 'Obfuscation',
+            'marketing_spam_score': 'Marketing',
+            'bec_score': 'BEC',
+            'toad_score': 'TOAD',
+            'pdf_spam_score': 'PDF'
+        }
+
+        for key, label in module_scores.items():
+            if key in analysis_results and analysis_results[key] != 0:
+                score = analysis_results[key]
+                safe_add_header(msg, f'X-Spam-Score-{label}', str(round(score, 2)), monitor)
+                score_breakdown.append(f"{label.lower()}:{score:.1f}")
+
+        # Add summary breakdown header
+        if score_breakdown:
+            safe_add_header(msg, 'X-Spam-Score-Breakdown', ', '.join(score_breakdown), monitor)
+
         if MODULE_MANAGER.is_available('otp_detector'):
             try:
                 extract_otp = MODULE_MANAGER.get_module('otp_detector')
@@ -2777,7 +2848,15 @@ def main():
                     safe_log(f"OTP detected: {provider}")
             except Exception as e:
                 safe_log(f"OTP detection error: {e}")
-        
+
+        # Store in database via Redis queue - AFTER all headers are added
+        if REDIS_QUEUE and hasattr(REDIS_QUEUE, 'connected') and REDIS_QUEUE.connected:
+            try:
+                store_email_analysis_via_queue(msg, text_content, analysis_results, monitor)
+                safe_log("✅ Analysis queued for database storage")
+            except Exception as e:
+                safe_log(f"Queue storage error: {e}")
+
         # QUARANTINE CHECK FIRST - before blocking rules
         spam_score = analysis_results.get('spam_score', 0.0)
         virus_detected = analysis_results.get('virus_detected', False)

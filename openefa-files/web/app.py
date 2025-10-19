@@ -160,6 +160,56 @@ def update_postfix_transport():
         logger.error(f"Failed to update Postfix transport: {e}")
         return False
 
+def update_postfix_relay_domains():
+    """
+    Update Postfix relay_domains configuration from database.
+    Reads all active domains and updates relay_domains in /etc/postfix/main.cf
+    """
+    import subprocess
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get all active domains
+        cursor.execute("""
+            SELECT domain
+            FROM client_domains
+            WHERE active = 1
+            ORDER BY domain
+        """)
+
+        domains = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Build relay_domains list
+        domain_list = [domain_row['domain'] for domain_row in domains]
+        relay_domains_value = ', '.join(domain_list)
+
+        # Update relay_domains in main.cf using postconf
+        result = subprocess.run(['sudo', 'postconf', '-e', f'relay_domains = {relay_domains_value}'],
+                              capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            # Reload Postfix to apply changes
+            reload_result = subprocess.run(['sudo', '/usr/sbin/postfix', 'reload'],
+                                          capture_output=True, text=True, timeout=10)
+
+            if reload_result.returncode == 0:
+                logger.info(f"Updated Postfix relay_domains with {len(domains)} domains: {relay_domains_value}")
+                return True
+            else:
+                logger.warning(f"relay_domains updated but Postfix reload failed: {reload_result.stderr}")
+                return True  # Still return True since relay_domains was updated
+        else:
+            logger.error(f"postconf failed: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to update Postfix relay_domains: {e}")
+        return False
+
 def load_app_config():
     """Load application configuration from config file"""
     try:
@@ -359,9 +409,34 @@ def get_enhanced_dashboard_stats_for_domain(user, domain):
 
     try:
         with engine.connect() as conn:
-            # Domain-specific filter
-            domain_filter = f"WHERE recipients LIKE '%@{domain}%'"
-            
+            # SECURITY: Build filter based on user role
+            if user.is_admin():
+                # Admin sees all emails for the domain
+                domain_filter = f"WHERE recipients LIKE '%@{domain}%'"
+            elif user.role == 'client':
+                # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
+                # Get user's managed aliases
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor(dictionary=True)
+                cursor_temp.execute("""
+                    SELECT managed_email FROM user_managed_aliases
+                    WHERE user_id = %s AND active = 1
+                """, (user.id,))
+                aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                cursor_temp.close()
+                conn_temp.close()
+
+                # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+                user_conditions = [f"sender = '{user.email}'"]
+                user_conditions.append(f"recipients LIKE '%{user.email}%'")
+                for alias in aliases:
+                    user_conditions.append(f"recipients LIKE '%{alias}%'")
+
+                domain_filter = f"WHERE ({' OR '.join(user_conditions)})"
+            else:
+                # DOMAIN_ADMIN and other roles: see their authorized domain
+                domain_filter = f"WHERE recipients LIKE '%@{domain}%'"
+
             # Get last 30 days stats
             date_30_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             
@@ -683,8 +758,33 @@ def dashboard():
         engine = get_db_engine()
         if engine:
             with engine.connect() as conn:
-                # Build domain filter for recent emails
-                domain_filter = f"recipients LIKE '%@{selected_domain}%'"
+                # SECURITY: Build filter based on user role
+                if current_user.is_admin():
+                    # Admin sees all emails for the domain
+                    domain_filter = f"recipients LIKE '%@{selected_domain}%'"
+                elif current_user.role == 'client':
+                    # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
+                    # Get user's managed aliases
+                    conn_temp = get_db_connection()
+                    cursor_temp = conn_temp.cursor(dictionary=True)
+                    cursor_temp.execute("""
+                        SELECT managed_email FROM user_managed_aliases
+                        WHERE user_id = %s AND active = 1
+                    """, (current_user.id,))
+                    aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                    cursor_temp.close()
+                    conn_temp.close()
+
+                    # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+                    user_conditions = [f"sender = '{current_user.email}'"]
+                    user_conditions.append(f"recipients LIKE '%{current_user.email}%'")
+                    for alias in aliases:
+                        user_conditions.append(f"recipients LIKE '%{alias}%'")
+
+                    domain_filter = f"({' OR '.join(user_conditions)})"
+                else:
+                    # DOMAIN_ADMIN and other roles: see their authorized domain
+                    domain_filter = f"recipients LIKE '%@{selected_domain}%'"
 
                 recent_query = text(f"""
                     SELECT id, message_id, timestamp, sender, recipients, subject,
@@ -795,13 +895,35 @@ def emails():
 
     # Add user domain filtering based on role
     if not current_user.is_admin():
-        # Non-admin users ONLY see their authorized domains
-        authorized_domains = get_user_authorized_domains(current_user)
-        if authorized_domains:
-            domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in authorized_domains]
-            where_conditions.append(f"({' OR '.join(domain_conditions)})")
+        # SECURITY: Different filtering based on role
+        if current_user.role == 'client':
+            # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
+            # Get user's managed aliases
+            conn_temp = get_db_connection()
+            cursor_temp = conn_temp.cursor(dictionary=True)
+            cursor_temp.execute("""
+                SELECT managed_email FROM user_managed_aliases
+                WHERE user_id = %s AND active = 1
+            """, (current_user.id,))
+            aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+            cursor_temp.close()
+            conn_temp.close()
+
+            # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+            user_conditions = [f"sender = '{current_user.email}'"]
+            user_conditions.append(f"recipients LIKE '%{current_user.email}%'")
+            for alias in aliases:
+                user_conditions.append(f"recipients LIKE '%{alias}%'")
+
+            where_conditions.append(f"({' OR '.join(user_conditions)})")
         else:
-            where_conditions.append("1=0")  # No access if no authorized domains
+            # DOMAIN_ADMIN and other roles: see their authorized domains
+            authorized_domains = get_user_authorized_domains(current_user)
+            if authorized_domains:
+                domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in authorized_domains]
+                where_conditions.append(f"({' OR '.join(domain_conditions)})")
+            else:
+                where_conditions.append("1=0")  # No access if no authorized domains
     else:
         # Admins see all hosted domains
         hosted_domains_filter = " OR ".join([f"recipients LIKE '%@{domain}%'" for domain in HOSTED_DOMAINS])
@@ -942,12 +1064,35 @@ def export_data(format):
 
     # Add user domain filtering for non-admin users
     if not current_user.is_admin():
-        authorized_domains = get_user_authorized_domains(current_user)
-        if authorized_domains:
-            domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in authorized_domains]
-            where_conditions.append(f"({' OR '.join(domain_conditions)})")
+        # SECURITY: Different filtering based on role
+        if current_user.role == 'client':
+            # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
+            # Get user's managed aliases
+            conn_temp = get_db_connection()
+            cursor_temp = conn_temp.cursor(dictionary=True)
+            cursor_temp.execute("""
+                SELECT managed_email FROM user_managed_aliases
+                WHERE user_id = %s AND active = 1
+            """, (current_user.id,))
+            aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+            cursor_temp.close()
+            conn_temp.close()
+
+            # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+            user_conditions = [f"sender = '{current_user.email}'"]
+            user_conditions.append(f"recipients LIKE '%{current_user.email}%'")
+            for alias in aliases:
+                user_conditions.append(f"recipients LIKE '%{alias}%'")
+
+            where_conditions.append(f"({' OR '.join(user_conditions)})")
         else:
-            where_conditions.append("1=0")  # No access
+            # DOMAIN_ADMIN and other roles: see their authorized domains
+            authorized_domains = get_user_authorized_domains(current_user)
+            if authorized_domains:
+                domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in authorized_domains]
+                where_conditions.append(f"({' OR '.join(domain_conditions)})")
+            else:
+                where_conditions.append("1=0")  # No access
 
     if filters['search']:
         search_term = filters['search'].replace("'", "''")
@@ -1316,7 +1461,6 @@ def api_bulk_whitelist():
 
 @app.route('/api/emails/bulk-delete', methods=['POST'])
 @login_required
-@admin_required
 def api_bulk_delete():
     """Delete multiple emails"""
     try:
@@ -1326,19 +1470,93 @@ def api_bulk_delete():
         if not email_ids:
             return jsonify({'success': False, 'error': 'No emails selected'}), 400
 
+        if len(email_ids) > 100:
+            return jsonify({'success': False, 'error': 'Maximum 100 emails at once'}), 400
+
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
-        # Delete all selected emails
-        placeholders = ','.join(['%s'] * len(email_ids))
-        cursor.execute(f"DELETE FROM email_analysis WHERE id IN ({placeholders})", email_ids)
+        success_count = 0
+        error_count = 0
+        errors = []
 
-        affected = cursor.rowcount
+        # Get user's managed aliases for client users
+        user_aliases = []
+        if not current_user.is_admin() and current_user.role == 'client':
+            cursor.execute("""
+                SELECT managed_email FROM user_managed_aliases
+                WHERE user_id = %s AND active = 1
+            """, (current_user.id,))
+            user_aliases = [row['managed_email'] for row in cursor.fetchall()]
+
+        for email_id in email_ids:
+            try:
+                # Get email details
+                cursor.execute("SELECT * FROM email_analysis WHERE id = %s", (email_id,))
+                email = cursor.fetchone()
+
+                if not email:
+                    error_count += 1
+                    errors.append(f"Email {email_id}: Not found")
+                    continue
+
+                # Check permissions
+                if not current_user.is_admin():
+                    if current_user.role == 'client':
+                        # CLIENT: Check if user is sender or recipient or alias recipient
+                        sender = email.get('sender', '')
+                        recipients = email.get('recipients', '')
+
+                        logger.info(f"Bulk delete permission check for email {email_id}: user={current_user.email}, sender={sender}, recipients={recipients}, aliases={user_aliases}")
+
+                        has_access = (current_user.email.lower() in sender.lower() or
+                                    current_user.email.lower() in recipients.lower())
+
+                        if not has_access:
+                            for alias in user_aliases:
+                                logger.info(f"Checking alias {alias} in recipients {recipients}")
+                                if alias.lower() in recipients.lower():
+                                    has_access = True
+                                    logger.info(f"Access granted via alias {alias}")
+                                    break
+
+                        if not has_access:
+                            error_count += 1
+                            errors.append(f"Email {email_id}: Access denied")
+                            logger.warning(f"Email {email_id}: Access denied for user {current_user.email}")
+                            continue
+                    else:
+                        # DOMAIN_ADMIN: Check domain access
+                        user_domains = get_user_authorized_domains(current_user)
+                        recipients = email.get('recipients', '')
+                        has_access = any(f"@{domain}" in recipients for domain in user_domains)
+
+                        if not has_access:
+                            error_count += 1
+                            errors.append(f"Email {email_id}: Access denied")
+                            continue
+
+                # Delete email
+                cursor.execute("DELETE FROM email_analysis WHERE id = %s", (email_id,))
+                success_count += 1
+
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Email {email_id}: {str(e)}")
+
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({'success': True, 'count': affected, 'message': f'Deleted {affected} emails'})
+        logger.info(f"Bulk delete: {success_count} success, {error_count} errors by {current_user.email}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {success_count} emails, {error_count} errors',
+            'success_count': success_count,
+            'error_count': error_count,
+            'errors': errors[:10]
+        })
     except Exception as e:
         logger.error(f"Error bulk deleting: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3171,8 +3389,9 @@ def add_domain():
                 # Reload HOSTED_DOMAINS to make change immediate
                 reload_hosted_domains()
 
-                # Update Postfix transport file
+                # Update Postfix configuration files
                 update_postfix_transport()
+                update_postfix_relay_domains()
 
                 return jsonify({'success': True, 'message': f'Domain {domain} reactivated successfully'})
 
@@ -3197,8 +3416,9 @@ def add_domain():
         # Reload HOSTED_DOMAINS to make change immediate
         reload_hosted_domains()
 
-        # Update Postfix transport file
+        # Update Postfix configuration files
         update_postfix_transport()
+        update_postfix_relay_domains()
 
         return jsonify({'success': True, 'message': f'Domain {domain} added successfully'})
 
@@ -3249,8 +3469,9 @@ def edit_domain(domain_id):
         cursor.close()
         conn.close()
 
-        # Update Postfix transport file (in case relay_host changed)
+        # Update Postfix configuration files (in case relay_host changed)
         update_postfix_transport()
+        update_postfix_relay_domains()
 
         return jsonify({'success': True, 'message': 'Domain updated successfully'})
 
@@ -3300,8 +3521,9 @@ def toggle_domain(domain_id):
         # Reload HOSTED_DOMAINS to make change immediate
         reload_hosted_domains()
 
-        # Update Postfix transport file (in case domain was activated/deactivated)
+        # Update Postfix configuration files (in case domain was activated/deactivated)
         update_postfix_transport()
+        update_postfix_relay_domains()
 
         status_text = 'activated' if new_status else 'deactivated'
         return jsonify({'success': True, 'message': f'Domain {status_text} successfully'})
@@ -3351,8 +3573,9 @@ def delete_domain(domain_id):
         # Reload HOSTED_DOMAINS to make change immediate
         reload_hosted_domains()
 
-        # Update Postfix transport file (remove deleted domain)
+        # Update Postfix configuration files (remove deleted domain)
         update_postfix_transport()
+        update_postfix_relay_domains()
 
         return jsonify({'success': True, 'message': f'Domain {domain_info["domain"]} deleted successfully'})
 
@@ -4354,17 +4577,43 @@ def quarantine_view():
 
         # Filter by domain (user access control)
         if not current_user.is_admin():
-            # Non-admin users only see emails for their authorized domains
-            if user_domains:
-                # Check recipient domains
-                domain_conditions = []
-                for domain in user_domains:
-                    domain_conditions.append("recipients LIKE %s")
-                    params.append(f'%@{domain}%')
-                query += f" AND ({' OR '.join(domain_conditions)})"
+            # SECURITY: Different filtering based on role
+            if current_user.role == 'client':
+                # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
+                # Get user's managed aliases
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor(dictionary=True)
+                cursor_temp.execute("""
+                    SELECT managed_email FROM user_managed_aliases
+                    WHERE user_id = %s AND active = 1
+                """, (current_user.id,))
+                aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                cursor_temp.close()
+                conn_temp.close()
+
+                # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+                user_conditions = []
+                user_conditions.append("sender = %s")
+                params.append(current_user.email)
+                user_conditions.append("recipients LIKE %s")
+                params.append(f'%{current_user.email}%')
+                for alias in aliases:
+                    user_conditions.append("recipients LIKE %s")
+                    params.append(f'%{alias}%')
+
+                query += f" AND ({' OR '.join(user_conditions)})"
             else:
-                # User has no domains - show nothing
-                query += " AND 1=0"
+                # DOMAIN_ADMIN and other roles: see their authorized domains
+                if user_domains:
+                    # Check recipient domains
+                    domain_conditions = []
+                    for domain in user_domains:
+                        domain_conditions.append("recipients LIKE %s")
+                        params.append(f'%@{domain}%')
+                    query += f" AND ({' OR '.join(domain_conditions)})"
+                else:
+                    # User has no domains - show nothing
+                    query += " AND 1=0"
         else:
             # Admin can filter by specific domain if requested
             if domain_filter:
@@ -4617,32 +4866,116 @@ def api_quarantine_release(email_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        query = "SELECT * FROM email_quarantine WHERE id = %s"
-        cursor.execute(query, (email_id,))
+        # Check if email exists - try email_analysis first (quarantine page shows this table)
+        cursor.execute("SELECT * FROM email_analysis WHERE id = %s", (email_id,))
         email = cursor.fetchone()
+        table_name = 'email_analysis'
+
+        # If not in email_analysis, try email_quarantine
+        if not email:
+            cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+            email = cursor.fetchone()
+            table_name = 'email_quarantine'
 
         if not email:
             return jsonify({'success': False, 'error': 'Email not found'}), 404
 
-        if email["quarantine_status"] == "deleted":
-            return jsonify({'success': False, 'error': 'Cannot release a deleted email'}), 400
+        # SPAM RELEASE PREVENTION: Check if spam emails should be blocked from release
+        cursor.execute("""
+            SELECT setting_value
+            FROM system_settings
+            WHERE setting_key = 'prevent_spam_release'
+        """)
+        result = cursor.fetchone()
+        prevent_spam_release = result and result['setting_value'].lower() in ('true', '1', 'yes', 'enabled')
 
-        # Check permissions - verify user has access to recipient domain
+        if prevent_spam_release:
+            spam_score = float(email.get('spam_score', 0))
+            if spam_score >= 5.0:
+                logger.warning(f"Attempted to release spam email (ID: {email_id}, spam_score: {spam_score}) by {current_user.email}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Cannot release spam emails (spam score: {spam_score:.1f}). Spam release is disabled in system settings.'
+                }), 400
+
+        # REMOVED RESTRICTION: Allow releasing deleted emails for recovery purposes
+        # Deleted emails can be released within retention period (30 days) for recovery
+        # if table_name == 'email_quarantine' and email.get("quarantine_status") == "deleted":
+        #     return jsonify({'success': False, 'error': 'Cannot release a deleted email'}), 400
+
+        # Check permissions - verify user has access to this email
         if not current_user.is_admin():
-            user_domains = get_user_authorized_domains(current_user)
-            # Parse recipient_domains (JSON array)
-            import json as json_module
-            try:
-                recipient_domains = json_module.loads(email.get('recipient_domains', '[]'))
-            except:
-                recipient_domains = []
+            if current_user.role == 'client':
+                # CLIENT role: Check if user is sender or recipient or alias recipient
+                # Get user's managed aliases
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor(dictionary=True)
+                cursor_temp.execute("""
+                    SELECT managed_email FROM user_managed_aliases
+                    WHERE user_id = %s AND active = 1
+                """, (current_user.id,))
+                aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                cursor_temp.close()
+                conn_temp.close()
 
-            has_access = any(domain in user_domains for domain in recipient_domains)
-            if not has_access:
-                return jsonify({'success': False, 'error': 'Access denied'}), 403
+                # Check if user is sender
+                sender = email.get('sender', '')
+                has_access = (current_user.email.lower() in sender.lower())
 
-        # Parse recipients
-        recipients = json.loads(email['recipients']) if email['recipients'] else []
+                # Check if user or aliases are in recipients
+                if not has_access:
+                    recipients_str = email.get('recipients', '[]')
+                    try:
+                        recipients = json.loads(recipients_str) if isinstance(recipients_str, str) else recipients_str
+                        recipients_str = ' '.join(recipients).lower()
+                    except:
+                        recipients_str = str(recipients_str).lower()
+
+                    # Check user email
+                    has_access = current_user.email.lower() in recipients_str
+
+                    # Check aliases
+                    if not has_access:
+                        for alias in aliases:
+                            if alias.lower() in recipients_str:
+                                has_access = True
+                                break
+
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+            else:
+                # DOMAIN_ADMIN: Check domain access
+                user_domains = get_user_authorized_domains(current_user)
+                # Parse recipient_domains (JSON array)
+                import json as json_module
+                try:
+                    recipient_domains = json_module.loads(email.get('recipient_domains', '[]'))
+                except:
+                    recipient_domains = []
+
+                has_access = any(domain in user_domains for domain in recipient_domains)
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+        # Parse recipients - handle both table formats
+        if table_name == 'email_analysis':
+            # email_analysis stores recipients as string like '"contact@openefa.org" <contact@openefa.org>'
+            recipients_str = email.get('recipients', '')
+            # Extract email addresses using regex - prefer addresses in angle brackets
+            import re
+            # First try to extract from angle brackets
+            email_pattern = r'<([^>]+)>'
+            matches = re.findall(email_pattern, recipients_str)
+            if matches:
+                recipients = matches
+            else:
+                # Fallback: extract plain email addresses (but filter out those with quotes)
+                email_pattern = r'(?<!")([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?!")'
+                matches = re.findall(email_pattern, recipients_str)
+                recipients = matches if matches else [recipients_str.strip()]
+        else:
+            # email_quarantine stores recipients as JSON array
+            recipients = json.loads(email['recipients']) if email['recipients'] else []
 
         # Extract email address from sender (handle "Name <email@domain.com>" format)
         sender = email['sender']
@@ -4650,36 +4983,44 @@ def api_quarantine_release(email_id):
             # Extract email from "Name <email@domain.com>" format
             sender = sender.split('<')[1].split('>')[0].strip()
 
+        # Get raw_email
+        raw_email = email.get('raw_email', '')
+        if not raw_email:
+            return jsonify({'success': False, 'error': 'Email content not available for relay'}), 400
+
         # Relay email using SMTP
         try:
             # Connect and send
             with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
-                smtp.sendmail(sender, recipients, email['raw_email'])
+                smtp.sendmail(sender, recipients, raw_email)
 
-            # Update database
-            update_query = """
-                UPDATE email_quarantine
-                SET quarantine_status = 'released',
-                    released_by = %s,
-                    released_at = NOW(),
-                    released_to = %s
-                WHERE id = %s
-            """
-            cursor.execute(update_query, (current_user.email, mode, email_id))
+            # Update database (only for email_quarantine table)
+            if table_name == 'email_quarantine':
+                # Recovery feature: If email was deleted, change status back to released
+                # This allows admins to recover deleted emails within retention period
+                update_query = """
+                    UPDATE email_quarantine
+                    SET quarantine_status = 'released',
+                        released_by = %s,
+                        released_at = NOW(),
+                        released_to = %s
+                    WHERE id = %s
+                """
+                cursor.execute(update_query, (current_user.email, mode, email_id))
 
-            # Log action
-            log_query = """
-                INSERT INTO quarantine_actions_log
-                (quarantine_id, action_type, performed_by, user_role, action_details)
-                VALUES (%s, %s, %s, %s, %s)
-            """
-            log_data = json.dumps({
-                'released_to': relay_host,
-                'recipient_count': len(recipients),
-                'mode': mode
-            })
-            cursor.execute(log_query, (email_id, 'released', current_user.email,
-                                      'admin' if current_user.is_admin() else 'user', log_data))
+                # Log action
+                log_query = """
+                    INSERT INTO quarantine_actions_log
+                    (quarantine_id, action_type, performed_by, user_role, action_details)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
+                log_data = json.dumps({
+                    'released_to': relay_host,
+                    'recipient_count': len(recipients),
+                    'mode': mode
+                })
+                cursor.execute(log_query, (email_id, 'released', current_user.email,
+                                          'admin' if current_user.is_admin() else 'user', log_data))
 
             conn.commit()
 
@@ -4718,52 +5059,104 @@ def api_quarantine_delete(email_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Check if email exists and get details
-        cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+        # Check if email exists - try email_analysis first (quarantine page shows this table)
+        cursor.execute("SELECT * FROM email_analysis WHERE id = %s", (email_id,))
         email = cursor.fetchone()
+        table_name = 'email_analysis'
+
+        # If not in email_analysis, try email_quarantine
+        if not email:
+            cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+            email = cursor.fetchone()
+            table_name = 'email_quarantine'
 
         if not email:
             return jsonify({'success': False, 'error': 'Email not found'}), 404
 
-        # Check permissions - verify user has access to recipient domain
+        # Check permissions - verify user has access to this email
         if not current_user.is_admin():
-            user_domains = get_user_authorized_domains(current_user)
-            # Parse recipient_domains (stored as JSON array like ["domain.com"])
-            import json
-            try:
-                recipient_domains = json.loads(email.get('recipient_domains', '[]'))
-            except:
-                recipient_domains = []
+            if current_user.role == 'client':
+                # CLIENT role: Check if user is sender or recipient or alias recipient
+                # Get user's managed aliases
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor(dictionary=True)
+                cursor_temp.execute("""
+                    SELECT managed_email FROM user_managed_aliases
+                    WHERE user_id = %s AND active = 1
+                """, (current_user.id,))
+                aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                cursor_temp.close()
+                conn_temp.close()
 
-            # Check if user has access to any of the recipient domains
-            has_access = False
-            for domain in recipient_domains:
-                if domain in user_domains:
-                    has_access = True
-                    break
+                # Check if user is sender
+                sender = email.get('sender', '')
+                has_access = (current_user.email.lower() in sender.lower())
 
-            if not has_access:
-                return jsonify({'success': False, 'error': 'Access denied'}), 403
+                # Check if user or aliases are in recipients
+                if not has_access:
+                    recipients_str = email.get('recipients', '[]')
+                    try:
+                        recipients = json.loads(recipients_str) if isinstance(recipients_str, str) else recipients_str
+                        recipients_str = ' '.join(recipients).lower()
+                    except:
+                        recipients_str = str(recipients_str).lower()
 
-        # Update status
-        update_query = """
-            UPDATE email_quarantine
-            SET quarantine_status = 'deleted',
-                user_classification = 'spam',
-                deleted_by = %s,
-                deleted_at = NOW()
-            WHERE id = %s
-        """
-        cursor.execute(update_query, (current_user.email, email_id))
+                    # Check user email
+                    has_access = current_user.email.lower() in recipients_str
 
-        # Log action
-        log_query = """
-            INSERT INTO quarantine_actions_log
-            (quarantine_id, action_type, performed_by, user_role, reason)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-        cursor.execute(log_query, (email_id, 'marked_spam', current_user.email,
-                                  'admin' if current_user.is_admin() else 'user', reason))
+                    # Check aliases
+                    if not has_access:
+                        for alias in aliases:
+                            if alias.lower() in recipients_str:
+                                has_access = True
+                                break
+
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+            else:
+                # DOMAIN_ADMIN: Check domain access
+                user_domains = get_user_authorized_domains(current_user)
+                # Parse recipient_domains (stored as JSON array like ["domain.com"])
+                import json
+                try:
+                    recipient_domains = json.loads(email.get('recipient_domains', '[]'))
+                except:
+                    recipient_domains = []
+
+                # Check if user has access to any of the recipient domains
+                has_access = False
+                for domain in recipient_domains:
+                    if domain in user_domains:
+                        has_access = True
+                        break
+
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+        # Delete from appropriate table
+        if table_name == 'email_analysis':
+            # For email_analysis, just delete the record
+            cursor.execute("DELETE FROM email_analysis WHERE id = %s", (email_id,))
+        else:
+            # For email_quarantine, mark as deleted (soft delete)
+            update_query = """
+                UPDATE email_quarantine
+                SET quarantine_status = 'deleted',
+                    user_classification = 'spam',
+                    deleted_by = %s,
+                    deleted_at = NOW()
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (current_user.email, email_id))
+
+            # Log action for quarantine table
+            log_query = """
+                INSERT INTO quarantine_actions_log
+                (quarantine_id, action_type, performed_by, user_role, reason)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            cursor.execute(log_query, (email_id, 'marked_spam', current_user.email,
+                                      'admin' if current_user.is_admin() else 'user', reason))
 
         conn.commit()
 
@@ -4872,51 +5265,110 @@ def api_quarantine_mark_not_spam(email_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Get email
-        cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+        # Check if email exists - try email_analysis first (quarantine page shows this table)
+        cursor.execute("SELECT * FROM email_analysis WHERE id = %s", (email_id,))
         email = cursor.fetchone()
+        table_name = 'email_analysis'
+
+        # If not in email_analysis, try email_quarantine
+        if not email:
+            cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+            email = cursor.fetchone()
+            table_name = 'email_quarantine'
 
         if not email:
             return jsonify({'success': False, 'error': 'Email not found'}), 404
 
-        # Check permissions - verify user has access to recipient domain
+        # Check permissions - verify user has access to this email
         if not current_user.is_admin():
-            user_domains = get_user_authorized_domains(current_user)
-            # Parse recipient_domains (stored as JSON array like ["domain.com"])
-            import json
-            try:
-                recipient_domains = json.loads(email.get('recipient_domains', '[]'))
-            except:
-                recipient_domains = []
+            if current_user.role == 'client':
+                # CLIENT role: Check if user is sender or recipient or alias recipient
+                # Get user's managed aliases
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor(dictionary=True)
+                cursor_temp.execute("""
+                    SELECT managed_email FROM user_managed_aliases
+                    WHERE user_id = %s AND active = 1
+                """, (current_user.id,))
+                aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+                cursor_temp.close()
+                conn_temp.close()
 
-            # Check if user has access to any of the recipient domains
-            has_access = False
-            for domain in recipient_domains:
-                if domain in user_domains:
-                    has_access = True
-                    break
+                # Check if user is sender
+                sender = email.get('sender', '')
+                has_access = (current_user.email.lower() in sender.lower())
 
-            if not has_access:
-                return jsonify({'success': False, 'error': 'Access denied'}), 403
+                # Check if user or aliases are in recipients
+                if not has_access:
+                    recipients_str = email.get('recipients', '[]')
+                    try:
+                        recipients = json.loads(recipients_str) if isinstance(recipients_str, str) else recipients_str
+                        recipients_str = ' '.join(recipients).lower()
+                    except:
+                        recipients_str = str(recipients_str).lower()
 
-        # Update classification
-        update_query = """
-            UPDATE email_quarantine
-            SET user_classification = 'not_spam',
-                reviewed_by = %s,
-                reviewed_at = NOW()
-            WHERE id = %s
-        """
-        cursor.execute(update_query, (current_user.email, email_id))
+                    # Check user email
+                    has_access = current_user.email.lower() in recipients_str
 
-        # Log action
-        log_query = """
-            INSERT INTO quarantine_actions_log
-            (quarantine_id, action_type, performed_by, user_role)
-            VALUES (%s, %s, %s, %s)
-        """
-        cursor.execute(log_query, (email_id, 'marked_not_spam', current_user.email,
-                                  'admin' if current_user.is_admin() else 'user'))
+                    # Check aliases
+                    if not has_access:
+                        for alias in aliases:
+                            if alias.lower() in recipients_str:
+                                has_access = True
+                                break
+
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+            else:
+                # DOMAIN_ADMIN: Check domain access
+                user_domains = get_user_authorized_domains(current_user)
+                # Parse recipient_domains (stored as JSON array like ["domain.com"])
+                import json
+                try:
+                    recipient_domains = json.loads(email.get('recipient_domains', '[]'))
+                except:
+                    recipient_domains = []
+
+                # Check if user has access to any of the recipient domains
+                has_access = False
+                for domain in recipient_domains:
+                    if domain in user_domains:
+                        has_access = True
+                        break
+
+                if not has_access:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+        # Update classification (only for email_quarantine table)
+        if table_name == 'email_quarantine':
+            update_query = """
+                UPDATE email_quarantine
+                SET user_classification = 'not_spam',
+                    reviewed_by = %s,
+                    reviewed_at = NOW()
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (current_user.email, email_id))
+
+            # Log action
+            log_query = """
+                INSERT INTO quarantine_actions_log
+                (quarantine_id, action_type, performed_by, user_role)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(log_query, (email_id, 'marked_not_spam', current_user.email,
+                                      'admin' if current_user.is_admin() else 'user'))
+        else:
+            # For email_analysis, reduce spam_score significantly
+            # This will update the display and remove red spam indicator
+            update_query = """
+                UPDATE email_analysis
+                SET spam_score = LEAST(spam_score - 5.0, 0.0),
+                    email_category = 'clean'
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (email_id,))
+            logger.info(f"Email {email_id} from email_analysis marked as not spam by {current_user.email} (spam_score reduced)")
 
         conn.commit()
 
@@ -4958,18 +5410,41 @@ def api_quarantine_bulk_release():
         for email_id in email_ids:
             # Call single release function for each email
             try:
+                logger.info(f"Bulk release: attempting to release email {email_id}")
                 response = api_quarantine_release(email_id)
-                if isinstance(response, tuple) and response[1] == 200:  # Success
+                # Check if response is successful (either just jsonify object or tuple with 200)
+                is_success = False
+                error_msg = None
+
+                if isinstance(response, tuple):
+                    # Tuple format: (response_object, status_code)
+                    response_obj, status_code = response
+                    logger.info(f"Bulk release email {email_id}: got tuple response with status {status_code}")
+                    if status_code == 200:
+                        is_success = True
+                    else:
+                        error_msg = response_obj.get_json().get('error', 'Unknown error')
+                else:
+                    # Just a response object (Flask defaults to 200)
+                    response_json = response.get_json()
+                    logger.info(f"Bulk release email {email_id}: got response {response_json}")
+                    if response_json.get('success', False):
+                        is_success = True
+                    else:
+                        error_msg = response_json.get('error', 'Unknown error')
+
+                if is_success:
                     success_count += 1
+                    logger.info(f"Bulk release email {email_id}: SUCCESS")
                 else:
                     error_count += 1
-                    if isinstance(response, tuple):
-                        errors.append(f"Email {email_id}: {response[0].get_json().get('error')}")
-                    else:
-                        errors.append(f"Email {email_id}: Unknown error")
+                    errors.append(f"Email {email_id}: {error_msg}")
+                    logger.warning(f"Bulk release email {email_id}: FAILED - {error_msg}")
+
             except Exception as e:
                 error_count += 1
                 errors.append(f"Email {email_id}: {str(e)}")
+                logger.error(f"Bulk release email {email_id}: EXCEPTION - {str(e)}")
 
         return jsonify({
             'success': True,
@@ -5008,56 +5483,107 @@ def api_quarantine_bulk_delete():
         error_count = 0
         errors = []
 
-        # Get user's authorized domains for permission checking
-        user_domains = get_user_authorized_domains(current_user) if not current_user.is_admin() else None
+        # Get user's managed aliases for client users
+        user_aliases = []
+        if not current_user.is_admin() and current_user.role == 'client':
+            cursor_temp = conn.cursor(dictionary=True)
+            cursor_temp.execute("""
+                SELECT managed_email FROM user_managed_aliases
+                WHERE user_id = %s AND active = 1
+            """, (current_user.id,))
+            user_aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+            cursor_temp.close()
 
         for email_id in email_ids:
             try:
-                # Check if email exists and get details
-                cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+                # Check if email exists - try email_analysis first (quarantine page shows this table)
+                cursor.execute("SELECT * FROM email_analysis WHERE id = %s", (email_id,))
                 email = cursor.fetchone()
+                table_name = 'email_analysis'
+
+                # If not in email_analysis, try email_quarantine
+                if not email:
+                    cursor.execute("SELECT * FROM email_quarantine WHERE id = %s", (email_id,))
+                    email = cursor.fetchone()
+                    table_name = 'email_quarantine'
 
                 if not email:
                     error_count += 1
                     errors.append(f"Email {email_id}: Not found")
                     continue
 
-                # Check permissions - verify user has access to recipient domain
+                # Check permissions - verify user has access to this email
                 if not current_user.is_admin():
-                    # Parse recipient_domains (stored as JSON array like ["domain.com"])
-                    import json
-                    try:
-                        recipient_domains = json.loads(email.get('recipient_domains', '[]'))
-                    except:
-                        recipient_domains = []
+                    if current_user.role == 'client':
+                        # CLIENT role: Check if user is sender or recipient or alias recipient
+                        sender = email.get('sender', '')
+                        has_access = (current_user.email.lower() in sender.lower())
 
-                    # Check if user has access to any of the recipient domains
-                    has_access = any(domain in user_domains for domain in recipient_domains)
+                        # Check if user or aliases are in recipients
+                        if not has_access:
+                            recipients_str = email.get('recipients', '[]')
+                            try:
+                                recipients = json.loads(recipients_str) if isinstance(recipients_str, str) else recipients_str
+                                recipients_str = ' '.join(recipients).lower()
+                            except:
+                                recipients_str = str(recipients_str).lower()
 
-                    if not has_access:
-                        error_count += 1
-                        errors.append(f"Email {email_id}: Access denied")
-                        continue
+                            # Check user email
+                            has_access = current_user.email.lower() in recipients_str
 
-                # Update status
-                update_query = """
-                    UPDATE email_quarantine
-                    SET quarantine_status = 'deleted',
-                        user_classification = 'spam',
-                        deleted_by = %s,
-                        deleted_at = NOW()
-                    WHERE id = %s
-                """
-                cursor.execute(update_query, (current_user.email, email_id))
+                            # Check aliases
+                            if not has_access:
+                                for alias in user_aliases:
+                                    if alias.lower() in recipients_str:
+                                        has_access = True
+                                        break
 
-                # Log action
-                log_query = """
-                    INSERT INTO quarantine_actions_log
-                    (quarantine_id, action_type, performed_by, user_role, reason)
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                cursor.execute(log_query, (email_id, 'marked_spam', current_user.email,
-                                          'admin' if current_user.is_admin() else 'user', reason))
+                        if not has_access:
+                            error_count += 1
+                            errors.append(f"Email {email_id}: Access denied")
+                            continue
+                    else:
+                        # DOMAIN_ADMIN: Check domain access
+                        user_domains = get_user_authorized_domains(current_user)
+                        # Parse recipient_domains (stored as JSON array like ["domain.com"])
+                        import json
+                        try:
+                            recipient_domains = json.loads(email.get('recipient_domains', '[]'))
+                        except:
+                            recipient_domains = []
+
+                        # Check if user has access to any of the recipient domains
+                        has_access = any(domain in user_domains for domain in recipient_domains)
+
+                        if not has_access:
+                            error_count += 1
+                            errors.append(f"Email {email_id}: Access denied")
+                            continue
+
+                # Delete from appropriate table
+                if table_name == 'email_analysis':
+                    # For email_analysis, just delete the record
+                    cursor.execute("DELETE FROM email_analysis WHERE id = %s", (email_id,))
+                else:
+                    # For email_quarantine, mark as deleted (soft delete)
+                    update_query = """
+                        UPDATE email_quarantine
+                        SET quarantine_status = 'deleted',
+                            user_classification = 'spam',
+                            deleted_by = %s,
+                            deleted_at = NOW()
+                        WHERE id = %s
+                    """
+                    cursor.execute(update_query, (current_user.email, email_id))
+
+                    # Log action for quarantine table
+                    log_query = """
+                        INSERT INTO quarantine_actions_log
+                        (quarantine_id, action_type, performed_by, user_role, reason)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(log_query, (email_id, 'marked_spam', current_user.email,
+                                              'admin' if current_user.is_admin() else 'user', reason))
 
                 success_count += 1
 
@@ -5154,10 +5680,29 @@ def emails_status_view():
                 query += " AND recipients LIKE %s"
                 params.append(f'%@{domain_filter}%')
         elif current_user.is_client():
-            # Clients ONLY see emails where they are sender or recipient
-            query += " AND (sender = %s OR recipients LIKE %s)"
+            # Clients ONLY see emails where they are sender or recipient OR alias recipient
+            # Get user's managed aliases
+            conn_temp = get_db_connection()
+            cursor_temp = conn_temp.cursor(dictionary=True)
+            cursor_temp.execute("""
+                SELECT managed_email FROM user_managed_aliases
+                WHERE user_id = %s AND active = 1
+            """, (current_user.id,))
+            aliases = [row['managed_email'] for row in cursor_temp.fetchall()]
+            cursor_temp.close()
+            conn_temp.close()
+
+            # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
+            user_conditions = []
+            user_conditions.append("sender = %s")
             params.append(current_user.email)
+            user_conditions.append("recipients LIKE %s")
             params.append(f'%{current_user.email}%')
+            for alias in aliases:
+                user_conditions.append("recipients LIKE %s")
+                params.append(f'%{alias}%')
+
+            query += f" AND ({' OR '.join(user_conditions)})"
         else:
             # Domain admins see their authorized domains
             if user_domains:

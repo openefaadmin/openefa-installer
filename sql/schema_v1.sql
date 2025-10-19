@@ -28,6 +28,28 @@ CREATE TABLE `audit_log` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `system_settings` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `setting_key` varchar(100) NOT NULL UNIQUE,
+  `setting_value` text NOT NULL,
+  `description` text DEFAULT NULL,
+  `updated_by` varchar(100) DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_setting_key` (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+-- Insert default settings
+INSERT INTO system_settings (setting_key, setting_value, description, updated_by) VALUES
+('cleanup_expired_emails_enabled', 'true', 'Enable automatic cleanup of expired quarantine emails', 'system'),
+('cleanup_retention_days', '30', 'Number of days to retain emails before cleanup', 'system'),
+('prevent_spam_release', 'false', 'Prevent releasing emails marked as spam (spam_score >= 5.0)', 'system')
+ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `behavioral_anomalies` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `sender_email` varchar(255) NOT NULL,

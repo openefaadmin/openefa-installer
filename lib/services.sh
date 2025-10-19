@@ -145,6 +145,36 @@ setup_logrotate() {
 }
 
 #
+# Configure cron job for email cleanup
+#
+setup_cleanup_cron() {
+    info "Configuring email cleanup cron job..."
+
+    # Check if cleanup script exists
+    if [[ ! -f "/opt/spacyserver/cleanup_expired_emails.py" ]]; then
+        warn "cleanup_expired_emails.py not found, skipping cron setup"
+        return 0
+    fi
+
+    # Create cleanup log file
+    touch /opt/spacyserver/logs/cleanup.log
+    chown spacy-filter:spacy-filter /opt/spacyserver/logs/cleanup.log
+    chmod 644 /opt/spacyserver/logs/cleanup.log
+
+    # Add cron job for spacy-filter user (runs daily at 2 AM)
+    local cron_entry="0 2 * * * /opt/spacyserver/venv/bin/python3 /opt/spacyserver/cleanup_expired_emails.py >> /opt/spacyserver/logs/cleanup.log 2>&1"
+
+    # Get existing crontab, add new entry if not already present
+    (crontab -u spacy-filter -l 2>/dev/null || true; echo "${cron_entry}") | \
+        grep -v "cleanup_expired_emails.py" | \
+        { cat; echo "${cron_entry}"; } | \
+        crontab -u spacy-filter -
+
+    success "Email cleanup cron job configured (daily at 2 AM)"
+    return 0
+}
+
+#
 # Run all service setup steps
 #
 setup_services() {
@@ -157,6 +187,7 @@ setup_services() {
     setup_spacyweb_service || return 1
     setup_api_services || return 1
     setup_logrotate || return 1
+    setup_cleanup_cron || return 1
 
     save_state "services_configured"
     success "All services configured and running"
@@ -166,4 +197,4 @@ setup_services() {
 # Export functions
 export -f install_service_file enable_and_start_service
 export -f setup_db_processor_service setup_spacyweb_service
-export -f setup_api_services setup_logrotate setup_services
+export -f setup_api_services setup_logrotate setup_cleanup_cron setup_services
