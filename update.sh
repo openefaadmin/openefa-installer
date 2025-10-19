@@ -294,6 +294,44 @@ download_latest() {
 }
 
 #
+# Compare versions and check if update is needed
+#
+compare_versions() {
+    info "Comparing versions..."
+
+    # Read latest version from downloaded repository
+    local latest_version="Unknown"
+    if [[ -f "${TEMP_DIR}/openefa-installer/VERSION" ]]; then
+        # Parse VERSION=x.x.x format
+        latest_version=$(grep "^VERSION=" "${TEMP_DIR}/openefa-installer/VERSION" 2>/dev/null | cut -d= -f2)
+        if [[ -z "${latest_version}" ]]; then
+            # Try plain text format
+            latest_version=$(cat "${TEMP_DIR}/openefa-installer/VERSION" | head -1)
+        fi
+    fi
+
+    info "Current version: ${VERSION:-Unknown}"
+    info "Latest version: ${latest_version}"
+
+    # Compare versions
+    if [[ "${VERSION}" == "${latest_version}" ]] && [[ "${VERSION}" != "Unknown" ]]; then
+        success "You are already on the latest version ${VERSION}"
+        echo ""
+        info "No update needed. Your OpenEFA installation is up to date!"
+        cleanup
+        exit 0
+    elif [[ "${latest_version}" == "Unknown" ]]; then
+        warn "Could not determine latest version from GitHub"
+        if [[ ${FORCE} -eq 0 ]]; then
+            error "Update aborted (use --force to override)"
+            exit 1
+        fi
+    else
+        success "Update available: ${VERSION} → ${latest_version}"
+    fi
+}
+
+#
 # Update email_filter.py
 #
 update_email_filter() {
@@ -435,22 +473,18 @@ update_version_file() {
         return 0
     fi
 
-    # Get latest commit from downloaded repo
-    if [[ -d "${TEMP_DIR}/openefa-installer/.git" ]]; then
-        cd "${TEMP_DIR}/openefa-installer"
-        LATEST_COMMIT=$(git rev-parse --short HEAD)
+    # Copy VERSION file from downloaded repository
+    if [[ -f "${TEMP_DIR}/openefa-installer/VERSION" ]]; then
+        cp "${TEMP_DIR}/openefa-installer/VERSION" "${INSTALL_DIR}/VERSION"
+        chown spacy-filter:spacy-filter "${INSTALL_DIR}/VERSION"
+        chmod 644 "${INSTALL_DIR}/VERSION"
+
+        # Read the version to display
+        local new_version=$(grep "^VERSION=" "${INSTALL_DIR}/VERSION" 2>/dev/null | cut -d= -f2)
+        success "Updated VERSION file to ${new_version}"
     else
-        LATEST_COMMIT="unknown"
+        warn "VERSION file not found in update package"
     fi
-
-    cat > "${INSTALL_DIR}/VERSION" << EOF
-VERSION=1.0.0
-INSTALLED=${INSTALLED:-$(date +%Y-%m-%d)}
-UPDATED=$(date +%Y-%m-%d)
-COMMIT=${LATEST_COMMIT}
-EOF
-
-    success "Updated VERSION file"
 }
 
 #
@@ -605,6 +639,9 @@ main() {
 
     # Download latest version
     download_latest
+
+    # Compare versions (exits if already up to date)
+    compare_versions
 
     # Perform updates
     section "Updating Components"
