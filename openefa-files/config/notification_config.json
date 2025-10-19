@@ -1,0 +1,63 @@
+{
+  "clicksend": {
+    "enabled": true,
+    "username": "barbours",
+    "api_key": "80018933-8768-B24C-D411-FD7421961BF9",
+    "from_number": "OpenEFA"
+  },
+  "notification_settings": {
+    "high_risk_alerts": {
+      "enabled": true,
+      "spam_score_threshold": 80,
+      "recipients": [
+        "+17025618743"
+      ],
+      "triggers": {
+        "phishing_detected": true,
+        "bec_detected": true,
+        "virus_detected": true,
+        "high_spam_score": true
+      }
+    },
+    "system_alerts": {
+      "enabled": true,
+      "recipients": [
+        "+17025618743"
+      ],
+      "triggers": {
+        "service_failures": true,
+        "database_errors": true,
+        "critical_errors": true
+      }
+    },
+    "daily_summary": {
+      "enabled": true,
+      "recipients": [
+        "+17025618743"
+      ],
+      "send_time": "08:00",
+      "timezone": "America/Los_Angeles",
+      "include_stats": {
+        "total_processed": true,
+        "spam_blocked": true,
+        "threats_detected": true,
+        "quarantined": true
+      }
+    }
+  },
+  "rate_limiting": {
+    "max_notifications_per_hour": 10,
+    "cooldown_minutes": 5,
+    "duplicate_suppression_minutes": 30
+  },
+  "message_templates": {
+    "high_risk_email": "ALERT: High-risk email detected. From: {sender}, Score: {score}, Reason: {reason}",
+    "phishing_detected": "SECURITY ALERT: Phishing attempt blocked from {sender}",
+    "bec_detected": "SECURITY ALERT: Business Email Compromise attempt from {sender}",
+    "virus_detected": "SECURITY ALERT: Virus detected in email from {sender}",
+    "system_error": "SYSTEM ALERT: {error_type} - {message}",
+    "daily_summary": "OpenEFA Daily Report: Processed {total}, Blocked {spam}, Threats {threats}, Quarantined {quarantined}"
+  },
+  "version": "1.0",
+  "last_modified": null
+}

@@ -55,6 +55,20 @@ from modules.quarantine_manager import get_quarantine_manager
 # Initialize quarantine manager
 QUARANTINE_MANAGER = get_quarantine_manager()
 
+# ============================================================================
+# NOTIFICATION SERVICE INTEGRATION
+# ============================================================================
+
+# Import notification service for SMS alerts
+NOTIFICATION_SERVICE = None
+try:
+    sys.path.insert(0, '/opt/spacyserver')
+    from notification_service import NotificationService
+    NOTIFICATION_SERVICE = NotificationService()
+    print("✅ Notification service initialized", file=sys.stderr)
+except Exception as e:
+    print(f"⚠️  Notification service not available: {e}", file=sys.stderr)
+    NOTIFICATION_SERVICE = None
 
 # ============================================================================
 # REDIS QUEUE INTEGRATION FOR DATABASE OPERATIONS
@@ -1280,7 +1294,20 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
                             analysis_results['modules_run'].append('phishing')
                             monitor.record_module('phishing')
                             safe_log(f"🎣 Phishing detected - type: {phishing_results.get('phishing_type')}, score: {phishing_results.get('risk_score', 0)}")
-                            
+
+                            # Send notification for phishing detection
+                            if NOTIFICATION_SERVICE:
+                                try:
+                                    email_data = {
+                                        'sender': from_header,
+                                        'trigger_reason': 'phishing_detected',
+                                        'message_id': safe_get_header(msg, 'Message-ID', 'unknown'),
+                                        'spam_score': analysis_results['spam_score']
+                                    }
+                                    NOTIFICATION_SERVICE.send_high_risk_alert(email_data)
+                                except Exception as notif_err:
+                                    safe_log(f"Notification error: {notif_err}")
+
                             # Add headers for SpamAssassin
                             for header_name, header_value in phishing_results.get('headers_to_add', {}).items():
                                 safe_add_header(msg, header_name, header_value, monitor)
@@ -1474,6 +1501,19 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
 
                             analysis_results['spam_score'] += bec_contribution
                             safe_log(f"BEC module completed - confidence: {confidence:.2f}, score: +{bec_contribution}")
+
+                            # Send notification for high-confidence BEC detection
+                            if confidence >= 0.8 and NOTIFICATION_SERVICE:
+                                try:
+                                    email_data = {
+                                        'sender': from_header,
+                                        'trigger_reason': 'bec_detected',
+                                        'message_id': safe_get_header(msg, 'Message-ID', 'unknown'),
+                                        'spam_score': analysis_results['spam_score']
+                                    }
+                                    NOTIFICATION_SERVICE.send_high_risk_alert(email_data)
+                                except Exception as notif_err:
+                                    safe_log(f"Notification error: {notif_err}")
                         elif 'bec_score' in bec_results:
                             # Cap BEC score at reasonable maximum
                             bec_contribution = min(bec_results['bec_score'], 8.0)
@@ -1689,6 +1729,19 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
                             virus_score = av_results.get('virus_score', 20.0)
                             analysis_results['spam_score'] += virus_score
                             safe_log(f"🦠 VIRUS DETECTED: {', '.join(av_results.get('virus_names', []))} - Added {virus_score} points")
+
+                            # Send notification for virus detection
+                            if NOTIFICATION_SERVICE:
+                                try:
+                                    email_data = {
+                                        'sender': from_header,
+                                        'trigger_reason': 'virus_detected',
+                                        'message_id': safe_get_header(msg, 'Message-ID', 'unknown'),
+                                        'spam_score': analysis_results['spam_score']
+                                    }
+                                    NOTIFICATION_SERVICE.send_high_risk_alert(email_data)
+                                except Exception as notif_err:
+                                    safe_log(f"Notification error: {notif_err}")
 
                             # Add headers for virus detection
                             analysis_results['headers_to_add']['X-Virus-Detected'] = 'true'
@@ -2865,6 +2918,20 @@ def main():
         if QUARANTINE_MANAGER.should_quarantine(spam_score, virus_detected):
             if store_in_quarantine(msg, text_content, analysis_results, from_header, recipients):
                 safe_log(f"📬 Email quarantined (Score: {spam_score:.2f}) - NOT relaying. User must release to deliver.")
+
+                # Send notification for high spam score quarantine
+                if spam_score >= 80 and NOTIFICATION_SERVICE:
+                    try:
+                        email_data = {
+                            'sender': from_header,
+                            'trigger_reason': 'high_spam_score',
+                            'message_id': safe_get_header(msg, 'Message-ID', 'unknown'),
+                            'spam_score': spam_score
+                        }
+                        NOTIFICATION_SERVICE.send_high_risk_alert(email_data)
+                    except Exception as notif_err:
+                        safe_log(f"Notification error: {notif_err}")
+
                 monitor.log_performance(safe_log)
                 signal.alarm(0)
                 sys.exit(0)  # Exit successfully - email is quarantined, awaiting user review
