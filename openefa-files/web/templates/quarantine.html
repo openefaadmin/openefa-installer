@@ -188,9 +188,9 @@
         <div class="col-md-3">
             <div class="card stat-card secondary">
                 <div class="card-body">
-                    <h6 class="card-subtitle mb-2 text-muted">VIRUS DETECTED</h6>
-                    <h3 class="card-title mb-0">{{ stats.virus_count or 0 }}</h3>
-                    <small class="text-muted">Blocked viruses</small>
+                    <h6 class="card-subtitle mb-2 text-muted">SECURITY THREATS</h6>
+                    <h3 class="card-title mb-0">{{ stats.security_threats or 0 }}</h3>
+                    <small class="text-muted">Viruses, URIs, BEC, etc.</small>
                 </div>
             </div>
         </div>
@@ -396,6 +396,9 @@
                                 </button>
                                 <button class="btn btn-show-headers btn-sm" onclick="toggleHeaders({{ email.id }})" id="headers-btn-{{ email.id }}">
                                     <i class="fas fa-code"></i> Show Headers
+                                </button>
+                                <button class="btn btn-success btn-sm" onclick="copyHeaders({{ email.id }})" id="copy-headers-btn-{{ email.id }}" title="Copy headers to clipboard">
+                                    <i class="fas fa-copy"></i> Copy Headers
                                 </button>
                             </div>
                         </div>
@@ -646,6 +649,74 @@ function bulkDelete() {
         location.reload();
     })
     .catch(err => alert('Error with bulk delete'));
+}
+
+// Copy email headers to clipboard
+function copyHeaders(emailId) {
+    const headersElement = document.getElementById(`headers-content-${emailId}`);
+    const headersText = headersElement.textContent || headersElement.innerText;
+    const btn = document.getElementById(`copy-headers-btn-${emailId}`);
+
+    // Check if headers are loaded
+    if (headersText === 'Loading headers...') {
+        alert('Please click "Show Headers" first to load the headers, then try copying again.');
+        return;
+    }
+
+    // Try modern clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(headersText).then(function() {
+            // Show success feedback
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+
+            setTimeout(function() {
+                btn.innerHTML = originalHTML;
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-success');
+            }, 2000);
+        }).catch(function(err) {
+            console.error('Clipboard API failed:', err);
+            fallbackCopyHeaders(headersText, btn);
+        });
+    } else {
+        // Fallback for older browsers or non-HTTPS
+        fallbackCopyHeaders(headersText, btn);
+    }
+}
+
+function fallbackCopyHeaders(text, btn) {
+    // Create temporary textarea
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+
+            setTimeout(function() {
+                btn.innerHTML = originalHTML;
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-success');
+            }, 2000);
+        } else {
+            alert('Failed to copy headers. Please copy manually.');
+        }
+    } catch (err) {
+        alert('Failed to copy: ' + err);
+    } finally {
+        document.body.removeChild(textarea);
+    }
 }
 </script>
 {% endblock %}

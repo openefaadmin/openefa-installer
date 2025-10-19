@@ -40,6 +40,14 @@ copy_module_files() {
         debug "Copied: email_filter.py"
     fi
 
+    # Copy VERSION file for system information display
+    if [[ -f "${SCRIPT_DIR}/VERSION" ]]; then
+        cp "${SCRIPT_DIR}/VERSION" "${install_dir}/"
+        chown spacy-filter:spacy-filter "${install_dir}/VERSION"
+        chmod 644 "${install_dir}/VERSION"
+        debug "Copied: VERSION"
+    fi
+
     # Copy cleanup_expired_emails.py (email retention cleanup script)
     if [[ -f "${source_dir}/cleanup_expired_emails.py" ]]; then
         cp "${source_dir}/cleanup_expired_emails.py" "${install_dir}/"
@@ -294,6 +302,29 @@ configure_module_logging() {
 }
 
 #
+# Install HTML Attachment Analyzer Module
+#
+install_html_attachment_analyzer() {
+    info "Installing HTML Attachment Analyzer module..."
+
+    local install_dir="/opt/spacyserver"
+    local source_dir="${SCRIPT_DIR}/openefa-files"
+
+    if [[ -f "${source_dir}/modules/html_attachment_analyzer.py" ]]; then
+        cp "${source_dir}/modules/html_attachment_analyzer.py" \
+           "${install_dir}/modules/"
+        chown spacy-filter:spacy-filter "${install_dir}/modules/html_attachment_analyzer.py"
+        chmod 644 "${install_dir}/modules/html_attachment_analyzer.py"
+        success "HTML Attachment Analyzer module installed"
+        debug "Module provides: credential theft detection, hidden iframe detection, brand impersonation"
+    else
+        warn "HTML Attachment Analyzer module not found in installer files"
+    fi
+
+    return 0
+}
+
+#
 # Run all module installation steps
 #
 install_modules() {
@@ -310,6 +341,7 @@ install_modules() {
     update_hosted_domains || return 1
     configure_module_tier || return 1
     configure_module_logging || return 1
+    install_html_attachment_analyzer || return 1
 
     save_state "modules_installed"
     success "Module installation complete"
@@ -318,4 +350,4 @@ install_modules() {
 
 # Export functions
 export -f copy_module_files install_module_configs create_email_filter_config update_hosted_domains
-export -f configure_module_tier configure_module_logging install_modules
+export -f configure_module_tier configure_module_logging install_html_attachment_analyzer install_modules

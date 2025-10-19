@@ -225,6 +225,23 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def superadmin_required(f):
+    """Decorator to require superadmin role (system-level access)"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.', 'error')
+            return redirect(url_for('auth.login'))
+
+        if not current_user.is_superadmin():
+            flash('Superadmin privileges required to access this feature.', 'error')
+            return render_template('error.html',
+                                 error='Access Denied',
+                                 message='This feature requires superadmin privileges. Only system administrators can access this section.')
+
+        return f(*args, **kwargs)
+    return decorated_function
+
 def domain_access_required(domain):
     """Decorator to check domain access"""
     def decorator(f):

@@ -487,6 +487,7 @@ class ModuleManager:
             'enhanced_analysis': ('analysis', ['enhanced_government_analysis', 'detect_business_context', 'detect_domain_spoofing']),
             'toad_detector': ('toad_detector', 'analyze_toad_threats'),
             'pdf_analyzer': ('pdf_analyzer', 'analyze_pdf_attachments'),
+            'html_attachment_analyzer': ('html_attachment_analyzer', 'analyze_html_attachments'),
             'fraud_funding_detector': ('funding_spam_detector', 'analyze_funding_spam'),
             'url_reputation': ('url_reputation', 'analyze_email_urls'),
             'behavioral_baseline': ('behavioral_baseline', 'analyze_behavior'),
@@ -1564,7 +1565,32 @@ def analyze_email_with_modules(msg: EmailMessage, text_content: str, from_header
                 safe_log(f"⏱️ PDF module timed out after {module_timeout}s")
             except Exception as e:
                 safe_log(f"PDF module error: {e}")
-        
+
+        # HTML attachment analyzer with timeout - skip for trusted domains
+        if MODULE_MANAGER.is_available('html_attachment_analyzer') and not is_trusted:
+            try:
+                with timeout_handler(module_timeout):
+                    analyze_html = MODULE_MANAGER.get_module('html_attachment_analyzer')
+                    html_results = analyze_html(msg)
+                    if html_results and isinstance(html_results, dict) and 'html_spam_score' in html_results:
+                        analysis_results['spam_score'] += html_results['html_spam_score']
+                        analysis_results['modules_run'].append('html_attachment')
+                        monitor.record_module('html_attachment')
+                        safe_log(f"HTML attachment module completed - score: {html_results.get('html_spam_score', 0)}")
+
+                        # Log threats detected
+                        if html_results.get('all_threats'):
+                            safe_log(f"🔴 HTML THREATS: {', '.join(html_results['all_threats'])}")
+                            analysis_results['headers_to_add']['X-HTML-Threats'] = ','.join(html_results['all_threats'])
+
+                        # Block high-risk HTML attachments
+                        if html_results.get('requires_blocking'):
+                            safe_log(f"⛔ HIGH-RISK HTML ATTACHMENT DETECTED - Risk: {html_results.get('overall_risk_score', 0)}")
+            except TimeoutException:
+                safe_log(f"⏱️ HTML attachment module timed out after {module_timeout}s")
+            except Exception as e:
+                safe_log(f"HTML attachment module error: {e}")
+
         # Funding/Financing Spam Detection with timeout
         if MODULE_MANAGER.is_available('fraud_funding_detector'):
             try:

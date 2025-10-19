@@ -233,26 +233,56 @@ test_email_processing() {
 
     info "Sending test email..."
 
-    local test_email="postmaster@${INSTALL_DOMAIN}"
+    # Use admin email from installation
+    local test_recipient="${ADMIN_EMAIL}"
+    local test_sender="openefa-test@${INSTALL_DOMAIN}"
+
+    # Create a test email that will trigger spam detection for demo purposes
+    local test_subject="OpenEFA Installation Test - System Operational"
+    local test_body="Congratulations! Your OpenEFA installation is complete and operational.
+
+This test email confirms that:
+✓ Postfix is accepting and processing emails
+✓ OpenEFA email filter is analyzing messages
+✓ SpacyWeb dashboard is ready for use
+✓ Database integration is functioning
+
+You should see this email in your quarantine dashboard at:
+https://$(hostname):5500
+
+Installation completed at: $(date)
+Installed domain: ${INSTALL_DOMAIN}
+Admin email: ${ADMIN_EMAIL}
+
+This is an automated test message from the OpenEFA installer.
+For more information, visit: https://openefa.com"
 
     if command -v swaks &> /dev/null; then
-        swaks --to "${test_email}" \
-              --from "test@example.com" \
+        # Send test email using valid domain
+        # Use --helo with FQDN to satisfy Postfix HELO requirements (reject_non_fqdn_helo_hostname)
+        local helo_fqdn="$(hostname).${INSTALL_DOMAIN}"
+
+        swaks --to "${test_recipient}" \
+              --from "${test_sender}" \
               --server localhost \
-              --header "Subject: OpenEFA Installation Test" \
-              --body "This is a test email from OpenEFA installer." \
-              &> /dev/null
+              --helo "${helo_fqdn}" \
+              --header "Subject: ${test_subject}" \
+              --body "${test_body}" \
+              2>&1 | tee /tmp/swaks_test.log
 
         if [[ $? -eq 0 ]]; then
-            success "Test email sent successfully"
+            success "Test email sent successfully to ${test_recipient}"
+            info "This email should appear in the SpacyWeb quarantine dashboard"
+            info "Login at: https://$(hostname):5500"
             info "Check logs: /var/log/mail.log and /opt/spacyserver/logs/"
             return 0
         else
-            warn "Test email failed (check logs)"
+            warn "Test email failed - check /tmp/swaks_test.log for details"
             return 0  # Non-fatal
         fi
     else
         warn "swaks not available for email testing"
+        info "Install swaks: apt-get install swaks"
         return 0
     fi
 }

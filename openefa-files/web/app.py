@@ -35,7 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import authentication system
-from auth import init_auth, get_db_connection, extract_domains_from_recipients, get_domain_filter_condition, admin_required
+from auth import init_auth, get_db_connection, extract_domains_from_recipients, get_domain_filter_condition, admin_required, superadmin_required
 import smtplib
 from email.message import EmailMessage
 import secrets
@@ -1237,10 +1237,18 @@ def email_detail(email_id):
                         except:
                             pass
 
-                    # Extract headers
+                    # Extract ALL headers including duplicates (critical for forensics)
                     headers_text = ""
-                    for key, value in msg.items():
-                        headers_text += f"{key}: {value}\n"
+                    for key, value in msg._headers:
+                        # Format multi-line headers properly
+                        formatted_value = str(value).replace('\n', '\n\t')
+                        headers_text += f"{key}: {formatted_value}\n"
+
+                    # If no headers found via _headers, fallback to items()
+                    if not headers_text:
+                        for key, value in msg.items():
+                            headers_text += f"{key}: {value}\n"
+
                     email['headers'] = headers_text
 
                 except Exception as e:
@@ -1316,6 +1324,64 @@ def api_release_email(email_id):
         return jsonify({'success': True, 'message': 'Email released and marked as safe'})
     except Exception as e:
         logger.error(f"Error releasing email: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/bulk-release', methods=['POST'])
+@login_required
+@admin_required
+def api_bulk_release_emails():
+    """Bulk release multiple emails (mark as safe, reduce spam score)"""
+    try:
+        data = request.get_json()
+        email_ids = data.get('email_ids', [])
+
+        if not email_ids:
+            return jsonify({'success': False, 'error': 'No email IDs provided'}), 400
+
+        success_count = 0
+        error_count = 0
+        errors = []
+
+        for email_id in email_ids:
+            try:
+                logger.info(f"Bulk release: attempting to release email {email_id}")
+
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Mark email as safe by reducing spam score and updating category
+                cursor.execute("""
+                    UPDATE email_analysis
+                    SET spam_score = LEAST(spam_score - 5.0, 0.0),
+                        email_category = CASE
+                            WHEN email_category IN ('spam', 'phishing') THEN 'legitimate'
+                            ELSE email_category
+                        END
+                    WHERE id = %s
+                """, (email_id,))
+
+                conn.commit()
+                cursor.close()
+                conn.close()
+
+                success_count += 1
+                logger.info(f"Bulk release email {email_id}: SUCCESS")
+
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Email {email_id}: {str(e)}")
+                logger.error(f"Bulk release email {email_id}: EXCEPTION - {str(e)}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Released {success_count} emails, {error_count} errors',
+            'success_count': success_count,
+            'error_count': error_count,
+            'errors': errors
+        })
+
+    except Exception as e:
+        logger.error(f"Error in bulk release: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/emails/whitelist-sender', methods=['POST'])
@@ -2791,10 +2857,15 @@ def backup_management():
 @login_required
 @admin_required
 def create_backup():
-    """Create a new database backup"""
+    """Create a new database backup with optional attachments"""
     import subprocess
+    import tarfile
 
     try:
+        # Get options from request
+        data = request.get_json() or {}
+        include_attachments = data.get('include_attachments', False)
+
         backup_dir = '/opt/spacyserver/backups'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_file = f'{backup_dir}/spacy_db_backup_{timestamp}.sql'
@@ -2826,28 +2897,61 @@ def create_backup():
         subprocess.run(['gzip', backup_file], check=True, timeout=60)
         backup_file_gz = f'{backup_file}.gz'
 
+        final_backup_file = backup_file_gz
+
+        # If including attachments, create a tarball with both database and attachments
+        if include_attachments:
+            attachments_dir = '/opt/spacyserver/quarantine/attachments'
+            if os.path.exists(attachments_dir):
+                tar_file = f'{backup_dir}/db_with_attachments_{timestamp}.tar.gz'
+
+                # Filter to skip files with permission errors
+                def tar_filter(tarinfo):
+                    try:
+                        # Try to access the file
+                        os.stat(tarinfo.name)
+                        return tarinfo
+                    except PermissionError:
+                        logger.warning(f"Skipping file in tar due to permission error: {tarinfo.name}")
+                        return None
+
+                with tarfile.open(tar_file, 'w:gz') as tar:
+                    # Add database backup
+                    tar.add(backup_file_gz, arcname=os.path.basename(backup_file_gz))
+                    # Add attachments directory with error filtering
+                    try:
+                        tar.add(attachments_dir, arcname='attachments', filter=tar_filter)
+                    except Exception as e:
+                        logger.warning(f"Some attachments could not be added to backup: {e}")
+
+                # Remove the standalone database backup
+                os.remove(backup_file_gz)
+                final_backup_file = tar_file
+                logger.info(f"Created database backup with attachments: {tar_file}")
+
         # Get file size
-        stat = os.stat(backup_file_gz)
+        stat = os.stat(final_backup_file)
         size_mb = stat.st_size / (1024 * 1024)
 
         # Log the action
         conn = get_db_connection()
         cursor = conn.cursor()
+        backup_type = 'with attachments' if include_attachments else 'database only'
         cursor.execute("""
             INSERT INTO audit_log (user_id, action, details, ip_address)
             VALUES (%s, 'DATABASE_BACKUP_CREATED', %s, %s)
-        """, (current_user.id, f'Created backup: {os.path.basename(backup_file_gz)} ({size_mb:.2f} MB)', request.remote_addr))
+        """, (current_user.id, f'Created backup ({backup_type}): {os.path.basename(final_backup_file)} ({size_mb:.2f} MB)', request.remote_addr))
         conn.commit()
         cursor.close()
         conn.close()
 
-        logger.info(f"Backup created successfully: {backup_file_gz} ({size_mb:.2f} MB)")
+        logger.info(f"Backup created successfully: {final_backup_file} ({size_mb:.2f} MB)")
 
         return jsonify({
             'success': True,
-            'filename': os.path.basename(backup_file_gz),
+            'filename': os.path.basename(final_backup_file),
             'size': f'{size_mb:.2f} MB',
-            'message': f'Backup created successfully: {os.path.basename(backup_file_gz)}'
+            'message': f'Backup created successfully: {os.path.basename(final_backup_file)}'
         })
 
     except subprocess.TimeoutExpired:
@@ -2921,11 +3025,17 @@ def delete_backup(filename):
 @login_required
 @admin_required
 def create_full_backup():
-    """Create a full system backup (configs + database + modules)"""
+    """Create a full system backup with customizable options"""
     import subprocess
     import shutil
 
     try:
+        # Get options from request
+        data = request.get_json() or {}
+        include_config = data.get('include_config', True)
+        include_webapp = data.get('include_webapp', True)
+        include_attachments = data.get('include_attachments', False)
+
         backup_dir = '/opt/spacyserver/backups'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         full_backup_dir = f'{backup_dir}/full_backup_{timestamp}'
@@ -2935,25 +3045,26 @@ def create_full_backup():
         # Create backup directory
         os.makedirs(full_backup_dir, exist_ok=True)
 
-        logger.info(f"Starting full system backup: {full_backup_dir}")
+        logger.info(f"Starting full system backup: {full_backup_dir} (config={include_config}, webapp={include_webapp}, attachments={include_attachments})")
 
-        # 1. Backup configuration files
-        logger.info("Backing up configuration files...")
-        config_files = [
-            '/opt/spacyserver/config/bec_config.json',
-            '/opt/spacyserver/config/module_config.json',
-            '/opt/spacyserver/config/email_filter_config.json',
-            '/opt/spacyserver/config/authentication_config.json',
-            '/opt/spacyserver/config/threshold_config.json',
-            '/opt/spacyserver/config/trusted_domains.json',
-            '/opt/spacyserver/config/rbl_config.json'
-        ]
-
+        # 1. Backup configuration files (if selected)
         config_count = 0
-        for config_file in config_files:
-            if os.path.exists(config_file):
-                shutil.copy2(config_file, full_backup_dir)
-                config_count += 1
+        if include_config:
+            logger.info("Backing up configuration files...")
+            config_files = [
+                '/opt/spacyserver/config/bec_config.json',
+                '/opt/spacyserver/config/module_config.json',
+                '/opt/spacyserver/config/email_filter_config.json',
+                '/opt/spacyserver/config/authentication_config.json',
+                '/opt/spacyserver/config/threshold_config.json',
+                '/opt/spacyserver/config/trusted_domains.json',
+                '/opt/spacyserver/config/rbl_config.json'
+            ]
+
+            for config_file in config_files:
+                if os.path.exists(config_file):
+                    shutil.copy2(config_file, full_backup_dir)
+                    config_count += 1
 
         # 2. Backup database
         logger.info("Backing up database...")
@@ -2982,47 +3093,119 @@ def create_full_backup():
         # Compress database
         subprocess.run(['gzip', db_backup_file], check=True, timeout=60)
 
-        # 3. Backup Python modules
-        logger.info("Backing up Python modules...")
-        modules_backup_dir = f'{full_backup_dir}/modules'
-        os.makedirs(modules_backup_dir, exist_ok=True)
+        # 3. Backup Python modules and web application (if selected)
+        if include_webapp:
+            logger.info("Backing up Python modules and web application...")
+            modules_backup_dir = f'{full_backup_dir}/modules'
+            os.makedirs(modules_backup_dir, exist_ok=True)
 
-        # Copy key Python files
-        python_files = ['email_filter.py', 'email_blocking.py']
-        for py_file in python_files:
-            src_file = f'{spacy_root}/{py_file}'
-            if os.path.exists(src_file):
-                shutil.copy2(src_file, modules_backup_dir)
+            # Error handler for copytree - skip files with permission errors
+            def ignore_permission_errors(src, names):
+                ignored = []
+                for name in names:
+                    path = os.path.join(src, name)
+                    try:
+                        # Try to access the file
+                        os.stat(path)
+                    except PermissionError:
+                        logger.warning(f"Skipping file due to permission error: {path}")
+                        ignored.append(name)
+                return ignored
 
-        # Copy modules directory
-        modules_src = f'{spacy_root}/modules'
-        if os.path.exists(modules_src):
-            shutil.copytree(modules_src, f'{modules_backup_dir}/modules', dirs_exist_ok=True)
+            # Copy key Python files
+            python_files = ['email_filter.py', 'email_blocking.py']
+            for py_file in python_files:
+                src_file = f'{spacy_root}/{py_file}'
+                if os.path.exists(src_file):
+                    try:
+                        shutil.copy2(src_file, modules_backup_dir)
+                    except PermissionError:
+                        logger.warning(f"Skipping {py_file} due to permission error")
 
-        # Copy services directory
-        services_src = f'{spacy_root}/services'
-        if os.path.exists(services_src):
-            shutil.copytree(services_src, f'{modules_backup_dir}/services', dirs_exist_ok=True)
+            # Copy modules directory
+            modules_src = f'{spacy_root}/modules'
+            if os.path.exists(modules_src):
+                try:
+                    shutil.copytree(modules_src, f'{modules_backup_dir}/modules',
+                                  dirs_exist_ok=True, ignore=ignore_permission_errors)
+                except Exception as e:
+                    logger.warning(f"Error copying modules directory: {e}")
 
-        # 4. Create manifest file
+            # Copy services directory
+            services_src = f'{spacy_root}/services'
+            if os.path.exists(services_src):
+                try:
+                    shutil.copytree(services_src, f'{modules_backup_dir}/services',
+                                  dirs_exist_ok=True, ignore=ignore_permission_errors)
+                except Exception as e:
+                    logger.warning(f"Error copying services directory: {e}")
+
+            # Copy web application (skip __pycache__ and other problematic files)
+            def ignore_web_files(src, names):
+                ignored = ignore_permission_errors(src, names)
+                # Also ignore cache files
+                ignored.extend([n for n in names if n == '__pycache__' or n.endswith('.pyc')])
+                return ignored
+
+            web_src = f'{spacy_root}/web'
+            if os.path.exists(web_src):
+                try:
+                    shutil.copytree(web_src, f'{modules_backup_dir}/web',
+                                  dirs_exist_ok=True, ignore=ignore_web_files)
+                except Exception as e:
+                    logger.warning(f"Error copying web directory: {e}")
+
+        # 4. Backup email attachments (if selected)
+        if include_attachments:
+            logger.info("Backing up email attachments...")
+            attachments_src = '/opt/spacyserver/quarantine/attachments'
+            if os.path.exists(attachments_src):
+                try:
+                    # Define ignore function for attachments
+                    def ignore_attachment_errors(src, names):
+                        ignored = []
+                        for name in names:
+                            path = os.path.join(src, name)
+                            try:
+                                os.stat(path)
+                            except PermissionError:
+                                logger.warning(f"Skipping attachment due to permission error: {path}")
+                                ignored.append(name)
+                        return ignored
+
+                    shutil.copytree(attachments_src, f'{full_backup_dir}/attachments',
+                                  dirs_exist_ok=True, ignore=ignore_attachment_errors)
+                except Exception as e:
+                    logger.warning(f"Error copying attachments directory: {e}")
+
+        # 5. Create manifest file
         logger.info("Creating backup manifest...")
         manifest_file = f'{full_backup_dir}/MANIFEST.txt'
         with open(manifest_file, 'w') as f:
-            f.write(f"SpaCy Email Security System - Full Backup\n")
+            f.write(f"SpaCy Email Security System - System Backup\n")
             f.write(f"=" * 60 + "\n\n")
             f.write(f"Backup Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Created By: {current_user.email}\n")
-            f.write(f"Backup Type: Full System Backup\n\n")
+            f.write(f"Backup Type: Customized System Backup\n\n")
             f.write(f"Contents:\n")
-            f.write(f"  - Configuration Files: {config_count} files\n")
             f.write(f"  - Database: spacy_email_db (compressed)\n")
-            f.write(f"  - Python Modules: email_filter.py, modules/, services/\n\n")
-            f.write(f"Restore Instructions:\n")
+            if include_config:
+                f.write(f"  - Configuration Files: {config_count} files\n")
+            if include_webapp:
+                f.write(f"  - Web Application: templates, static files, Python code\n")
+                f.write(f"  - Python Modules: email_filter.py, modules/, services/\n")
+            if include_attachments:
+                f.write(f"  - Email Attachments: quarantine/attachments/\n")
+            f.write(f"\nRestore Instructions:\n")
             f.write(f"  1. Stop all SpaCy services\n")
-            f.write(f"  2. Restore configuration files to /opt/spacyserver/config/\n")
+            if include_config:
+                f.write(f"  2. Restore configuration files to /opt/spacyserver/config/\n")
             f.write(f"  3. Restore database: gunzip spacy_database.sql.gz && mysql spacy_email_db < spacy_database.sql\n")
-            f.write(f"  4. Restore Python modules to /opt/spacyserver/\n")
-            f.write(f"  5. Restart all SpaCy services\n")
+            if include_webapp:
+                f.write(f"  4. Restore Python modules and web app to /opt/spacyserver/\n")
+            if include_attachments:
+                f.write(f"  5. Restore attachments to /opt/spacyserver/quarantine/attachments/\n")
+            f.write(f"  6. Restart all SpaCy services\n")
 
         # 5. Create tarball of the full backup
         logger.info("Creating compressed archive...")
@@ -3055,16 +3238,21 @@ def create_full_backup():
 
         logger.info(f"Full backup created successfully: {tar_filepath} ({size_mb:.2f} MB)")
 
+        # Build details about what was included
+        details = {'database': 'included'}
+        if include_config:
+            details['config_files'] = config_count
+        if include_webapp:
+            details['webapp'] = 'included'
+        if include_attachments:
+            details['attachments'] = 'included'
+
         return jsonify({
             'success': True,
             'filename': tar_filename,
             'size': f'{size_mb:.2f} MB',
-            'message': f'Full system backup created successfully: {tar_filename}',
-            'details': {
-                'config_files': config_count,
-                'database': 'included',
-                'modules': 'included'
-            }
+            'message': f'System backup created successfully: {tar_filename}',
+            'details': details
         })
 
     except subprocess.TimeoutExpired:
@@ -4277,6 +4465,80 @@ def signal_handler(signum, frame):
 # Configuration Dashboard Routes
 # ============================================================================
 
+@app.route('/config/system-info')
+@login_required
+@superadmin_required
+def system_info():
+    """System information page - superadmin only"""
+    import platform
+    import subprocess
+
+    # Read version from installation directory
+    version = "Unknown"
+    try:
+        with open('/opt/spacyserver/VERSION', 'r') as f:
+            version = f.read().strip()
+    except Exception as e:
+        logger.error(f"Error reading version file: {e}")
+
+    # Get system information
+    system_info_data = {
+        'version': version,
+        'platform': platform.system(),
+        'platform_version': platform.release(),
+        'python_version': platform.python_version(),
+        'hostname': platform.node()
+    }
+
+    # Get component versions
+    components = []
+
+    # Check SpaCy version
+    try:
+        import spacy
+        components.append({'name': 'spaCy', 'version': spacy.__version__, 'status': 'active'})
+    except:
+        components.append({'name': 'spaCy', 'version': 'Not installed', 'status': 'error'})
+
+    # Check ClamAV version
+    try:
+        result = subprocess.run(['clamdscan', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            clam_version = result.stdout.strip().split()[1] if len(result.stdout.split()) > 1 else 'Unknown'
+            components.append({'name': 'ClamAV', 'version': clam_version, 'status': 'active'})
+        else:
+            components.append({'name': 'ClamAV', 'version': 'Not configured', 'status': 'warning'})
+    except:
+        components.append({'name': 'ClamAV', 'version': 'Not installed', 'status': 'error'})
+
+    # Check MySQL version
+    try:
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT VERSION()")
+            mysql_version = cursor.fetchone()[0]
+            components.append({'name': 'MySQL', 'version': mysql_version, 'status': 'active'})
+            cursor.close()
+            conn.close()
+    except:
+        components.append({'name': 'MySQL', 'version': 'Connection error', 'status': 'error'})
+
+    # Check Postfix version
+    try:
+        result = subprocess.run(['postconf', 'mail_version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            postfix_version = result.stdout.strip().split('=')[1].strip() if '=' in result.stdout else 'Unknown'
+            components.append({'name': 'Postfix', 'version': postfix_version, 'status': 'active'})
+        else:
+            components.append({'name': 'Postfix', 'version': 'Not configured', 'status': 'warning'})
+    except:
+        components.append({'name': 'Postfix', 'version': 'Not installed', 'status': 'error'})
+
+    return render_template('system_info.html',
+                         system_info=system_info_data,
+                         components=components)
+
 @app.route('/config')
 @login_required
 def config_dashboard():
@@ -4699,9 +4961,9 @@ def quarantine_view():
         stats_query = """
             SELECT
                 COUNT(*) as total_held,
-                COUNT(CASE WHEN spam_score >= 5.0 THEN 1 END) as expiring_soon,
+                COUNT(CASE WHEN timestamp < DATE_SUB(NOW(), INTERVAL 23 DAY) THEN 1 END) as expiring_soon,
                 AVG(spam_score) as avg_spam_score,
-                SUM(CASE WHEN email_category = 'spam' OR email_category = 'phishing' THEN 1 ELSE 0 END) as virus_count
+                SUM(CASE WHEN spam_score >= 50 OR email_category IN ('spam', 'phishing', 'virus') THEN 1 ELSE 0 END) as security_threats
             FROM email_analysis
             WHERE 1=1
         """
@@ -4828,6 +5090,30 @@ def quarantine_detail(email_id):
             email['text_preview'] = email['text_content'][:10000]
         else:
             email['text_preview'] = ''
+
+        # Extract ALL headers from raw_email (critical for forensics)
+        from email import message_from_string
+        if email.get('raw_email'):
+            try:
+                msg = message_from_string(email['raw_email'])
+                headers_text = ""
+                # Get ALL headers including duplicates using _headers
+                for key, value in msg._headers:
+                    # Format multi-line headers properly
+                    formatted_value = str(value).replace('\n', '\n\t')
+                    headers_text += f"{key}: {formatted_value}\n"
+
+                # If no headers found via _headers, fallback to items()
+                if not headers_text:
+                    for key, value in msg.items():
+                        headers_text += f"{key}: {value}\n"
+
+                email['headers'] = headers_text
+            except Exception as e:
+                logger.warning(f"Could not parse headers for quarantine email {email_id}: {e}")
+                email['headers'] = 'Headers not available'
+        else:
+            email['headers'] = 'Headers not available (raw email not stored)'
 
         cursor.close()
         conn.close()
@@ -4957,6 +5243,18 @@ def api_quarantine_release(email_id):
                 if not has_access:
                     return jsonify({'success': False, 'error': 'Access denied'}), 403
 
+        # CRITICAL SECURITY RESTRICTION: Very high-risk emails (spam >= 90) can only be released by admins
+        spam_score = float(email.get('spam_score', 0))
+        if spam_score >= 90.0:
+            # Only allow superadmin, admin, or domain_admin to release critical threats
+            if not (current_user.is_superadmin() or current_user.is_admin() or current_user.role == 'domain_admin'):
+                logger.warning(f"Client user {current_user.email} attempted to release critical threat email (ID: {email_id}, spam_score: {spam_score})")
+                return jsonify({
+                    'success': False,
+                    'error': f'Critical security threat detected (spam score: {spam_score:.1f}). Only administrators can release very high-risk emails. Please contact your domain administrator.',
+                    'requires_admin': True
+                }), 403
+
         # Parse recipients - handle both table formats
         if table_name == 'email_analysis':
             # email_analysis stores recipients as string like '"contact@openefa.org" <contact@openefa.org>'
@@ -5028,7 +5326,7 @@ def api_quarantine_release(email_id):
 
             return jsonify({
                 'success': True,
-                'message': f'Email released and sent to {mode}',
+                'message': 'Email released and delivered successfully',
                 'released_to': relay_host
             })
 
@@ -5216,8 +5514,18 @@ def api_quarantine_headers(email_id):
                 else:
                     msg = message_from_string(raw_email)
                     headers_text = ""
-                    for key, value in msg.items():
-                        headers_text += f"{key}: {value}\n"
+
+                    # Get ALL headers including duplicates (critical for forensics)
+                    # Using msg._headers to preserve order and get all instances
+                    for key, value in msg._headers:
+                        # Format multi-line headers properly
+                        formatted_value = str(value).replace('\n', '\n\t')
+                        headers_text += f"{key}: {formatted_value}\n"
+
+                    # If no headers found via _headers, fallback to items()
+                    if not headers_text:
+                        for key, value in msg.items():
+                            headers_text += f"{key}: {value}\n"
             except Exception as parse_error:
                 headers_text = f"Could not parse headers: {str(parse_error)}"
 
@@ -5797,7 +6105,7 @@ def emails_status_view():
                 COUNT(DISTINCT ea.id) as total_held,
                 0 as expiring_soon,
                 AVG(ea.spam_score) as avg_spam_score,
-                SUM(CASE WHEN ea.email_category = 'spam' OR ea.email_category = 'phishing' THEN 1 ELSE 0 END) as virus_count
+                SUM(CASE WHEN ea.spam_score >= 50 OR ea.email_category IN ('spam', 'phishing', 'virus') THEN 1 ELSE 0 END) as security_threats
             FROM email_analysis ea
             WHERE 1=1
         """

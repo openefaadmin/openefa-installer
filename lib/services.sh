@@ -175,6 +175,34 @@ setup_cleanup_cron() {
 }
 
 #
+# Fix notification file permissions (CRITICAL for v1.5.3+ SMS system)
+#
+fix_notification_permissions() {
+    info "Setting notification file permissions..."
+
+    local install_dir="/opt/spacyserver"
+
+    # Create logs directory if it doesn't exist
+    mkdir -p "${install_dir}/logs"
+
+    # Create notifications.log with correct permissions
+    touch "${install_dir}/logs/notifications.log"
+    chown spacy-filter:spacy-filter "${install_dir}/logs/notifications.log"
+    chmod 664 "${install_dir}/logs/notifications.log"
+    debug "Set permissions: notifications.log (664, spacy-filter:spacy-filter)"
+
+    # Fix notification_config.json permissions
+    if [[ -f "${install_dir}/config/notification_config.json" ]]; then
+        chown spacy-filter:spacy-filter "${install_dir}/config/notification_config.json"
+        chmod 640 "${install_dir}/config/notification_config.json"
+        debug "Set permissions: notification_config.json (640, spacy-filter:spacy-filter)"
+    fi
+
+    success "Notification permissions configured"
+    return 0
+}
+
+#
 # Run all service setup steps
 #
 setup_services() {
@@ -188,6 +216,7 @@ setup_services() {
     setup_api_services || return 1
     setup_logrotate || return 1
     setup_cleanup_cron || return 1
+    fix_notification_permissions || return 1
 
     save_state "services_configured"
     success "All services configured and running"
@@ -197,4 +226,4 @@ setup_services() {
 # Export functions
 export -f install_service_file enable_and_start_service
 export -f setup_db_processor_service setup_spacyweb_service
-export -f setup_api_services setup_logrotate setup_cleanup_cron setup_services
+export -f setup_api_services setup_logrotate setup_cleanup_cron fix_notification_permissions setup_services

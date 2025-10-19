@@ -270,22 +270,6 @@
                 <div class="card config-card">
                     <div class="card-body text-center">
                         <span class="badge bg-danger feature-badge">Admin</span>
-                        <div class="config-icon text-danger">
-                            <i class="fas fa-terminal"></i>
-                        </div>
-                        <h5 class="card-title">Advanced Settings</h5>
-                        <p class="card-text">System modules and debugging</p>
-                        <a href="/config/advanced" class="btn btn-danger">
-                            <i class="fas fa-wrench"></i> Advanced
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-4">
-                <div class="card config-card">
-                    <div class="card-body text-center">
-                        <span class="badge bg-danger feature-badge">Admin</span>
                         <div class="config-icon" style="color: #6f42c1;">
                             <i class="fas fa-broom"></i>
                         </div>
@@ -297,6 +281,24 @@
                     </div>
                 </div>
             </div>
+
+            {% if current_user.is_superadmin() %}
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Superadmin</span>
+                        <div class="config-icon text-info">
+                            <i class="fas fa-info-circle"></i>
+                        </div>
+                        <h5 class="card-title">System Information</h5>
+                        <p class="card-text">View system version and component details</p>
+                        <a href="/config/system-info" class="btn btn-info">
+                            <i class="fas fa-info-circle"></i> View
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
