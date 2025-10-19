@@ -325,6 +325,28 @@ install_html_attachment_analyzer() {
 }
 
 #
+# Copy uninstall script to /root/ for future use
+#
+install_uninstall_script() {
+    info "Installing uninstall script to /root/..."
+
+    local uninstall_source="${SCRIPT_DIR}/uninstall.sh"
+    local uninstall_dest="/root/openefa-uninstall.sh"
+
+    if [[ -f "${uninstall_source}" ]]; then
+        cp "${uninstall_source}" "${uninstall_dest}"
+        chmod 700 "${uninstall_dest}"
+        chown root:root "${uninstall_dest}"
+        success "Uninstall script installed to ${uninstall_dest}"
+        debug "To uninstall OpenEFA: sudo /root/openefa-uninstall.sh"
+    else
+        warn "Uninstall script not found in installer (non-fatal)"
+    fi
+
+    return 0
+}
+
+#
 # Run all module installation steps
 #
 install_modules() {
@@ -342,6 +364,7 @@ install_modules() {
     configure_module_tier || return 1
     configure_module_logging || return 1
     install_html_attachment_analyzer || return 1
+    install_uninstall_script || return 1
 
     save_state "modules_installed"
     success "Module installation complete"
@@ -350,4 +373,5 @@ install_modules() {
 
 # Export functions
 export -f copy_module_files install_module_configs create_email_filter_config update_hosted_domains
-export -f configure_module_tier configure_module_logging install_html_attachment_analyzer install_modules
+export -f configure_module_tier configure_module_logging install_html_attachment_analyzer
+export -f install_uninstall_script install_modules

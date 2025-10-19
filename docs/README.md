@@ -112,16 +112,36 @@ sudo tail -f /opt/spacyserver/logs/email_filter_error.log
 
 - **Website**: https://openefa.com
 - **Forum**: https://forum.openefa.com
-- **GitHub**: https://github.com/openefa/openefa
+- **GitHub**: https://github.com/openefaadmin/openefa
 - **Documentation**: https://docs.openefa.com
 
-## Uninstallation
+## System Management
+
+### Updating OpenEFA
+
+To update to the latest version:
+
+```bash
+sudo /opt/spacyserver/tools/update.sh
+```
+
+The update script will:
+- Check your current version
+- Download the latest release from GitHub
+- Create a backup before updating
+- Deploy new features and fixes
+- Restart services
+- Provide rollback option if needed
+
+### Uninstallation
 
 To completely remove OpenEFA from your system:
 
 ```bash
-sudo /opt/spacyserver/installer/uninstall.sh
+sudo /root/openefa-uninstall.sh
 ```
+
+This script is installed during initial setup and removes all OpenEFA components while preserving system configurations.
 
 ## License
 
