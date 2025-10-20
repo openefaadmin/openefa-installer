@@ -153,6 +153,9 @@ This project is the successor to the EFA Project (Email Filter Appliance) and ma
 
 OpenEFA is built on the foundation of the EFA Project and incorporates modern AI/ML capabilities through the OpenSpacy filtering engine.
 
+**Third-Party Data:**
+- This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com
+
 **Contributing**: We welcome contributions! See our forum for development guidelines.
 
 ---

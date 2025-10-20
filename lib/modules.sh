@@ -347,6 +347,52 @@ install_uninstall_script() {
 }
 
 #
+# Install GeoIP2 geographic blocking database (optional)
+#
+install_geoip2_database() {
+    local geoip_db="/opt/spacyserver/data/GeoLite2-Country.mmdb"
+    local geoip_url="https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+
+    echo ""
+    info "GeoIP2 Geographic Blocking (Optional)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Enables country-based email blocking using IP geolocation."
+    echo ""
+    echo "Features:"
+    echo "  • Block emails from high-risk countries (Russia, China, etc.)"
+    echo "  • Complementary to domain-based blocking"
+    echo "  • Uses free GeoLite2 database (9.5MB download)"
+    echo ""
+    echo "Note: This is optional. System works without it."
+    echo ""
+
+    if ! confirm "Enable GeoIP2 geographic blocking?"; then
+        warn "Skipping GeoIP2 installation (can be enabled later)"
+        info "To enable later: Download GeoLite2-Country.mmdb to /opt/spacyserver/data/"
+        return 0
+    fi
+
+    info "Downloading GeoLite2 database from community mirror..."
+
+    # Create data directory if not exists
+    create_directory "/opt/spacyserver/data" "spacy-filter:spacy-filter" "755"
+
+    # Download database
+    if wget -q --show-progress "${geoip_url}" -O "${geoip_db}"; then
+        chown spacy-filter:spacy-filter "${geoip_db}"
+        chmod 644 "${geoip_db}"
+        success "GeoIP2 database installed (9.5MB)"
+        info "Attribution: This product includes GeoLite2 data created by MaxMind"
+        info "Configure country blocking rules in SpacyWeb dashboard"
+    else
+        warn "Failed to download GeoIP2 database (non-fatal)"
+        warn "You can manually install later if needed"
+    fi
+
+    return 0
+}
+
+#
 # Run all module installation steps
 #
 install_modules() {
@@ -364,6 +410,7 @@ install_modules() {
     configure_module_tier || return 1
     configure_module_logging || return 1
     install_html_attachment_analyzer || return 1
+    install_geoip2_database || return 1
     install_uninstall_script || return 1
 
     save_state "modules_installed"
@@ -374,4 +421,4 @@ install_modules() {
 # Export functions
 export -f copy_module_files install_module_configs create_email_filter_config update_hosted_domains
 export -f configure_module_tier configure_module_logging install_html_attachment_analyzer
-export -f install_uninstall_script install_modules
+export -f install_geoip2_database install_uninstall_script install_modules
