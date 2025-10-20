@@ -1,12 +1,12 @@
-# OpenEFA v1.5.5 Release Notes
+# OpenEFA v1.5.6 Release Notes
 
 **Release Date:** October 20, 2025
-**Version:** 1.5.5
+**Version:** 1.5.6
 **Type:** Critical Bug Fix Release
 
 ## Overview
 
-Version 1.5.5 fixes critical template regressions introduced in v1.5.4 that broke backup management and other UI functionality.
+Version 1.5.6 fixes critical template regressions introduced in v1.5.4 that broke backup management and other UI functionality, plus config file permission issues and removed non-functional UI elements.
 
 ---
 
@@ -47,7 +47,19 @@ Version 1.5.5 fixes critical template regressions introduced in v1.5.4 that brok
 - Function runs automatically during installation
 - Prevents backup failures and config access issues
 
-### 3. System Settings Table Documentation
+### 3. Removed Non-Functional Authentication Card
+
+**Problem:**
+- Configuration dashboard had "Authentication" card linking to /config/authentication
+- Route was never implemented - clicking resulted in 404 error
+- Confusing user experience with broken link
+
+**Fix:**
+- Removed Authentication card from config_dashboard.html
+- Config file `authentication_config.json` still exists and is used by email filter
+- System admins can edit the JSON file directly if needed for SPF/DKIM/DMARC settings
+
+### 4. System Settings Table Documentation
 
 **Note:** The `system_settings` table IS included in the SQL schema and works correctly on fresh installs.
 
@@ -96,16 +108,17 @@ curl -sSL http://install.openefa.com/update.sh | sudo bash
 ## File Manifest
 
 ### Modified Files
-- `VERSION` (1.5.4 → 1.5.5)
+- `VERSION` (1.5.4 → 1.5.6)
 - `openefa-files/web/templates/backup_management.html` (restored auto-download functionality)
 - `openefa-files/web/templates/base.html`
 - `openefa-files/web/templates/email_detail.html`
 - `openefa-files/web/templates/emails.html`
 - `openefa-files/web/templates/quarantine_detail.html`
+- `openefa-files/web/templates/config_dashboard.html` (removed Authentication card)
 - `lib/services.sh` (added fix_config_permissions function)
 
 ### New Files
-- `CHANGES_v1.5.5.md`
+- `CHANGES_v1.5.6.md`
 
 ---
 
@@ -116,7 +129,8 @@ curl -sSL http://install.openefa.com/update.sh | sudo bash
 - Backup auto-download functionality restored (downloads to desktop immediately)
 - Backup option checkboxes restored (attachments, config files, web application)
 - Config file permission errors preventing full system backups
+- Removed non-functional Authentication card from config dashboard
 - All web templates synced to latest working versions
 - All config files now have correct spacy-filter ownership and permissions
 
-**Priority:** HIGH - All v1.5.4 users should upgrade immediately
+**Priority:** HIGH - All v1.5.4 and v1.5.5 users should upgrade immediately
