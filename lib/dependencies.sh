@@ -83,6 +83,9 @@ install_additional_python_packages() {
         "textblob"
         "geoip2"
         "PyMuPDF"
+        "flask-wtf"
+        "flask-limiter"
+        "flask-talisman"
     )
 
     for pkg in "${additional_packages[@]}"; do
