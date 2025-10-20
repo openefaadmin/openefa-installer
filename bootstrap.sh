@@ -88,7 +88,13 @@ if [[ -d "/opt/spacyserver" ]] && [[ -f "/opt/spacyserver/VERSION" ]]; then
     echo "  2) Reinstall (will backup and overwrite)"
     echo "  3) Cancel"
     echo ""
-    read -p "Enter choice [1-3]: " choice
+
+    # Read from /dev/tty when piped from curl
+    if [ -t 0 ]; then
+        read -p "Enter choice [1-3]: " choice
+    else
+        read -p "Enter choice [1-3]: " choice < /dev/tty
+    fi
 
     case $choice in
         1)
@@ -104,7 +110,11 @@ if [[ -d "/opt/spacyserver" ]] && [[ -f "/opt/spacyserver/VERSION" ]]; then
         2)
             echo ""
             echo -e "${YELLOW}⚠  Warning: Reinstalling will backup current installation${NC}"
-            read -p "Are you sure? (yes/no): " confirm
+            if [ -t 0 ]; then
+                read -p "Are you sure? (yes/no): " confirm
+            else
+                read -p "Are you sure? (yes/no): " confirm < /dev/tty
+            fi
             if [[ "$confirm" == "yes" ]]; then
                 echo -e "${CYAN}Starting OpenEFA reinstallation...${NC}"
                 echo ""
