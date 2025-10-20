@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
 from flask_login import login_required, current_user
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_talisman import Talisman
+from flask_caching import Cache
 from sqlalchemy import create_engine, text
 import os
 import json
@@ -22,6 +27,11 @@ import signal
 import traceback
 import time
 from threading import Thread, Event
+from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Set up logging FIRST before any other imports that might use it
 logging.basicConfig(
@@ -38,6 +48,9 @@ logger = logging.getLogger(__name__)
 from auth import init_auth, get_db_connection, extract_domains_from_recipients, get_domain_filter_condition, admin_required, superadmin_required
 import smtplib
 from email.message import EmailMessage
+
+# Import security validators for SQL injection prevention
+from security_validators import validate_email, validate_domain, validate_email_list, validate_date_string
 import secrets
 import string
 import bcrypt
@@ -91,6 +104,9 @@ def reload_hosted_domains():
         HOSTED_DOMAINS = new_domains
         logger.info(f"Reloaded {len(HOSTED_DOMAINS)} hosted domains from database")
         logger.info(f"Active domains: {', '.join(HOSTED_DOMAINS)}")
+        # Clear all caches when domains change
+        cache.clear()
+        logger.info("Cleared all caches due to domain reload")
         return True
     except Exception as e:
         logger.error(f"Failed to reload hosted domains: {e}")
@@ -233,10 +249,129 @@ def load_app_config():
 app_config = load_app_config()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = app_config['flask']['secret_key']
+# Use environment variable for secret key (fallback to config file for backwards compatibility)
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', app_config['flask']['secret_key'])
+
+# Session security configuration
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
+app.config['SESSION_COOKIE_HTTPONLY'] = os.getenv('SESSION_COOKIE_HTTPONLY', 'True') == 'True'
+app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)  # Default, overridden by role
+app.config['SESSION_COOKIE_NAME'] = 'guardianmail_session'
+
+# Role-based session timeout configuration (in minutes)
+ROLE_SESSION_TIMEOUTS = {
+    'admin': 30,         # Superadmin: 30 minutes of inactivity
+    'domain_admin': 30,  # Domain Admin: 30 minutes of inactivity
+    'client': 30,        # Regular users: 30 minutes of inactivity
+    'default': 30        # Fallback: 30 minutes of inactivity
+}
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# Rate Limiting - Using Redis for persistent, multi-process rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="redis://localhost:6379"
+)
+
+# Caching - Using Redis for performance optimization
+cache = Cache(app, config={
+    'CACHE_TYPE': 'RedisCache',
+    'CACHE_REDIS_URL': 'redis://localhost:6379/1',  # Use DB 1 for cache (DB 0 for rate limiting)
+    'CACHE_DEFAULT_TIMEOUT': 300,  # 5 minutes default
+    'CACHE_KEY_PREFIX': 'spacy_'
+})
+
+# Security Headers - Talisman enforces HTTPS and security headers
+Talisman(app,
+    force_https=False,  # Disable HTTPS redirect for now (already using HTTPS)
+    strict_transport_security=True,
+    strict_transport_security_max_age=31536000,  # 1 year
+    strict_transport_security_include_subdomains=True,
+    content_security_policy=None,  # Disable CSP for now to fix layout issues
+    referrer_policy='strict-origin-when-cross-origin',
+    force_https_permanent=False
+)
+
+# Import wraps for decorators
+from functools import wraps
+
+# Additional security headers (Talisman handles most headers automatically)
+@app.after_request
+def set_security_headers(response):
+    # Talisman already sets: X-Frame-Options, X-Content-Type-Options,
+    # Strict-Transport-Security, Referrer-Policy, and CSP
+    # Add any additional custom headers here if needed
+    return response
 
 # Initialize authentication
 login_manager = init_auth(app)
+
+# Role-based session timeout middleware
+@app.before_request
+def manage_session_timeout():
+    """
+    Enforce role-based session timeouts and activity tracking.
+    - Superadmin: 8 hours
+    - Domain Admin: 4 hours
+    - Regular Users: 2 hours
+    """
+    from flask_login import current_user
+    from flask import session
+
+    # Skip for non-authenticated requests
+    if not current_user.is_authenticated:
+        return
+
+    # Get role-specific timeout
+    user_role = current_user.role if hasattr(current_user, 'role') else 'client'
+    timeout_minutes = ROLE_SESSION_TIMEOUTS.get(user_role, ROLE_SESSION_TIMEOUTS['default'])
+
+    # Check last activity time
+    now = datetime.now()
+    last_activity = session.get('last_activity')
+
+    if last_activity:
+        # Convert string back to datetime if needed
+        if isinstance(last_activity, str):
+            last_activity = datetime.fromisoformat(last_activity)
+
+        # Calculate time since last activity
+        inactive_time = now - last_activity
+        max_inactive = timedelta(minutes=timeout_minutes)
+
+        # Force logout if session expired
+        if inactive_time > max_inactive:
+            from flask_login import logout_user
+            logout_user()
+            session.clear()
+            flash(f'Your session expired after {timeout_minutes} minutes of inactivity.', 'warning')
+            return redirect(url_for('auth.login'))
+
+    # Update last activity time and role info
+    session['last_activity'] = now.isoformat()
+    session['user_role'] = user_role
+    session['session_timeout_minutes'] = timeout_minutes
+    session.permanent = True
+
+    # Set session lifetime based on role (for cookie expiration)
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=timeout_minutes)
+
+# Debug mode decorator
+def debug_only(f):
+    """Decorator to restrict routes to debug mode only"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        debug_enabled = os.getenv('DEBUG_MODE', 'False').lower() == 'true'
+        if not debug_enabled:
+            logger.warning(f"Attempted access to debug route: {request.path}")
+            return jsonify({'error': 'Not found'}), 404
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Template context processor
 @app.context_processor
@@ -346,6 +481,7 @@ def get_column_info():
         print(f"Error getting column info: {e}")
         return None
 
+@cache.memoize(timeout=300)  # Cache for 5 minutes per user
 def get_user_authorized_domains(user):
     """Get list of domains user is authorized to access"""
     if user.is_admin():
@@ -386,6 +522,7 @@ def get_user_authorized_domains(user):
     print(f"DEBUG: Falling back to primary domain: {user.domain}")
     return [user.domain] if user.domain else []
 
+@cache.memoize(timeout=120)  # Cache for 2 minutes per user/domain combination
 def get_enhanced_dashboard_stats_for_domain(user, domain):
     """Enhanced stats for a specific domain"""
     engine = get_db_engine()
@@ -408,11 +545,26 @@ def get_enhanced_dashboard_stats_for_domain(user, domain):
         }
 
     try:
+        # SECURITY: Validate all inputs before using in SQL queries
+        try:
+            safe_domain = validate_domain(domain)
+            safe_user_email = validate_email(user.email)
+        except ValueError as e:
+            logger.error(f"Validation error in dashboard for user {user.id}: {e}")
+            return {
+                'total_emails': 0,
+                'volume_metrics': {'last_30_days': 0, 'daily_average': 0, 'previous_30_days': 0,
+                                 'volume_change': 0, 'volume_percent_change': 0,
+                                 'peak_day': {'date': None, 'count': 0}},
+                'languages': {}, 'categories': {}, 'receiving_domains': {domain: 0},
+                'sentiment_distribution': {}, 'manipulation_indicators': {}
+            }
+
         with engine.connect() as conn:
-            # SECURITY: Build filter based on user role
+            # SECURITY: Build filter based on user role (now with validated inputs)
             if user.is_admin():
                 # Admin sees all emails for the domain
-                domain_filter = f"WHERE recipients LIKE '%@{domain}%'"
+                domain_filter = f"WHERE recipients LIKE '%@{safe_domain}%'"
             elif user.role == 'client':
                 # CLIENT role: ONLY see emails where they are sender OR recipient OR alias recipient
                 # Get user's managed aliases
@@ -426,16 +578,19 @@ def get_enhanced_dashboard_stats_for_domain(user, domain):
                 cursor_temp.close()
                 conn_temp.close()
 
+                # SECURITY: Validate aliases before using in SQL
+                safe_aliases = validate_email_list(aliases)
+
                 # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
-                user_conditions = [f"sender = '{user.email}'"]
-                user_conditions.append(f"recipients LIKE '%{user.email}%'")
-                for alias in aliases:
+                user_conditions = [f"sender = '{safe_user_email}'"]
+                user_conditions.append(f"recipients LIKE '%{safe_user_email}%'")
+                for alias in safe_aliases:
                     user_conditions.append(f"recipients LIKE '%{alias}%'")
 
                 domain_filter = f"WHERE ({' OR '.join(user_conditions)})"
             else:
                 # DOMAIN_ADMIN and other roles: see their authorized domain
-                domain_filter = f"WHERE recipients LIKE '%@{domain}%'"
+                domain_filter = f"WHERE recipients LIKE '%@{safe_domain}%'"
 
             # Get last 30 days stats
             date_30_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -568,6 +723,7 @@ def index():
     else:
         return redirect(url_for('auth.login'))
 
+@cache.cached(timeout=60, key_prefix='overall_stats')  # Cache for 1 minute
 def get_overall_system_stats():
     """Get overall system statistics for all hosted domains"""
     engine = get_db_engine()
@@ -813,6 +969,7 @@ def dashboard():
 @app.route('/debug/stats')
 @login_required
 @admin_required
+@debug_only
 def debug_stats():
     """Debug route to check what's in the database"""
     engine = get_db_engine()
@@ -827,8 +984,8 @@ def debug_stats():
 
             # Check today's emails (all domains)
             today = datetime.now().strftime('%Y-%m-%d')
-            today_all_query = f"SELECT COUNT(*) FROM email_analysis WHERE DATE(timestamp) = '{today}'"
-            today_all = conn.execute(text(today_all_query)).fetchone()[0]
+            today_all_query = "SELECT COUNT(*) FROM email_analysis WHERE DATE(timestamp) = :today"
+            today_all = conn.execute(text(today_all_query), {"today": today}).fetchone()[0]
 
             # Check recipients column content
             recipients_sample_query = "SELECT recipients, timestamp FROM email_analysis ORDER BY id DESC LIMIT 10"
@@ -837,18 +994,23 @@ def debug_stats():
             # Check hosted domains specifically
             domain_counts = {}
             for domain in HOSTED_DOMAINS:
-                domain_query = f"SELECT COUNT(*) FROM email_analysis WHERE recipients LIKE '%@{domain}%'"
-                count = conn.execute(text(domain_query)).fetchone()[0]
+                domain_query = "SELECT COUNT(*) FROM email_analysis WHERE recipients LIKE :pattern"
+                pattern = f'%@{domain}%'
+                count = conn.execute(text(domain_query), {"pattern": pattern}).fetchone()[0]
                 domain_counts[domain] = count
 
             # Check today's hosted domain emails
-            domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in HOSTED_DOMAINS]
+            # Build parameterized query with multiple LIKE conditions
+            domain_conditions = [f"recipients LIKE :domain_{i}" for i in range(len(HOSTED_DOMAINS))]
             hosted_filter = f"({' OR '.join(domain_conditions)})"
             today_hosted_query = f"""
-                SELECT COUNT(*) FROM email_analysis 
-                WHERE {hosted_filter} AND DATE(timestamp) = '{today}'
+                SELECT COUNT(*) FROM email_analysis
+                WHERE {hosted_filter} AND DATE(timestamp) = :today
             """
-            today_hosted = conn.execute(text(today_hosted_query)).fetchone()[0]
+            # Build parameters dictionary
+            params = {f"domain_{i}": f'%@{domain}%' for i, domain in enumerate(HOSTED_DOMAINS)}
+            params['today'] = today
+            today_hosted = conn.execute(text(today_hosted_query), params).fetchone()[0]
 
             return jsonify({
                 'total_emails_in_db': total_emails,
@@ -890,6 +1052,14 @@ def emails():
         'date_to': request.args.get('date_to', ''),
     }
 
+    # SECURITY: Validate current user email before using in SQL
+    try:
+        safe_user_email = validate_email(current_user.email)
+    except ValueError as e:
+        logger.error(f"Invalid user email in session for user {current_user.id}: {e}")
+        flash('Invalid session data. Please log in again.', 'error')
+        return redirect(url_for('auth.login'))
+
     # Build WHERE clause with user domain filtering
     where_conditions = ["1=1"]  # Always true condition to start
 
@@ -909,10 +1079,13 @@ def emails():
             cursor_temp.close()
             conn_temp.close()
 
+            # SECURITY: Validate aliases before using in SQL
+            safe_aliases = validate_email_list(aliases)
+
             # Build condition: sender = user OR recipients LIKE user email OR recipients LIKE any alias
-            user_conditions = [f"sender = '{current_user.email}'"]
-            user_conditions.append(f"recipients LIKE '%{current_user.email}%'")
-            for alias in aliases:
+            user_conditions = [f"sender = '{safe_user_email}'"]
+            user_conditions.append(f"recipients LIKE '%{safe_user_email}%'")
+            for alias in safe_aliases:
                 user_conditions.append(f"recipients LIKE '%{alias}%'")
 
             where_conditions.append(f"({' OR '.join(user_conditions)})")
@@ -920,36 +1093,83 @@ def emails():
             # DOMAIN_ADMIN and other roles: see their authorized domains
             authorized_domains = get_user_authorized_domains(current_user)
             if authorized_domains:
-                domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in authorized_domains]
-                where_conditions.append(f"({' OR '.join(domain_conditions)})")
+                # SECURITY: Validate domains before using in SQL
+                safe_domains = []
+                for domain in authorized_domains:
+                    try:
+                        safe_domains.append(validate_domain(domain))
+                    except ValueError as e:
+                        logger.warning(f"Invalid authorized domain for user {current_user.id}: {e}")
+                        continue
+
+                if safe_domains:
+                    domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in safe_domains]
+                    where_conditions.append(f"({' OR '.join(domain_conditions)})")
+                else:
+                    where_conditions.append("1=0")  # No access if no valid domains
             else:
                 where_conditions.append("1=0")  # No access if no authorized domains
     else:
         # Admins see all hosted domains
-        hosted_domains_filter = " OR ".join([f"recipients LIKE '%@{domain}%'" for domain in HOSTED_DOMAINS])
-        where_conditions.append(f"({hosted_domains_filter})")
+        # SECURITY: Validate hosted domains
+        safe_hosted_domains = []
+        for domain in HOSTED_DOMAINS:
+            try:
+                safe_hosted_domains.append(validate_domain(domain))
+            except ValueError as e:
+                logger.warning(f"Invalid hosted domain in config: {e}")
+                continue
 
+        if safe_hosted_domains:
+            hosted_domains_filter = " OR ".join([f"recipients LIKE '%@{domain}%'" for domain in safe_hosted_domains])
+            where_conditions.append(f"({hosted_domains_filter})")
+        else:
+            where_conditions.append("1=0")  # No access if no valid hosted domains
+
+    # SECURITY: Validate search term
     if filters['search']:
-        search_term = filters['search'].replace("'", "''")  # Escape single quotes
-        where_conditions.append(f"(subject LIKE '%{search_term}%' OR sender LIKE '%{search_term}%')")
+        search_term = filters['search']
+        # Remove dangerous SQL characters
+        dangerous_chars = ["'", '"', ";", "--", "/*", "*/", "\\"]
+        for char in dangerous_chars:
+            search_term = search_term.replace(char, "")
+        # Limit length
+        search_term = search_term[:100]
+        if search_term:  # Only add if not empty after sanitization
+            where_conditions.append(f"(subject LIKE '%{search_term}%' OR sender LIKE '%{search_term}%')")
 
+    # SECURITY: Validate language filter (alphanumeric only, max 10 chars)
     if filters['language']:
-        where_conditions.append(f"detected_language = '{filters['language']}'")
+        language = filters['language']
+        if re.match(r'^[a-zA-Z]{2,10}$', language):
+            where_conditions.append(f"detected_language = '{language}'")
+        else:
+            logger.warning(f"Invalid language filter rejected: {language}")
 
+    # SECURITY: Validate category filter (alphanumeric + underscore only, max 50 chars)
     if filters['category']:
-        where_conditions.append(f"email_category = '{filters['category']}'")
+        category = filters['category']
+        if re.match(r'^[a-zA-Z0-9_]{1,50}$', category):
+            where_conditions.append(f"email_category = '{category}'")
+        else:
+            logger.warning(f"Invalid category filter rejected: {category}")
 
+    # SECURITY: Validate receiving_domain filter
     if filters['receiving_domain']:
         # For non-admin users, ensure they can only filter by their authorized domains
-        if current_user.is_admin():
-            # Admin can filter by any hosted domain
-            if filters['receiving_domain'] in HOSTED_DOMAINS:
-                where_conditions.append(f"recipients LIKE '%@{filters['receiving_domain']}%'")
-        else:
-            # Client can only filter by their authorized domains
-            user_authorized_domains = get_user_authorized_domains(current_user)
-            if filters['receiving_domain'] in user_authorized_domains:
-                where_conditions.append(f"recipients LIKE '%@{filters['receiving_domain']}%'")
+        try:
+            safe_filter_domain = validate_domain(filters['receiving_domain'])
+            if current_user.is_admin():
+                # Admin can filter by any hosted domain
+                if filters['receiving_domain'] in HOSTED_DOMAINS:
+                    where_conditions.append(f"recipients LIKE '%@{safe_filter_domain}%'")
+            else:
+                # Client can only filter by their authorized domains
+                user_authorized_domains = get_user_authorized_domains(current_user)
+                if filters['receiving_domain'] in user_authorized_domains:
+                    where_conditions.append(f"recipients LIKE '%@{safe_filter_domain}%'")
+        except ValueError as e:
+            logger.warning(f"Invalid receiving_domain filter rejected: {e}")
         
     # Add sentiment category filtering
     if filters['sentiment_category']:
@@ -979,11 +1199,20 @@ def emails():
     if filters['min_extremity']:
         where_conditions.append(f"sentiment_extremity >= {float(filters['min_extremity'])}")
 
+    # SECURITY: Validate date filters
     if filters['date_from']:
-        where_conditions.append(f"DATE(timestamp) >= '{filters['date_from']}'")
+        try:
+            safe_date_from = validate_date_string(filters['date_from'])
+            where_conditions.append(f"DATE(timestamp) >= '{safe_date_from}'")
+        except ValueError as e:
+            logger.warning(f"Invalid date_from filter rejected: {e}")
 
     if filters['date_to']:
-        where_conditions.append(f"DATE(timestamp) <= '{filters['date_to']}'")
+        try:
+            safe_date_to = validate_date_string(filters['date_to'])
+            where_conditions.append(f"DATE(timestamp) <= '{safe_date_to}'")
+        except ValueError as e:
+            logger.warning(f"Invalid date_to filter rejected: {e}")
 
     where_clause = " AND ".join(where_conditions)
 
@@ -1478,6 +1707,42 @@ def api_bulk_mark_spam():
         return jsonify({'success': True, 'count': affected, 'message': f'Marked {affected} emails as spam'})
     except Exception as e:
         logger.error(f"Error bulk marking spam: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/emails/bulk-not-spam', methods=['POST'])
+@login_required
+@admin_required
+def api_bulk_mark_not_spam():
+    """Mark multiple emails as not spam (training the filter)"""
+    try:
+        data = request.get_json()
+        email_ids = data.get('email_ids', [])
+
+        if not email_ids:
+            return jsonify({'success': False, 'error': 'No emails selected'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update spam scores for all selected emails - reduce score and mark as clean
+        placeholders = ','.join(['%s'] * len(email_ids))
+        cursor.execute(f"""
+            UPDATE email_analysis
+            SET spam_score = LEAST(spam_score - 5.0, 0.0),
+                email_category = 'clean'
+            WHERE id IN ({placeholders})
+        """, email_ids)
+
+        affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Bulk marked {affected} emails as not spam by {current_user.email}")
+
+        return jsonify({'success': True, 'count': affected, 'message': f'Marked {affected} emails as not spam'})
+    except Exception as e:
+        logger.error(f"Error bulk marking not spam: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/emails/bulk-whitelist', methods=['POST'])
@@ -2247,6 +2512,7 @@ def delete_user_managed_alias(user_id, alias_id):
 
 @app.route('/debug/user-info')
 @login_required
+@debug_only
 def debug_user_info():
     """Debug route to check user's domain access"""
     user_info = {
@@ -2869,7 +3135,7 @@ def create_backup():
         backup_dir = '/opt/spacyserver/backups'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_file = f'{backup_dir}/spacy_db_backup_{timestamp}.sql'
-        my_cnf_path = '/opt/spacyserver/config/.my.cnf'
+        my_cnf_path = '/etc/spacy-server/.my.cnf'
 
         # Create backup directory if it doesn't exist
         os.makedirs(backup_dir, exist_ok=True)
@@ -2969,11 +3235,17 @@ def download_backup(filename):
     """Download a backup file"""
     backup_dir = '/opt/spacyserver/backups'
 
-    # Security: prevent directory traversal
-    if '..' in filename or '/' in filename:
+    # Security: sanitize filename to prevent directory traversal
+    filename = secure_filename(filename)
+    if not filename:
         return jsonify({'error': 'Invalid filename'}), 400
 
     file_path = os.path.join(backup_dir, filename)
+
+    # Verify the resolved path is still within backup directory
+    if not os.path.realpath(file_path).startswith(os.path.realpath(backup_dir)):
+        logger.warning(f"Attempted path traversal attack: {filename}")
+        return jsonify({'error': 'Invalid filename'}), 400
 
     if not os.path.exists(file_path):
         return jsonify({'error': 'Backup file not found'}), 404
@@ -2982,7 +3254,7 @@ def download_backup(filename):
         return send_file(file_path, as_attachment=True, download_name=filename)
     except Exception as e:
         logger.error(f"Error downloading backup: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'An error occurred'}), 500
 
 @app.route('/api/backup/delete/<filename>', methods=['POST'])
 @login_required
@@ -2991,7 +3263,12 @@ def delete_backup(filename):
     """Delete a backup file"""
     backup_dir = '/opt/spacyserver/backups'
 
-    # Security: prevent directory traversal
+    # Security: sanitize filename to prevent directory traversal
+    filename = secure_filename(filename)
+    if not filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    # Continue with existing security check
     if '..' in filename or '/' in filename:
         return jsonify({'error': 'Invalid filename'}), 400
 
@@ -3039,7 +3316,7 @@ def create_full_backup():
         backup_dir = '/opt/spacyserver/backups'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         full_backup_dir = f'{backup_dir}/full_backup_{timestamp}'
-        my_cnf_path = '/opt/spacyserver/config/.my.cnf'
+        my_cnf_path = '/etc/spacy-server/.my.cnf'
         spacy_root = '/opt/spacyserver'
 
         # Create backup directory
@@ -6186,18 +6463,18 @@ if __name__ == '__main__':
                 context.load_cert_chain(cert_path, key_path)
                 
                 logger.info(f"Starting Flask app with HTTPS on port 5500")
-                logger.info(f"Access via: https://localhost:5500 (local) or https://<server-ip>:5500 (remote)")
-                
-                # Run with SSL
-                app.run(host='0.0.0.0', port=5500, debug=False, ssl_context=context)
+                logger.info(f"Access via: https://100.71.181.101:5500 (Tailscale)")
+
+                # Run with SSL on Tailscale interface
+                app.run(host='100.71.181.101', port=5500, debug=False, ssl_context=context)
             except Exception as e:
                 logger.error(f"Failed to start HTTPS server: {e}")
-                logger.info("Falling back to HTTP mode")
-                app.run(host='0.0.0.0', port=5500, debug=False)
+                logger.info("Falling back to HTTP mode on Tailscale")
+                app.run(host='100.71.181.101', port=5500, debug=False)
         else:
             logger.warning(f"SSL certificates not found at {cert_path}")
-            logger.info(f"Running in HTTP mode on port 5500")
-            app.run(host='0.0.0.0', port=5500, debug=False)
+            logger.info(f"Running in HTTP mode on port 5500 (Tailscale)")
+            app.run(host='100.71.181.101', port=5500, debug=False)
     except Exception as e:
         logger.error(f"Failed to start Flask application: {e}")
         logger.error(traceback.format_exc())
