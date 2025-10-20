@@ -45,7 +45,7 @@ class ProductionSpaCyDatabaseProcessor:
             
             # Connect to MySQL using config file with auto-reconnect
             self.db_connection = pymysql.connect(
-                read_default_file='/opt/spacyserver/config/.my.cnf',
+                read_default_file='/etc/spacy-server/.my.cnf',
                 database='spacy_email_db',
                 charset='utf8mb4',
                 autocommit=False,
@@ -76,7 +76,7 @@ class ProductionSpaCyDatabaseProcessor:
             # If no connection or connection is dead, create new one
             if not self.db_connection:
                 self.db_connection = pymysql.connect(
-                    read_default_file='/opt/spacyserver/config/.my.cnf',
+                    read_default_file='/etc/spacy-server/.my.cnf',
                     database='spacy_email_db',
                     charset='utf8mb4',
                     autocommit=False,
@@ -99,7 +99,7 @@ class ProductionSpaCyDatabaseProcessor:
                         pass
                 
                 self.db_connection = pymysql.connect(
-                    read_default_file='/opt/spacyserver/config/.my.cnf',
+                    read_default_file='/etc/spacy-server/.my.cnf',
                     database='spacy_email_db',
                     charset='utf8mb4',
                     autocommit=False,
