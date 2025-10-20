@@ -185,10 +185,17 @@ check_installation() {
 #
 get_current_version() {
     if [[ -f "${INSTALL_DIR}/VERSION" ]]; then
-        source "${INSTALL_DIR}/VERSION"
-        info "Current version: ${VERSION:-unknown}"
-        info "Installed: ${INSTALLED:-unknown}"
-        info "Last updated: ${UPDATED:-never}"
+        # Try new format (VERSION=x.x.x) first
+        if grep -q "^VERSION=" "${INSTALL_DIR}/VERSION"; then
+            source "${INSTALL_DIR}/VERSION"
+            info "Current version: ${VERSION:-unknown}"
+            info "Installed: ${INSTALLED:-unknown}"
+            info "Last updated: ${UPDATED:-never}"
+        else
+            # Fall back to old format (plain version number)
+            VERSION=$(cat "${INSTALL_DIR}/VERSION" | head -1 | tr -d '[:space:]')
+            info "Current version: ${VERSION} (legacy format)"
+        fi
     else
         warn "No VERSION file found (legacy installation)"
         VERSION="0.9.0"
