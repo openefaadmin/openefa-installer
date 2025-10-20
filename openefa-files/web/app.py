@@ -6463,18 +6463,18 @@ if __name__ == '__main__':
                 context.load_cert_chain(cert_path, key_path)
                 
                 logger.info(f"Starting Flask app with HTTPS on port 5500")
-                logger.info(f"Access via: https://100.71.181.101:5500 (Tailscale)")
+                logger.info(f"Access via: https://<server-ip>:5500")
 
-                # Run with SSL on Tailscale interface
-                app.run(host='100.71.181.101', port=5500, debug=False, ssl_context=context)
+                # Run with SSL on all interfaces
+                app.run(host='0.0.0.0', port=5500, debug=False, ssl_context=context)
             except Exception as e:
                 logger.error(f"Failed to start HTTPS server: {e}")
-                logger.info("Falling back to HTTP mode on Tailscale")
-                app.run(host='100.71.181.101', port=5500, debug=False)
+                logger.info("Falling back to HTTP mode")
+                app.run(host='0.0.0.0', port=5500, debug=False)
         else:
             logger.warning(f"SSL certificates not found at {cert_path}")
-            logger.info(f"Running in HTTP mode on port 5500 (Tailscale)")
-            app.run(host='100.71.181.101', port=5500, debug=False)
+            logger.info(f"Running in HTTP mode on port 5500")
+            app.run(host='0.0.0.0', port=5500, debug=False)
     except Exception as e:
         logger.error(f"Failed to start Flask application: {e}")
         logger.error(traceback.format_exc())
