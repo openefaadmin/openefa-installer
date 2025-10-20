@@ -19,8 +19,8 @@
                                 <label for="email" class="form-label">
                                     <i class="fas fa-envelope"></i> Email Address
                                 </label>
-                                <input type="email" class="form-control" id="email" name="email" 
-                                       value="{{ user.email }}" required>
+                                <input type="email" class="form-control" id="email" name="email"
+                                       value="{{ user.email }}">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -106,7 +106,7 @@
                                 <label for="domain" class="form-label">
                                     <i class="fas fa-globe"></i> Primary Domain
                                 </label>
-                                <select class="form-select" id="domain" name="domain" required>
+                                <select class="form-select" id="domain" name="domain">
                                     {% for domain in hosted_domains %}
                                     <option value="{{ domain }}" {% if domain == user.domain %}selected{% endif %}>
                                         {{ domain }}
@@ -166,7 +166,7 @@
                                                         <i class="fas fa-envelope"></i> Email Address *
                                                     </label>
                                                     <input type="email" class="form-control" id="new-alias-email"
-                                                           placeholder="sales@example.com" required>
+                                                           placeholder="sales@example.com">
                                                     <div class="form-text">The email address to grant access to</div>
                                                 </div>
                                             </div>

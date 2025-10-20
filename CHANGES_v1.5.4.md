@@ -191,6 +191,31 @@ if spam_score >= 90.0:
 
 ---
 
+### 8. User Edit Form Submission Fix
+
+**Problem:**
+- User update form button would not activate/submit
+- Error: "An invalid form control with name='' is not focusable"
+- Caused by hidden "Add New Alias" email field having `required` attribute
+- HTML5 validation cannot focus hidden required fields, blocking form submission
+
+**Affected Functionality:**
+- Could not update user first name, last name, company name
+- Could not change user roles or domain assignments
+- Affected all users (superadmin, admin, domain_admin)
+
+**Fix:**
+- Removed `required` attribute from hidden alias email field (`#new-alias-email`)
+- Validation still works when actually adding aliases (handled by JavaScript)
+- Main user update form now submits properly
+
+**Files Modified:**
+- `openefa-files/web/templates/admin/edit_user.html` (line 169)
+
+**Impact:** User management now works correctly for updating user information
+
+---
+
 ## Installation Impact
 
 ### New Installations
@@ -333,6 +358,7 @@ None at this time.
 ### New Files
 - `openefa-files/modules/html_attachment_analyzer.py`
 - `openefa-files/web/templates/system_info.html`
+- `openefa-files/web/templates/admin/edit_user.html`
 - `CHANGES_v1.5.4.md`
 - `RELEASE_PREP_v1.5.4.md`
 
@@ -341,6 +367,7 @@ None at this time.
 - `openefa-files/web/app.py`
 - `openefa-files/web/templates/quarantine.html`
 - `openefa-files/web/templates/config_dashboard.html`
+- `openefa-files/web/templates/admin/edit_user.html`
 - `openefa-files/email_filter.py`
 - `lib/modules.sh`
 - `lib/services.sh`
@@ -384,6 +411,7 @@ None at this time.
 - SMS notification permission issues (notifications.log, notification_config.json)
 - Test email delivery (domain, HELO, visibility)
 - Dashboard card accuracy (Expiring Soon calculation)
+- User edit form submission blocked by hidden required field
 
 **Security:**
 - Role-based access control for high-risk email release
