@@ -282,11 +282,14 @@ configure_postfix() {
     configure_aliases || return 1
     start_postfix || return 1
 
-    # Configure sudoers for Postfix reload
+    # Configure sudoers for Postfix management
     info "Configuring sudoers for Postfix management..."
     cat > /etc/sudoers.d/spacy-postfix << 'EOSUDO'
-# Allow spacy-filter to reload Postfix for transport map updates
+# Allow spacy-filter to manage Postfix configuration
+# Required for domain management via web interface
 spacy-filter ALL=(ALL) NOPASSWD: /usr/sbin/postfix reload
+spacy-filter ALL=(ALL) NOPASSWD: /usr/sbin/postconf -e *
+spacy-filter ALL=(ALL) NOPASSWD: /usr/sbin/postmap /etc/postfix/transport
 EOSUDO
     chmod 440 /etc/sudoers.d/spacy-postfix
     if visudo -c -f /etc/sudoers.d/spacy-postfix >> "${LOG_FILE}" 2>&1; then

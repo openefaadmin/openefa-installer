@@ -9,6 +9,10 @@ import sys
 import os
 import mysql.connector
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from /etc/spacy-server/.env
+load_dotenv('/etc/spacy-server/.env')
 
 # Add parent directory to path for imports
 sys.path.insert(0, '/opt/spacyserver')
@@ -17,12 +21,12 @@ from notification_service import NotificationService
 
 
 def get_db_connection():
-    """Get database connection"""
+    """Get database connection using credentials from environment"""
     return mysql.connector.connect(
-        host='localhost',
-        user='spacy_user',
-        password='AdrastosIhadn63r',
-        database='spacy_email_db'
+        host=os.getenv('DB_HOST', 'localhost'),
+        user=os.getenv('DB_USER', 'spacy_user'),
+        password=os.getenv('DB_PASSWORD'),
+        database=os.getenv('DB_NAME', 'spacy_email_db')
     )
 
 

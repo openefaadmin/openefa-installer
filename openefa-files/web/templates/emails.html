@@ -189,11 +189,14 @@
                             <small><span id="selected-count">0</span> email(s) selected</small>
                         </div>
                         <div class="col-md-8 text-end">
-                            <button class="btn btn-sm btn-warning" onclick="bulkMarkSpam()" disabled id="bulk-spam-btn">
-                                <i class="fas fa-ban"></i> Mark as Spam
+                            <button class="btn btn-sm btn-info" onclick="bulkMarkNotSpam()" disabled id="bulk-not-spam-btn">
+                                <i class="fas fa-thumbs-up"></i> Not Spam
                             </button>
                             <button class="btn btn-sm btn-success" onclick="bulkWhitelist()" disabled id="bulk-whitelist-btn">
                                 <i class="fas fa-check-circle"></i> Whitelist Sender
+                            </button>
+                            <button class="btn btn-sm btn-warning" onclick="bulkMarkSpam()" disabled id="bulk-spam-btn">
+                                <i class="fas fa-ban"></i> Mark as Spam
                             </button>
                             <button class="btn btn-sm btn-danger" onclick="bulkDelete()" disabled id="bulk-delete-btn">
                                 <i class="fas fa-trash"></i> Delete
@@ -451,6 +454,7 @@
         // Enable/disable bulk action buttons
         const disabled = selected.length === 0;
         document.getElementById('bulk-spam-btn').disabled = disabled;
+        document.getElementById('bulk-not-spam-btn').disabled = disabled;
         document.getElementById('bulk-whitelist-btn').disabled = disabled;
         document.getElementById('bulk-delete-btn').disabled = disabled;
     }
@@ -473,9 +477,13 @@
     function markAsSpam(emailId) {
         if (!confirm('Mark this email as spam and increase its spam score?')) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch(`/api/emails/${emailId}/mark-spam`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            }
         })
         .then(response => response.json())
         .then(data => {
@@ -491,9 +499,13 @@
     function whitelistSender(sender) {
         if (!confirm(`Add "${sender}" to whitelist?`)) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch('/api/emails/whitelist-sender', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({sender: sender})
         })
         .then(response => response.json())
@@ -516,9 +528,13 @@
 
         console.log('Sending DELETE request to:', `/api/emails/${emailId}/delete`);
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch(`/api/emails/${emailId}/delete`, {
             method: 'DELETE',
-            headers: {'Content-Type': 'application/json'}
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            }
         })
         .then(response => {
             console.log('Response status:', response.status);
@@ -546,15 +562,45 @@
 
         if (!confirm(`Mark ${emails.length} email(s) as spam?`)) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch('/api/emails/bulk-mark-spam', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({email_ids: emails.map(e => e.id)})
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 alert(`Marked ${data.count} email(s) as spam`);
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+
+    function bulkMarkNotSpam() {
+        const emails = getSelectedEmails();
+        if (emails.length === 0) return;
+
+        if (!confirm(`Mark ${emails.length} email(s) as NOT SPAM? This will train the spam filter.`)) return;
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        fetch('/api/emails/bulk-not-spam', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({email_ids: emails.map(e => e.id)})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Marked ${data.count} email(s) as not spam`);
                 location.reload();
             } else {
                 alert('Error: ' + data.error);
@@ -569,9 +615,13 @@
         const uniqueSenders = [...new Set(emails.map(e => e.sender))];
         if (!confirm(`Add ${uniqueSenders.length} unique sender(s) to whitelist?`)) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch('/api/emails/bulk-whitelist', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({senders: uniqueSenders})
         })
         .then(response => response.json())
@@ -591,15 +641,19 @@
 
         if (!confirm(`Delete ${emails.length} email(s) permanently?`)) return;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch('/api/emails/bulk-delete', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({email_ids: emails.map(e => e.id)})
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(`Deleted ${data.count} email(s)`);
+                alert(`Deleted ${data.success_count} email(s)`);
                 location.reload();
             } else {
                 alert('Error: ' + data.error);

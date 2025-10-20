@@ -101,15 +101,80 @@ EOSQL
 }
 
 #
+# Create .env configuration file with secure credentials
+#
+create_env_file() {
+    info "Creating .env configuration file..."
+
+    local config_dir="/etc/spacy-server"
+    local env_file="${config_dir}/.env"
+
+    # Create system config directory
+    create_directory "${config_dir}" "root:spacy-filter" "750"
+
+    # Generate secure random keys
+    local flask_secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(64))")
+    local api_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+
+    cat > "${env_file}" << EOENV
+# SpacyServer Environment Configuration
+# Generated: $(date)
+# Location: ${env_file}
+
+# Database Configuration
+DB_HOST=localhost
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+DB_NAME=${DB_NAME}
+
+# Flask Configuration
+FLASK_SECRET_KEY=${flask_secret}
+DEBUG_MODE=False
+
+# Security Configuration
+SESSION_COOKIE_SECURE=True
+SESSION_COOKIE_HTTPONLY=True
+SESSION_COOKIE_SAMESITE=Lax
+SESSION_TIMEOUT_HOURS=2
+
+# API Security
+API_SECRET_KEY=${api_secret}
+ALLOWED_API_IPS=127.0.0.1,localhost
+
+# ClickSend Configuration (Optional - update with your credentials)
+CLICKSEND_USERNAME=your_username_here
+CLICKSEND_API_KEY=your_api_key_here
+CLICKSEND_ENABLED=false
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379
+
+# Application Settings
+MAX_CONTENT_LENGTH=16777216
+UPLOAD_FOLDER=/opt/spacyserver/uploads
+EOENV
+
+    chown root:spacy-filter "${env_file}"
+    chmod 640 "${env_file}"
+
+    success ".env file created: ${env_file}"
+    save_state "env_file_created"
+    return 0
+}
+
+#
 # Create .my.cnf configuration file
 #
 create_mysql_config() {
     info "Creating MySQL configuration file..."
 
-    local config_dir="/opt/spacyserver/config"
+    local config_dir="/etc/spacy-server"
     local config_file="${config_dir}/.my.cnf"
 
-    create_directory "${config_dir}" "spacy-filter:spacy-filter" "750"
+    # Directory should already be created by create_env_file
+    if [[ ! -d "${config_dir}" ]]; then
+        create_directory "${config_dir}" "root:spacy-filter" "750"
+    fi
 
     cat > "${config_file}" << EOMYCNF
 [client]
@@ -255,6 +320,7 @@ setup_database() {
     secure_mariadb || return 1
     create_database_and_user || return 1
     import_database_schema || return 1
+    create_env_file || return 1
     create_mysql_config || return 1
     insert_initial_domain || return 1
     create_admin_user || return 1
@@ -268,5 +334,5 @@ setup_database() {
 
 # Export functions
 export -f secure_mariadb create_database_and_user import_database_schema
-export -f create_mysql_config insert_initial_domain create_admin_user
+export -f create_env_file create_mysql_config insert_initial_domain create_admin_user
 export -f configure_conversation_learning setup_module_tables setup_database

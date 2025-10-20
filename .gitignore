@@ -4,9 +4,12 @@
 *.key
 *.pem
 *.crt
+*.my.cnf
+.my.cnf
 *credentials*
 *password*
 *token*
+*secret*
 
 # Temporary files
 *.tmp
@@ -43,3 +46,14 @@ test_results/
 
 # Secrets scanning results
 secrets_scan_*.txt
+
+# Reports and documentation that may contain sensitive info
+reports/
+SECURITY_*.md
+*_SECURITY_*.md
+*CREDENTIAL*.md
+
+# Backups
+backups/
+*.backup
+*.bak

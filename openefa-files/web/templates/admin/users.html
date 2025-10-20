@@ -103,6 +103,7 @@
                                         <form method="POST" action="{{ url_for('admin_reset_password', user_id=user.id) }}"
                                               style="display: inline;"
                                               onsubmit="return confirm('Reset password for {{ user.email }}?')">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit" class="btn btn-outline-warning" title="Reset Password">
                                                 <i class="fas fa-key"></i>
                                             </button>
@@ -111,6 +112,7 @@
                                         <form method="POST" action="{{ url_for('admin_toggle_user_status', user_id=user.id) }}"
                                               style="display: inline;"
                                               onsubmit="return confirm('{{ 'Deactivate' if user.is_active else 'Activate' }} {{ user.email }}?')">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit" class="btn btn-outline-{{ 'danger' if user.is_active else 'success' }}"
                                                     title="{{ 'Deactivate' if user.is_active else 'Activate' }} User">
                                                 <i class="fas fa-{{ 'ban' if user.is_active else 'check' }}"></i>

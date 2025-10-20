@@ -305,9 +305,13 @@ function addDomain() {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/domains/add', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
         body: JSON.stringify({
             domain: domain,
             client_name: clientName,
@@ -344,9 +348,13 @@ function submitEditDomain() {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch(`/api/domains/edit/${domainId}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
         body: JSON.stringify({
             client_name: clientName,
             relay_host: relayHost
@@ -368,9 +376,13 @@ function submitEditDomain() {
 function toggleDomain(domainId) {
     if (!confirm('Are you sure you want to change this domain\'s status?')) return;
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch(`/api/domains/toggle/${domainId}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'}
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
     })
     .then(response => response.json())
     .then(data => {
@@ -387,9 +399,13 @@ function toggleDomain(domainId) {
 function deleteDomain(domainId, domainName) {
     if (!confirm(`Are you sure you want to DELETE domain "${domainName}"?\n\nThis will permanently remove:\n- The domain\n- All blocking rules for this domain\n- All blocked attempt logs\n\nThis action CANNOT be undone!`)) return;
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch(`/api/domains/delete/${domainId}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'}
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
     })
     .then(response => response.json())
     .then(data => {

@@ -46,7 +46,7 @@ import bcrypt
 from enhanced_report_system import EnhancedEmailReportGenerator
 
 # Configuration paths
-MY_CNF_PATH = "/opt/spacyserver/config/.my.cnf"
+MY_CNF_PATH = "/etc/spacy-server/.my.cnf"
 APP_CONFIG_PATH = "/opt/spacyserver/config/.app_config.ini"
 DB_NAME = "spacy_email_db"
 HOST = "localhost"
@@ -137,8 +137,8 @@ def update_postfix_transport():
         with open(transport_file, 'w') as f:
             f.write('\n'.join(lines) + '\n')
 
-        # Run postmap to compile the transport map
-        result = subprocess.run(['postmap', transport_file],
+        # Run postmap to compile the transport map (requires sudo)
+        result = subprocess.run(['sudo', '/usr/sbin/postmap', transport_file],
                               capture_output=True, text=True, timeout=10)
 
         if result.returncode == 0:

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}OpenEFA Email Security Dashboard{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
@@ -150,8 +151,21 @@
                             {% endif %}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle"></i> Profile</a></li>
+                            <li class="dropdown-item-text text-muted small">
+                                <i class="fas fa-clock"></i> Session:
+                                {% if session.get('session_timeout_minutes') %}
+                                    {% set hours = (session.get('session_timeout_minutes') / 60) | int %}
+                                    {% if hours >= 1 %}{{ hours }}h{% else %}{{ session.get('session_timeout_minutes') }}min{% endif %}
+                                {% else %}
+                                    2h
+                                {% endif %}
+                                timeout
+                            </li>
                             <li><hr class="dropdown-divider"></li>
+                            {% if current_user.is_admin() or current_user.is_domain_admin() %}
+                            <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}"><i class="fas fa-key"></i> Change Password</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            {% endif %}
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
                         </ul>
                     </li>
