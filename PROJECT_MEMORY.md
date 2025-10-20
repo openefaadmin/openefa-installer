@@ -1,5 +1,458 @@
 # OpenEFA Project Memory
-**Last Updated:** October 18, 2025
+**Last Updated:** October 20, 2025
+
+## Recent Session Summary (October 20, 2025)
+
+### 🔧 Critical Bug Fixes and Template Regressions (v1.5.6)
+
+#### Release v1.5.6: Complete Bug Fix Release
+**Status:** ✅ Complete and Pushed to GitHub
+**Version:** 1.5.6
+**Priority:** CRITICAL - Multiple Bug Fixes
+**Commit:** b6d2d02
+
+**Problems Discovered:**
+1. User edit form wouldn't submit - "Update User" button inactive
+2. V1.5.4 introduced template regressions - backup download broken
+3. Config file permission errors preventing backups
+4. Bootstrap script couldn't read keyboard input when piped from curl
+5. Non-functional Authentication card in config dashboard
+
+---
+
+#### Bug Fix #1: User Edit Form Submission Issue
+**Status:** ✅ Fixed
+**Priority:** HIGH - Admin Functionality Broken
+
+**Problem:**
+- User edit form "Update User" button wouldn't activate
+- Console error: "An invalid form control with name='' is not focusable"
+- Couldn't update user first name, last name, company name, roles, or domains
+
+**Root Cause:**
+- Hidden "Add New Alias" email field had `required` attribute (line 169)
+- HTML5 validation blocks form submission when it can't focus hidden required fields
+- JavaScript validation runs when adding aliases, but broke main form update
+
+**Fix:**
+- Removed `required` attribute from hidden alias email field
+- File: `/opt/spacyserver/web/templates/admin/edit_user.html` line 169
+- Validation still works when actually adding aliases (JavaScript handles it)
+
+**Testing:**
+- ✅ User confirmed: "That worked."
+- ✅ Can now update user information
+- ✅ Can change roles and domain assignments
+
+**Files Modified:**
+- Production: `/opt/spacyserver/web/templates/admin/edit_user.html`
+- Installer: `/opt/openefa-installer/openefa-files/web/templates/admin/edit_user.html`
+- Committed: 6363862
+
+---
+
+#### Enhancement #1: Bootstrap Script with Update Detection
+**Status:** ✅ Complete
+**Priority:** HIGH - User Experience Improvement
+
+**Problem:**
+- Users had separate install.sh and update.sh commands
+- Confusing for users to know which to use
+- No detection of existing installations
+
+**Solution:**
+- Created intelligent `bootstrap.sh` that detects existing installations
+- Single command for both install and update: `curl -sSL http://install.openefa.com/install.sh | sudo bash`
+- Menu-driven interface when existing installation detected
+
+**Features:**
+1. **Installation Detection:**
+   - Checks for `/opt/spacyserver` directory
+   - Reads VERSION file to show current version
+   - Presents menu: Update / Reinstall / Cancel
+
+2. **stdin/tty Handling:**
+   - Reads from `/dev/tty` when piped from curl
+   - Allows keyboard input even when stdin is redirected
+   - Fixed issue where script would exit after showing menu
+
+3. **Apache Redirects:**
+   - Configured on 192.168.50.56 (install.openefa.com)
+   - All three URLs redirect to bootstrap.sh:
+     - `/install.sh` → bootstrap.sh
+     - `/update.sh` → bootstrap.sh
+     - `/bootstrap.sh` → bootstrap.sh
+
+**Files Created:**
+- `/opt/openefa-installer/bootstrap.sh` (146 lines)
+
+**Files Modified:**
+- `/var/www/openefa/install/.htaccess` on 192.168.50.56
+
+**Testing:**
+- ✅ User tested: "That is perfect. I ran 1.5.3 and then ran the update script. it worked. I then ran the update script again and it checked, and said i don't need to update"
+
+**Commits:**
+- 5541ad1 - Bootstrap script with update detection
+- 535db9e - Fixed stdin/tty handling
+
+---
+
+#### Bug Fix #2: Template Regressions from v1.5.4
+**Status:** ✅ Fixed
+**Priority:** CRITICAL - Broken Functionality
+
+**Problem:**
+- User: "bug after bug.. cricky, getting frustrated"
+- Backup management page lost download-to-desktop functionality
+- Cleanup settings error: "Table 'spacy_email_db.system_settings' doesn't exist"
+- V1.5.4 installer accidentally included older template versions (Oct 19 02:xx)
+- Updates overwrote working templates with broken versions (Oct 19 18:12)
+
+**Root Cause Analysis:**
+1. **Backup Management Template:**
+   - Installer had 19,580 byte version (old) from Oct 19 02:32
+   - Production had 14,507 byte version initially (broken - no download)
+   - Working version was 19,580 bytes with auto-download functionality
+   - Older backups showed working version existed but was lost
+
+2. **Template Comparison:**
+   - Found 5 templates with regressions:
+     - `backup_management.html` - Missing auto-download feature
+     - `base.html` - 13,325 → 13,510 bytes
+     - `email_detail.html` - 40,716 → 37,877 bytes
+     - `emails.html` - 34,478 → 32,605 bytes
+     - `quarantine_detail.html` - 16,036 → 13,461 bytes
+
+3. **Backup Auto-Download Feature:**
+   - Old working version (19,580 bytes) had:
+     - "Download Database Backup" and "Download Full System Backup" button labels
+     - Backup option checkboxes (email attachments, config files, web application)
+     - Auto-download functionality: `window.location.href = /api/backup/download/${filename}`
+   - After creating backup, automatically triggers download to desktop
+   - Modern version (14,507 bytes) removed all this functionality
+
+**Fix Applied:**
+- Restored `backup_management.html` from Oct 19 backup (19,580 bytes)
+- Copied to both production and installer
+- Restarted SpacyWeb service
+
+**Backup Management Features Restored:**
+1. **Database Backup Options:**
+   - Checkbox: Include email attachments
+   - Button: "Download Database Backup"
+   - Auto-download after creation
+
+2. **Full System Backup Options:**
+   - Checkbox: Database (always included, disabled)
+   - Checkbox: Configuration files
+   - Checkbox: Web application
+   - Checkbox: Email attachments
+   - Button: "Download Full System Backup"
+   - Auto-download after creation
+
+3. **JavaScript Auto-Download:**
+```javascript
+if (data.filename) {
+    window.location.href = `/api/backup/download/${filename}`;
+}
+```
+
+**Files Restored:**
+- `/opt/spacyserver/web/templates/backup_management.html` (19,580 bytes)
+- `/opt/openefa-installer/openefa-files/web/templates/backup_management.html`
+
+---
+
+#### Bug Fix #3: Config File Permission Errors
+**Status:** ✅ Fixed
+**Priority:** HIGH - Backup Failures
+
+**Problem:**
+- Full system backup failed with error:
+  - "Full backup failed: [Errno 13] Permission denied: '/opt/spacyserver/config/module_config.json'"
+- Some config files owned by root:root instead of spacy-filter:spacy-filter
+- Web application runs as spacy-filter user but couldn't read root-owned files
+
+**Root Cause:**
+- `module_config.json` was root:root with 600 permissions
+- SpacyWeb service (running as spacy-filter) couldn't read it during backup
+- tar command in full backup process hit permission denied error
+
+**Fix Applied:**
+
+1. **Immediate Fix (Production):**
+```bash
+sudo chown spacy-filter:spacy-filter /opt/spacyserver/config/module_config.json
+sudo chmod 640 /opt/spacyserver/config/module_config.json
+```
+
+2. **Installer Fix:**
+- Created `fix_config_permissions()` function in `lib/services.sh` (lines 205-243)
+- Automatically fixes ownership and permissions for all config files:
+  - JSON config files: spacy-filter:spacy-filter with 640 permissions
+  - .my.cnf (database credentials): spacy-filter:spacy-filter with 600 permissions
+  - modules.ini: spacy-filter:spacy-filter with 600 permissions
+  - .app_config.ini: spacy-filter:spacy-filter with 640 permissions
+- Function runs automatically during installation (line 260)
+- Uses `find` command to catch all JSON files
+
+**Function Details:**
+```bash
+fix_config_permissions() {
+    info "Fixing all config file permissions..."
+    local install_dir="/opt/spacyserver"
+
+    # Ensure config directory exists with correct permissions
+    mkdir -p "${install_dir}/config"
+    chown spacy-filter:spacy-filter "${install_dir}/config"
+    chmod 750 "${install_dir}/config"
+
+    # Fix all JSON config files
+    find "${install_dir}/config" -maxdepth 1 -type f -name "*.json" -exec chown spacy-filter:spacy-filter {} \;
+    find "${install_dir}/config" -maxdepth 1 -type f -name "*.json" -exec chmod 640 {} \;
+
+    # Fix credentials files
+    # .my.cnf, modules.ini (600), .app_config.ini (640)
+}
+```
+
+**Files Modified:**
+- `/opt/openefa-installer/lib/services.sh` - Added fix_config_permissions() function and call
+
+**Testing:**
+- ✅ Full system backup now works without permission errors
+- ✅ Backup downloads to desktop automatically
+
+---
+
+#### Bug Fix #4: Removed Non-Functional Authentication Card
+**Status:** ✅ Fixed
+**Priority:** MEDIUM - UX Improvement
+
+**Problem:**
+- Configuration dashboard had "Authentication" card
+- Card linked to `/config/authentication` route
+- Route was never implemented - clicking resulted in 404 error
+- Confusing user experience with broken link
+
+**Investigation:**
+- Checked all 8 config cards on dashboard
+- Only `/config/authentication` route missing
+- Config file `authentication_config.json` exists and is used by email filter
+- Contains SPF/DKIM/DMARC verification settings
+- Settings are advanced and rarely changed
+
+**Fix Applied:**
+- Removed Authentication card from `config_dashboard.html`
+- Config file still exists and is actively used by email filter
+- System admins can edit the JSON file directly if needed
+
+**Files Modified:**
+- `/opt/spacyserver/web/templates/config_dashboard.html`
+- `/opt/openefa-installer/openefa-files/web/templates/config_dashboard.html`
+- Committed: 1fb5a31
+
+---
+
+#### Bug Fix #5: System Settings Table (v1.5.4 Issue)
+**Status:** ✅ Documented Workaround
+**Priority:** HIGH - Upgrade Issue
+
+**Problem:**
+- V1.5.4 upgrades show error: "Table 'spacy_email_db.system_settings' doesn't exist"
+- Cleanup settings page fails to load
+- Email cleanup feature broken
+
+**Root Cause:**
+- Table IS in SQL schema for fresh installs (works correctly)
+- Upgrades from v1.5.3 don't have migration script to create table
+- Only affects existing installations upgrading to v1.5.4+
+
+**Workaround Provided:**
+- SQL script provided in CHANGES_v1.5.6.md
+- Users can manually create table:
+```sql
+mysql -u root -p spacy_email_db <<'EOF'
+CREATE TABLE IF NOT EXISTS `system_settings` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `setting_key` varchar(100) NOT NULL UNIQUE,
+  `setting_value` text NOT NULL,
+  ...
+);
+INSERT INTO system_settings (setting_key, setting_value, description, updated_by) VALUES
+('cleanup_expired_emails_enabled', 'true', 'Enable automatic cleanup of expired quarantine emails', 'system'),
+('cleanup_retention_days', '30', 'Number of days to retain emails before cleanup', 'system'),
+('prevent_spam_release', 'false', 'Prevent releasing emails marked as spam (spam_score >= 5.0)', 'system')
+ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+EOF
+```
+
+**Future Fix:**
+- Need migration script system for schema changes
+- Add to future release
+
+---
+
+#### Version Release Process
+
+**Initial Release Attempt (v1.5.5):**
+- Fixed template regressions
+- Created CHANGES_v1.5.5.md
+- Pushed to GitHub: commit 70f80c6
+
+**Issue Discovered:**
+- User ran update on dev server - said "no update needed"
+- Multiple commits made AFTER v1.5.5 tag:
+  - Backup auto-download fix
+  - Config permissions fix
+  - Authentication card removal
+- Update script compares VERSION file (1.5.5 == 1.5.5, no update)
+
+**Decision:**
+- Bump to v1.5.6 to trigger update detection
+- Include all fixes in v1.5.6 release
+- User: "lets update"
+
+**V1.5.6 Release:**
+- Bumped VERSION: 1.5.4 → 1.5.6
+- Renamed CHANGES_v1.5.5.md → CHANGES_v1.5.6.md
+- Updated changelog with all fixes
+- Committed: b6d2d02
+- Pushed to GitHub
+
+---
+
+#### External Downloads Discovered
+**Status:** ✅ Tracked via Apache Logs
+
+**Investigation:**
+- User asked: "is there a way to see if anybody download the 1.5.4 or 1.5.5 version"
+- Checked Apache logs on 192.168.50.56 (install.openefa.com)
+
+**Results - October 19, 2025:**
+- **7 unique external IPs** downloaded the installer
+- **13 total download requests** from external sources
+
+**Notable Downloads:**
+1. `62.253.3.73` - **Came from Google search!** (referrer: https://www.google.com/)
+2. `103.253.65.82` - 4 requests (Malaysia/Indonesia region)
+3. `62.31.217.210` - 2 requests
+4. `143.244.42.72` - Windows browser access
+5. `143.177.234.192` - curl download
+6. `188.167.104.173` - Using wget
+7. `194.127.178.79` - curl download
+
+**October 20, 2025:**
+- All requests from internal network (192.168.50.1) - testing
+
+**Impact:**
+- First real external users!
+- They got v1.5.4 or early v1.5.5 (before fixes)
+- Now they can update to v1.5.6 to get all fixes
+
+---
+
+#### Files Modified Summary
+
+**Production Server (192.168.50.58):**
+- `/opt/spacyserver/web/templates/admin/edit_user.html` - Removed required attribute
+- `/opt/spacyserver/web/templates/backup_management.html` - Restored auto-download (19,580 bytes)
+- `/opt/spacyserver/web/templates/config_dashboard.html` - Removed Authentication card
+- `/opt/spacyserver/VERSION` - Updated to 1.5.6
+- `/opt/spacyserver/config/module_config.json` - Fixed permissions
+
+**Installer Repository:**
+- `VERSION` - Bumped to 1.5.6
+- `CHANGES_v1.5.5.md` → `CHANGES_v1.5.6.md` - Renamed and updated
+- `bootstrap.sh` - NEW: Intelligent install/update detection (146 lines)
+- `lib/services.sh` - Added fix_config_permissions() function
+- `openefa-files/web/templates/admin/edit_user.html` - User form fix
+- `openefa-files/web/templates/backup_management.html` - Restored auto-download
+- `openefa-files/web/templates/config_dashboard.html` - Removed Authentication card
+- `openefa-files/web/templates/base.html` - Synced to latest
+- `openefa-files/web/templates/email_detail.html` - Synced to latest
+- `openefa-files/web/templates/emails.html` - Synced to latest
+- `openefa-files/web/templates/quarantine_detail.html` - Synced to latest
+
+**Web Server (192.168.50.56):**
+- `/var/www/openefa/install/.htaccess` - Added redirects for update.sh and bootstrap.sh
+
+---
+
+#### Git Commits
+
+**Session Commits:**
+1. `6363862` - Fix user edit form (removed required attribute from hidden field)
+2. `5541ad1` - Bootstrap script with intelligent update detection
+3. `535db9e` - Fixed stdin/tty handling for piped scripts
+4. `70f80c6` - Release v1.5.5: Fix template regressions and system_settings table
+5. `1e151af` - v1.5.5: Fix backup auto-download and config permissions
+6. `1fb5a31` - Remove non-functional Authentication card from config dashboard
+7. `b6d2d02` - Release v1.5.6: Complete bug fix release
+
+**GitHub Repository:** https://github.com/openefaadmin/openefa-installer
+**Branch:** main
+**Latest Commit:** b6d2d02
+
+---
+
+#### Testing Completed
+
+**User Edit Form:**
+- ✅ User confirmed form now submits correctly
+- ✅ Can update user information
+- ✅ Can change roles and domains
+
+**Bootstrap Script:**
+- ✅ User tested on v1.5.3 system
+- ✅ Update detection works
+- ✅ Keyboard input works when piped from curl
+- ✅ Shows correct version in menu
+- ✅ Second run correctly shows "no update needed"
+
+**Backup Management:**
+- ✅ Full system backup creates successfully
+- ✅ Auto-download triggers immediately after creation
+- ✅ Backup downloads to desktop
+- ✅ Option checkboxes work (attachments, config, web app)
+
+**Config Permissions:**
+- ✅ Full backup no longer shows permission denied errors
+- ✅ All config files have correct ownership
+- ✅ Installer sets permissions automatically
+
+**Version Update:**
+- ✅ V1.5.6 pushed to GitHub
+- ✅ External users can now update from v1.5.4/v1.5.5
+- ✅ Production server shows v1.5.6
+
+---
+
+#### Impact
+
+**Fixes Delivered:**
+- ✅ User management restored (edit user form works)
+- ✅ Backup auto-download functionality restored
+- ✅ Config file permission errors resolved
+- ✅ Removed confusing broken UI element (Auth card)
+- ✅ Intelligent update system for end users
+- ✅ 5 templates synced to latest working versions
+- ✅ Single curl command for install and update
+
+**User Experience:**
+- Single command works for both install and update
+- No more confusion about which script to run
+- Backup downloads to desktop automatically
+- Clear backup options with checkboxes
+- No more broken links in config dashboard
+
+**External Users:**
+- 7 unique IPs downloaded installer on Oct 19
+- Can now update to v1.5.6 to get all fixes
+- Bootstrap script makes updating easy
+
+---
 
 ## Recent Session Summary (October 18, 2025 - Evening)
 
