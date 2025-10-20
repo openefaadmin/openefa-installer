@@ -120,62 +120,60 @@ main() {
         cleanup_state
         show_summary "SUCCESS" "${duration}"
         
-        cat << EOFSUCCESS
-
-${COLOR_GREEN}╔════════════════════════════════════════════════════════════════╗
-║                  INSTALLATION SUCCESSFUL!                      ║
-╚════════════════════════════════════════════════════════════════╝${COLOR_RESET}
-
-${COLOR_CYAN}OpenEFA Email Security System is now running!${COLOR_RESET}
-
-${COLOR_WHITE}Access Information:${COLOR_RESET}
-  • SpacyWeb Dashboard: https://$(hostname -f):5500
-  • Admin Username: ${ADMIN_USER}
-  • Admin Email: ${ADMIN_EMAIL}
-
-${COLOR_WHITE}Protected Domain:${COLOR_RESET}
-  • ${INSTALL_DOMAIN}
-
-${COLOR_WHITE}Services Running:${COLOR_RESET}
-  • Postfix (Mail Server)
-  • spacy-db-processor (Database Queue)
-  • SpacyWeb (Dashboard - Port 5500)
-  • Release API (Port 5001)
-  • Whitelist API (Port 5002)
-  • Block API (Port 5003)
-
-${COLOR_RED}⚠️  CRITICAL - If using MailGuard/EFA downstream:${COLOR_RESET}
-  ${COLOR_YELLOW}Deploy SpamAssassin rules to your MailGuard/EFA server:${COLOR_RESET}
-
-  cd /opt/spacyserver/installer/templates/spamassassin
-  scp *.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/
-  ssh root@YOUR_EFA_SERVER_IP "spamassassin --lint && systemctl restart mailscanner"
-
-  ${COLOR_WHITE}Without this, MailGuard will IGNORE OpenEFA's analysis!${COLOR_RESET}
-  See: /opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md
-
-${COLOR_WHITE}Next Steps:${COLOR_RESET}
-  1. Update DNS MX records to point to this server
-  2. Configure firewall to allow port 25 (SMTP) inbound
-  3. Login to SpacyWeb to configure additional settings
-  4. Add whitelists and blocking rules as needed
-  5. Monitor logs: /opt/spacyserver/logs/
-  6. Consider installing Let's Encrypt SSL certificate
-
-${COLOR_WHITE}Useful Commands:${COLOR_RESET}
-  • Check email logs: sudo tail -f /var/log/mail.log
-  • Check SpaCy logs: sudo tail -f /opt/spacyserver/logs/email_filter_error.log
-  • Service status: sudo systemctl status spacy-db-processor
-  • OpenSpacyMenu: sudo /opt/spacyserver/tools/OpenSpacyMenu
-
-${COLOR_YELLOW}Optional:${COLOR_RESET}
-  • Run efa_integration.sh to configure APIs on existing EFA appliance
-  • See README.md for detailed configuration guide
-
-${COLOR_GREEN}Thank you for installing OpenEFA!${COLOR_RESET}
-${COLOR_CYAN}Community: https://openefa.com | Forum: https://forum.openefa.com${COLOR_RESET}
-
-EOFSUCCESS
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════╗"
+        echo "║                  INSTALLATION SUCCESSFUL!                      ║"
+        echo "╚════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "OpenEFA Email Security System is now running!"
+        echo ""
+        echo "Access Information:"
+        echo "  • SpacyWeb Dashboard: https://$(hostname -f):5500"
+        echo "  • Admin Username: ${ADMIN_USER}"
+        echo "  • Admin Email: ${ADMIN_EMAIL}"
+        echo ""
+        echo "Protected Domain:"
+        echo "  • ${INSTALL_DOMAIN}"
+        echo ""
+        echo "Services Running:"
+        echo "  • Postfix (Mail Server)"
+        echo "  • spacy-db-processor (Database Queue)"
+        echo "  • SpacyWeb (Dashboard - Port 5500)"
+        echo "  • Release API (Port 5001)"
+        echo "  • Whitelist API (Port 5002)"
+        echo "  • Block API (Port 5003)"
+        echo ""
+        echo "⚠️  CRITICAL - If using MailGuard/EFA downstream:"
+        echo "  Deploy SpamAssassin rules to your MailGuard/EFA server:"
+        echo ""
+        echo "  cd /opt/spacyserver/installer/templates/spamassassin"
+        echo "  scp *.cf root@YOUR_EFA_SERVER_IP:/etc/mail/spamassassin/"
+        echo "  ssh root@YOUR_EFA_SERVER_IP \"spamassassin --lint && systemctl restart mailscanner\""
+        echo ""
+        echo "  Without this, MailGuard will IGNORE OpenEFA's analysis!"
+        echo "  See: /opt/spacyserver/docs/EFA_SPAMASSASSIN_INTEGRATION.md"
+        echo ""
+        echo "Next Steps:"
+        echo "  1. Update DNS MX records to point to this server"
+        echo "  2. Configure firewall to allow port 25 (SMTP) inbound"
+        echo "  3. Login to SpacyWeb to configure additional settings"
+        echo "  4. Add whitelists and blocking rules as needed"
+        echo "  5. Monitor logs: /opt/spacyserver/logs/"
+        echo "  6. Consider installing Let's Encrypt SSL certificate"
+        echo ""
+        echo "Useful Commands:"
+        echo "  • Check email logs: sudo tail -f /var/log/mail.log"
+        echo "  • Check SpaCy logs: sudo tail -f /opt/spacyserver/logs/email_filter_error.log"
+        echo "  • Service status: sudo systemctl status spacy-db-processor"
+        echo "  • OpenSpacyMenu: sudo /opt/spacyserver/tools/OpenSpacyMenu"
+        echo ""
+        echo "Optional:"
+        echo "  • Run efa_integration.sh to configure APIs on existing EFA appliance"
+        echo "  • See README.md for detailed configuration guide"
+        echo ""
+        echo "Thank you for installing OpenEFA!"
+        echo "Community: https://openefa.com | Forum: https://forum.openefa.com"
+        echo ""
 
         exit 0
     else
