@@ -4477,7 +4477,10 @@ def system_info():
     version = "Unknown"
     try:
         with open('/opt/spacyserver/VERSION', 'r') as f:
-            version = f.read().strip()
+            for line in f:
+                if line.startswith('VERSION='):
+                    version = line.split('=', 1)[1].strip()
+                    break
     except Exception as e:
         logger.error(f"Error reading version file: {e}")
 
