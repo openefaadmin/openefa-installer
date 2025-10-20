@@ -76,15 +76,60 @@ fi
 chmod +x install.sh
 
 echo ""
-echo -e "${CYAN}Starting OpenEFA installation...${NC}"
 echo ""
 
-# Run the installer with terminal input restored
-# This allows interactive prompts to work when piped from curl
-if [ -t 0 ]; then
-    # Already have a terminal, run normally
-    exec ./install.sh "$@"
+# Check if OpenEFA is already installed
+if [[ -d "/opt/spacyserver" ]] && [[ -f "/opt/spacyserver/VERSION" ]]; then
+    source /opt/spacyserver/VERSION
+    echo -e "${YELLOW}⚠  OpenEFA is already installed (Version: ${VERSION})${NC}"
+    echo ""
+    echo "What would you like to do?"
+    echo "  1) Update to latest version (recommended)"
+    echo "  2) Reinstall (will backup and overwrite)"
+    echo "  3) Cancel"
+    echo ""
+    read -p "Enter choice [1-3]: " choice
+
+    case $choice in
+        1)
+            echo ""
+            echo -e "${CYAN}Starting OpenEFA update...${NC}"
+            echo ""
+            if [ -t 0 ]; then
+                exec ./update.sh
+            else
+                exec ./update.sh < /dev/tty
+            fi
+            ;;
+        2)
+            echo ""
+            echo -e "${YELLOW}⚠  Warning: Reinstalling will backup current installation${NC}"
+            read -p "Are you sure? (yes/no): " confirm
+            if [[ "$confirm" == "yes" ]]; then
+                echo -e "${CYAN}Starting OpenEFA reinstallation...${NC}"
+                echo ""
+                if [ -t 0 ]; then
+                    exec ./install.sh "$@"
+                else
+                    exec ./install.sh "$@" < /dev/tty
+                fi
+            else
+                echo "Cancelled."
+                exit 0
+            fi
+            ;;
+        3|*)
+            echo "Cancelled."
+            exit 0
+            ;;
+    esac
 else
-    # Piped from curl, reconnect stdin to terminal
-    exec ./install.sh "$@" < /dev/tty
+    # Fresh installation
+    echo -e "${CYAN}Starting OpenEFA installation...${NC}"
+    echo ""
+    if [ -t 0 ]; then
+        exec ./install.sh "$@"
+    else
+        exec ./install.sh "$@" < /dev/tty
+    fi
 fi
