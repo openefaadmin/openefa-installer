@@ -430,6 +430,7 @@ redis-cli ping
 
 ### Documentation
 - **Full Documentation**: Coming soon at docs.openefa.com
+- **Known Issues**: See `KNOWN_ISSUES.md` for common problems and workarounds
 - **EFA Replacement Roadmap**: See `/opt/spacyserver/docs/EFA_REPLACEMENT_ROADMAP.md` after install
 - **Design Documents**: See `/opt/spacyserver/docs/` directory
 
