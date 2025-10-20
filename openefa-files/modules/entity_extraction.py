@@ -155,43 +155,133 @@ def extract_topics(text, subject=""):
         return []
 
 def generate_content_summary(text, subject=""):
-    """Generate a content summary from email text using spaCy LARGE model"""
+    """Generate an intelligent multi-sentence summary from email text using spaCy LARGE model"""
     try:
         if not text or len(text.strip()) < 20:
             return ""
-        
-        # If subject is meaningful, use it
-        if subject and len(subject.strip()) > 5:
-            # Clean up subject (remove Re:, Fwd:, etc.)
-            clean_subject = re.sub(r'^(re:|fwd:|fw:)\s*', '', subject.strip(), flags=re.IGNORECASE)
-            if len(clean_subject) > 5:
-                return clean_subject[:200]
-        
+
+        # Calculate word count to determine summary strategy
+        word_count = len(text.split())
+
         # Use spaCy for better sentence segmentation with large model
         model = load_spacy_model()
-        if model:
-            doc = model(text[:2000])  # Limit for summary generation
-            sentences = [sent.text.strip() for sent in doc.sents]
+        if not model:
+            # Fallback: use first 200 characters of text
+            return text.strip()[:200]
+
+        # Process more text for longer emails (up to 50,000 chars for 4000+ word emails)
+        text_limit = min(len(text), 50000)
+        doc = model(text[:text_limit])
+        sentences = [sent.text.strip() for sent in doc.sents]
+
+        # Filter out greetings, signatures, and low-value sentences
+        skip_starts = ['dear', 'hi', 'hello', 'thanks', 'thank you', 'best regards',
+                       'sincerely', 'regards', 'cheers', 'yours', 'kind regards',
+                       'from:', 'to:', 'sent:', 'subject:', 'date:']
+        skip_ends = ['regards', 'thanks', 'thank you', 'sincerely', 'cheers']
+        skip_contains = ['unsubscribe', 'click here', 'view in browser', 'privacy policy']
+
+        meaningful_sentences = []
+        for sent in sentences:
+            sent_lower = sent.lower()
+            # Skip short, greeting, signature, and boilerplate sentences
+            if (len(sent) > 30 and
+                not any(sent_lower.startswith(start) for start in skip_starts) and
+                not any(sent_lower.endswith(end) for end in skip_ends) and
+                not any(skip in sent_lower for skip in skip_contains) and
+                not re.match(r'^[a-zA-Z\s]{1,15}$', sent)):
+                meaningful_sentences.append(sent)
+
+        # If no meaningful sentences found, fallback to first 200 chars
+        if not meaningful_sentences:
+            return text.strip()[:200]
+
+        # Determine number of sentences to include based on email length
+        if word_count < 100:
+            # Short emails (< 100 words): 1 sentence
+            num_sentences = 1
+        elif word_count < 400:
+            # Medium emails (100-400 words): 2 sentences
+            num_sentences = 2
+        elif word_count < 1000:
+            # Long emails (400-1000 words): 3 sentences
+            num_sentences = 3
         else:
-            # Fallback to regex
-            sentences = re.split(r'[.!?]+', text)
-        
-        # Find the most meaningful sentence
-        for sentence in sentences:
-            sentence = sentence.strip()
-            # Skip very short sentences, greetings, and signatures
-            skip_starts = ['dear', 'hi', 'hello', 'thanks', 'thank you', 'best regards', 'sincerely']
-            skip_ends = ['regards', 'thanks', 'thank you']
-            
-            if (len(sentence) > 30 and 
-                not any(sentence.lower().startswith(start) for start in skip_starts) and
-                not re.match(r'^[a-zA-Z\s]{1,15}$', sentence) and
-                not any(sentence.lower().endswith(end) for end in skip_ends)):
-                return sentence[:250]  # Longer summaries with large model
-        
-        # Fallback: use first 200 characters of text
-        return text.strip()[:200]
-        
+            # Very long emails (1000+ words): 4-5 sentences
+            num_sentences = min(5, max(4, word_count // 800))
+
+        # Score sentences based on importance indicators
+        scored_sentences = []
+        for sent in meaningful_sentences[:50]:  # Limit to first 50 meaningful sentences
+            score = 0
+            sent_doc = model(sent)
+
+            # Higher score for sentences with more named entities
+            entities = [ent for ent in sent_doc.ents]
+            score += len(entities) * 2
+
+            # Higher score for sentences with key nouns and verbs
+            nouns = [token for token in sent_doc if token.pos_ in ['NOUN', 'PROPN']]
+            verbs = [token for token in sent_doc if token.pos_ == 'VERB']
+            score += len(nouns) + len(verbs)
+
+            # Higher score for sentences with numbers/dates/money (often important facts)
+            if any(ent.label_ in ['MONEY', 'DATE', 'TIME', 'CARDINAL', 'PERCENT'] for ent in entities):
+                score += 5
+
+            # Bonus for first few sentences (often most important)
+            position = meaningful_sentences.index(sent)
+            if position < 3:
+                score += (3 - position) * 3
+
+            # Penalize very long sentences (harder to read in summary)
+            if len(sent) > 200:
+                score -= 2
+
+            scored_sentences.append((sent, score))
+
+        # Sort by score and take top N sentences
+        scored_sentences.sort(key=lambda x: x[1], reverse=True)
+        top_sentences = scored_sentences[:num_sentences]
+
+        # Re-order selected sentences by their original appearance order for coherence
+        top_sentences.sort(key=lambda x: meaningful_sentences.index(x[0]))
+
+        # Build summary
+        summary_parts = []
+
+        # Optionally include cleaned subject as context for very long emails
+        if subject and len(subject.strip()) > 5 and word_count >= 400:
+            clean_subject = re.sub(r'^(re:|fwd:|fw:)\s*', '', subject.strip(), flags=re.IGNORECASE)
+            if len(clean_subject) > 5:
+                summary_parts.append(f"Subject: {clean_subject}")
+
+        # Add selected sentences
+        for sent, score in top_sentences:
+            summary_parts.append(sent)
+
+        # Join and limit total length
+        summary = ' '.join(summary_parts)
+
+        # Limit summary length based on email size
+        if word_count < 400:
+            max_summary_len = 300
+        elif word_count < 1000:
+            max_summary_len = 500
+        else:
+            max_summary_len = 750
+
+        if len(summary) > max_summary_len:
+            # Try to cut at sentence boundary
+            summary = summary[:max_summary_len]
+            last_period = summary.rfind('.')
+            if last_period > max_summary_len * 0.8:  # If we can find period in last 20%
+                summary = summary[:last_period + 1]
+            else:
+                summary = summary + '...'
+
+        return summary
+
     except Exception as e:
         print(f"Content summary error: {e}")
         return ""

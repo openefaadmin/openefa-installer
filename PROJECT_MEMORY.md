@@ -1,7 +1,141 @@
 # OpenEFA Project Memory
 **Last Updated:** October 18, 2025
 
-## Recent Session Summary (October 18, 2025)
+## Recent Session Summary (October 18, 2025 - Evening)
+
+### 🤖 AI Summary Enhancement & Generic Release Messages (PENDING TESTING)
+
+#### Major AI Summary Rewrite
+**Status:** ✅ Complete - Awaiting Testing
+**Version:** Pending (for v1.5.3 or v1.6.0)
+**Priority:** HIGH - Feature Enhancement
+
+**Problem:** AI Summary feature was only displaying email subject lines, never actually analyzing the email body content. For a 4000-word story email, the summary would just show "Matt's Cat of Kolob Ridge" (the subject) instead of summarizing the story content.
+
+**Root Cause:**
+- `generate_content_summary()` in `entity_extraction.py` had a critical flaw at lines 164-168
+- Function checked if subject existed and immediately returned it
+- Body content analysis code existed but was never reached
+- Function short-circuited before any NLP analysis could run
+
+**Solution Implemented:**
+
+**Complete Redesign of `generate_content_summary()` function:**
+
+1. **Removed Subject-Line Shortcut:**
+   - Deleted lines 164-168 that always returned subject
+   - Now subject is only used as context for very long emails (400+ words)
+
+2. **Full Body Content Analysis:**
+   - Processes up to 50,000 characters (handles 4000+ word emails)
+   - Uses spaCy NLP for sentence segmentation
+   - Filters out greetings, signatures, boilerplate text
+
+3. **Intelligent Sentence Scoring System:**
+   - **Named Entity Score:** +2 points per entity (people, organizations, dates, money)
+   - **Content Score:** +1 point per key noun or verb
+   - **Fact Score:** +5 bonus for dates, money, numbers, percentages
+   - **Position Score:** +3 to +9 bonus for first 3 sentences (often most important)
+   - **Readability Penalty:** -2 points for overly long sentences (>200 chars)
+
+4. **Dynamic Summary Length Scaling:**
+   - **Short emails (<100 words):** 1 sentence summary (max 300 chars)
+   - **Medium emails (100-400 words):** 2 sentences (max 500 chars)
+   - **Long emails (400-1000 words):** 3 sentences (max 500 chars)
+   - **Very long emails (1000+ words):** 4-5 sentences (max 750 chars)
+
+5. **Smart Filtering:**
+   - Skips: "dear", "hi", "hello", "thanks", "best regards", "sincerely"
+   - Removes: email headers, unsubscribe links, privacy policy text
+   - Ignores: very short sentences (<30 chars), name-only sentences
+
+**Testing Example - Matt's Cat Story:**
+- **Input:** 390-word story about a cat named Ridge on Kolob mountain
+- **Old Output:** `Matt's Cat of Kolob Ridge` (just subject, 26 chars)
+- **New Output:** `They first saw him in the fall, just before the snow started to flirt with the ridgelines — a small gray cat padding through the sagebrush like a shadow that had decided to stay. Every evening, when the light softens and the deer wander out to feed, Ridge curls up on the porch beside Matt — two creatures who chose the mountain life and learned how to endure it.` (303 chars, 2 sentences)
+
+**Files Modified:**
+- `/opt/spacyserver/modules/entity_extraction.py` - Lines 157-287 (complete rewrite)
+- `/opt/openefa-installer/openefa-files/modules/entity_extraction.py` - Updated to match
+
+**Critical Fix - File Permissions:**
+- Issue discovered: `entity_extraction.py` ownership changed to `root:root` after edit
+- Prevented `spacy-filter` user from importing module
+- All AI features (summaries, entities, topics) failed silently
+- **Fixed:** Changed ownership to `spacy-filter:spacy-filter`
+- Installer automatically sets correct permissions during installation
+
+**Impact:**
+- ✅ AI summaries now analyze actual email content
+- ✅ Multi-sentence summaries for longer emails
+- ✅ Intelligent NLP-based key point extraction
+- ✅ Scales appropriately to email length
+- ✅ No configuration changes required
+
+---
+
+#### Generic Release Messages
+**Status:** ✅ Complete - Awaiting Testing
+**Priority:** LOW - UX Improvement
+
+**Problem:** Release success messages said "Email released and sent to mailguard" which is system-specific and confusing for other administrators who may not be using MailGuard.
+
+**Solution:**
+- Changed message from: `f'Email released and sent to {mode}'`
+- To: `'Email released and delivered successfully'`
+- Generic message works for any relay configuration
+
+**Files Modified:**
+- `/opt/spacyserver/web/app.py` - Line 5031
+- `/opt/spacyserver/web/quarantine_routes.py` - Line 328
+- `/opt/openefa-installer/openefa-files/web/app.py` - Updated
+- `/opt/openefa-installer/openefa-files/web/quarantine_routes.py` - Updated
+
+**Testing Required:**
+- [ ] Release single email and verify message
+- [ ] Bulk release and verify message
+- [ ] Verify email actually delivers
+
+---
+
+#### Security Verification - Sensitive Data
+**Status:** ✅ Verified Clean
+
+**Checked for in Installer:**
+- ❌ Phone number `17025618743` - Not found
+- ❌ Phone formats `702-561-8743`, `+17025618743` - Not found
+- ❌ ClickSend credentials - Not found
+- ❌ ClickSend API keys - Not found
+- ❌ `notification_config.json` - Not in installer (server-only)
+
+**Result:** All personal credentials and phone numbers are server-specific and NOT included in installer files.
+
+---
+
+#### Pending Changes Document Created
+**File:** `/opt/openefa-installer/PENDING_CHANGES.md`
+
+**Purpose:** Track changes awaiting testing before GitHub push
+
+**Contents:**
+1. Detailed description of AI Summary improvements
+2. Detailed description of generic release messages
+3. Testing checklists for both features
+4. Installation notes
+5. Rollback plan
+6. Clear warning: **⚠️ DO NOT PUSH TO GITHUB UNTIL TESTING IS COMPLETE ⚠️**
+
+**Next Steps:**
+1. ✅ Changes copied to installer files
+2. ⏳ Test on development/staging system
+3. ⏳ Verify all functionality works
+4. ⏳ Update VERSION file when ready
+5. ⏳ Create release notes (CHANGES_v{VERSION}.md)
+6. ⏳ Push to GitHub after successful testing
+
+---
+
+## Recent Session Summary (October 18, 2025 - Afternoon)
 
 ### 🔧 Installation Fix: Cleanup Script Deployment (v1.5.2)
 

@@ -202,6 +202,46 @@ fix_notification_permissions() {
     return 0
 }
 
+fix_config_permissions() {
+    info "Fixing all config file permissions..."
+
+    local install_dir="/opt/spacyserver"
+
+    # Ensure config directory exists with correct permissions
+    mkdir -p "${install_dir}/config"
+    chown spacy-filter:spacy-filter "${install_dir}/config"
+    chmod 750 "${install_dir}/config"
+
+    # Fix all JSON config files in config directory
+    find "${install_dir}/config" -maxdepth 1 -type f -name "*.json" -exec chown spacy-filter:spacy-filter {} \;
+    find "${install_dir}/config" -maxdepth 1 -type f -name "*.json" -exec chmod 640 {} \;
+    debug "Fixed permissions for all JSON config files"
+
+    # Fix .my.cnf (database credentials)
+    if [[ -f "${install_dir}/config/.my.cnf" ]]; then
+        chown spacy-filter:spacy-filter "${install_dir}/config/.my.cnf"
+        chmod 600 "${install_dir}/config/.my.cnf"
+        debug "Set permissions: .my.cnf (600, spacy-filter:spacy-filter)"
+    fi
+
+    # Fix modules.ini
+    if [[ -f "${install_dir}/config/modules.ini" ]]; then
+        chown spacy-filter:spacy-filter "${install_dir}/config/modules.ini"
+        chmod 600 "${install_dir}/config/modules.ini"
+        debug "Set permissions: modules.ini (600, spacy-filter:spacy-filter)"
+    fi
+
+    # Fix .app_config.ini
+    if [[ -f "${install_dir}/config/.app_config.ini" ]]; then
+        chown spacy-filter:spacy-filter "${install_dir}/config/.app_config.ini"
+        chmod 640 "${install_dir}/config/.app_config.ini"
+        debug "Set permissions: .app_config.ini (640, spacy-filter:spacy-filter)"
+    fi
+
+    success "Config file permissions fixed"
+    return 0
+}
+
 #
 # Run all service setup steps
 #
@@ -217,6 +257,7 @@ setup_services() {
     setup_logrotate || return 1
     setup_cleanup_cron || return 1
     fix_notification_permissions || return 1
+    fix_config_permissions || return 1
 
     save_state "services_configured"
     success "All services configured and running"
@@ -226,4 +267,4 @@ setup_services() {
 # Export functions
 export -f install_service_file enable_and_start_service
 export -f setup_db_processor_service setup_spacyweb_service
-export -f setup_api_services setup_logrotate setup_cleanup_cron fix_notification_permissions setup_services
+export -f setup_api_services setup_logrotate setup_cleanup_cron fix_notification_permissions fix_config_permissions setup_services

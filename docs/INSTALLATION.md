@@ -40,7 +40,7 @@ Before starting installation, have ready:
 curl -sSL https://install.openefa.com/install.sh -o openefa-install.sh
 
 # Option 2: Clone from GitHub
-git clone https://github.com/openefa/openefa.git
+git clone https://github.com/openefaadmin/openefa.git
 cd openefa/installer
 ```
 
@@ -302,4 +302,4 @@ sudo systemctl restart spacy-db-processor spacyweb
 
 - Documentation: https://docs.openefa.com
 - Community Forum: https://forum.openefa.com
-- GitHub Issues: https://github.com/openefa/openefa/issues
+- GitHub Issues: https://github.com/openefaadmin/openefa/issues

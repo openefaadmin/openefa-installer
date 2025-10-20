@@ -325,7 +325,7 @@ def api_quarantine_release(email_id):
 
             return jsonify({
                 'success': True,
-                'message': f'Email released and sent to {mode}',
+                'message': 'Email released and delivered successfully',
                 'released_to': relay_host
             })
 

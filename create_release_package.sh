@@ -173,7 +173,7 @@ SUPPORT:
 
     Website: https://openefa.com
     Forum:   https://forum.openefa.com
-    GitHub:  https://github.com/openefa/openefa
+    GitHub:  https://github.com/openefaadmin/openefa
 
 LICENSE:
 

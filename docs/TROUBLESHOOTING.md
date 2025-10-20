@@ -463,7 +463,7 @@ sudo tail -100 /opt/spacyserver/logs/email_filter_error.log
 ### Support Channels
 
 - **Community Forum**: https://forum.openefa.com
-- **GitHub Issues**: https://github.com/openefa/openefa/issues
+- **GitHub Issues**: https://github.com/openefaadmin/openefa/issues
 - **Documentation**: https://docs.openefa.com
 
 ---

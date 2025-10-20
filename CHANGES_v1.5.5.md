@@ -20,13 +20,34 @@ Version 1.5.5 fixes critical template regressions introduced in v1.5.4 that brok
 - Updates overwrote working templates with broken versions
 
 **Fixed Templates:**
-- `backup_management.html` - Restored download functionality (19,580 → 14,507 bytes)
+- `backup_management.html` - Restored auto-download functionality and backup options (14,507 → 19,580 bytes)
+  - Re-added "Download Database Backup" and "Download Full System Backup" button labels
+  - Restored backup option checkboxes (email attachments, config files, web application)
+  - Re-implemented auto-download after backup creation (downloads to desktop immediately)
+  - JavaScript now triggers download using `window.location.href = /api/backup/download/${filename}`
 - `base.html` - Updated to latest version (13,325 → 13,510 bytes)
 - `email_detail.html` - Updated to latest version (40,716 → 37,877 bytes)
 - `emails.html` - Updated to latest version (34,478 → 32,605 bytes)
 - `quarantine_detail.html` - Updated to latest version (16,036 → 13,461 bytes)
 
-### 2. System Settings Table Documentation
+### 2. Fixed Config File Permission Errors
+
+**Problem:**
+- Full system backup failed with "Permission denied: /opt/spacyserver/config/module_config.json"
+- Some config files owned by root:root instead of spacy-filter:spacy-filter
+- Web application runs as spacy-filter user but couldn't read root-owned files
+
+**Fix:**
+- Created `fix_config_permissions()` function in lib/services.sh
+- Automatically fixes ownership and permissions for all config files:
+  - JSON config files: spacy-filter:spacy-filter with 640 permissions
+  - .my.cnf (database credentials): spacy-filter:spacy-filter with 600 permissions
+  - modules.ini: spacy-filter:spacy-filter with 600 permissions
+  - .app_config.ini: spacy-filter:spacy-filter with 640 permissions
+- Function runs automatically during installation
+- Prevents backup failures and config access issues
+
+### 3. System Settings Table Documentation
 
 **Note:** The `system_settings` table IS included in the SQL schema and works correctly on fresh installs.
 
@@ -76,11 +97,12 @@ curl -sSL http://install.openefa.com/update.sh | sudo bash
 
 ### Modified Files
 - `VERSION` (1.5.4 → 1.5.5)
-- `openefa-files/web/templates/backup_management.html`
+- `openefa-files/web/templates/backup_management.html` (restored auto-download functionality)
 - `openefa-files/web/templates/base.html`
 - `openefa-files/web/templates/email_detail.html`
 - `openefa-files/web/templates/emails.html`
 - `openefa-files/web/templates/quarantine_detail.html`
+- `lib/services.sh` (added fix_config_permissions function)
 
 ### New Files
 - `CHANGES_v1.5.5.md`
@@ -91,7 +113,10 @@ curl -sSL http://install.openefa.com/update.sh | sudo bash
 
 **Fixed:**
 - Template regressions from v1.5.4 (5 templates restored)
-- Backup download functionality restored
+- Backup auto-download functionality restored (downloads to desktop immediately)
+- Backup option checkboxes restored (attachments, config files, web application)
+- Config file permission errors preventing full system backups
 - All web templates synced to latest working versions
+- All config files now have correct spacy-filter ownership and permissions
 
 **Priority:** HIGH - All v1.5.4 users should upgrade immediately

@@ -66,19 +66,85 @@
 <!-- Backup Header -->
 <div class="backup-header">
     <div class="container">
-        <div class="row align-items-center">
+        <div class="row align-items-center mb-3">
             <div class="col-md-8">
                 <h1><i class="fas fa-database"></i> Backup & Restore</h1>
                 <p class="mb-0">Manage database backups and restore points</p>
             </div>
-            <div class="col-md-4 text-md-end">
-                <div class="btn-group" role="group">
-                    <button class="btn btn-light" onclick="createBackup()">
-                        <i class="fas fa-database"></i> Database Backup
-                    </button>
-                    <button class="btn btn-primary" onclick="createFullBackup()">
-                        <i class="fas fa-archive"></i> Full System Backup
-                    </button>
+        </div>
+
+        <!-- Database Backup Options -->
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <div class="card bg-white bg-opacity-25">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h6 class="text-white mb-2"><i class="fas fa-database"></i> Database Backup Options</h6>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="db-backup-database" checked disabled>
+                                    <label class="form-check-label text-white" for="db-backup-database">
+                                        <small>Database Tables</small>
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="db-backup-attachments" checked>
+                                    <label class="form-check-label text-white" for="db-backup-attachments">
+                                        <small>Email Attachments</small>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-md-end">
+                                <button class="btn btn-light" onclick="createBackup()">
+                                    <i class="fas fa-download"></i> Download Database Backup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full System Backup Options -->
+        <div class="row mt-2">
+            <div class="col-md-12">
+                <div class="card bg-white bg-opacity-25">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h6 class="text-white mb-2"><i class="fas fa-archive"></i> Full System Backup Options</h6>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="full-backup-database" checked disabled>
+                                    <label class="form-check-label text-white" for="full-backup-database">
+                                        <small>Database</small>
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="full-backup-config" checked>
+                                    <label class="form-check-label text-white" for="full-backup-config">
+                                        <small>Configuration Files</small>
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="full-backup-webapp" checked>
+                                    <label class="form-check-label text-white" for="full-backup-webapp">
+                                        <small>Web Application</small>
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="full-backup-attachments">
+                                    <label class="form-check-label text-white" for="full-backup-attachments">
+                                        <small>Email Attachments</small>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-md-end">
+                                <button class="btn btn-primary" onclick="createFullBackup()">
+                                    <i class="fas fa-download"></i> Download Full System Backup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -276,6 +342,9 @@ function createBackup() {
     const progressDiv = document.getElementById('backup-progress');
     const progressText = document.getElementById('backup-progress-text');
 
+    // Get checkbox options
+    const includeAttachments = document.getElementById('db-backup-attachments').checked;
+
     // Show progress
     progressDiv.style.display = 'block';
     progressText.textContent = 'Creating database backup... This may take a few minutes.';
@@ -284,7 +353,10 @@ function createBackup() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+            include_attachments: includeAttachments
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -292,6 +364,10 @@ function createBackup() {
 
         if (data.success) {
             showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
+            // Trigger download immediately
+            if (data.filename) {
+                window.location.href = `/api/backup/download/${data.filename}`;
+            }
             // Reload page after 2 seconds to show new backup
             setTimeout(() => location.reload(), 2000);
         } else {
@@ -308,15 +384,25 @@ function createFullBackup() {
     const progressDiv = document.getElementById('backup-progress');
     const progressText = document.getElementById('backup-progress-text');
 
+    // Get checkbox options
+    const includeConfig = document.getElementById('full-backup-config').checked;
+    const includeWebapp = document.getElementById('full-backup-webapp').checked;
+    const includeAttachments = document.getElementById('full-backup-attachments').checked;
+
     // Show progress
     progressDiv.style.display = 'block';
-    progressText.textContent = 'Creating full system backup (configs + database + modules)... This may take several minutes.';
+    progressText.textContent = 'Creating full system backup... This may take several minutes.';
 
     fetch('/api/backup/create-full', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+            include_config: includeConfig,
+            include_webapp: includeWebapp,
+            include_attachments: includeAttachments
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -328,6 +414,10 @@ function createFullBackup() {
                 detailsMsg = `<br><small>Includes: ${data.details.config_files} config files, database, and modules</small>`;
             }
             showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})${detailsMsg}`, 'success');
+            // Trigger download immediately
+            if (data.filename) {
+                window.location.href = `/api/backup/download/${data.filename}`;
+            }
             // Reload page after 3 seconds to show new backup
             setTimeout(() => location.reload(), 3000);
         } else {
