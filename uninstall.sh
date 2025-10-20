@@ -4,47 +4,141 @@
 # Part of the OpenEFA project (https://openefa.com)
 #
 # Completely removes OpenEFA from the system
+# This script is self-contained and can be run from /root/
 #
 
 set -e
 set -u
 
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Logging
+LOG_FILE="/var/log/openefa_uninstall.log"
 
-# Source common and rollback functions
-source "${SCRIPT_DIR}/lib/common.sh"
-source "${SCRIPT_DIR}/lib/rollback.sh"
-source "${SCRIPT_DIR}/lib/postfix.sh"
+#
+# Helper functions
+#
+info() {
+    echo "[INFO] $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $1" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+success() {
+    echo "[✓] $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [SUCCESS] $1" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+warn() {
+    echo "[WARN] $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [WARN] $1" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+error() {
+    echo "[ERROR] $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] $1" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+confirm() {
+    read -p "$1 (yes/no): " -r
+    [[ $REPLY =~ ^[Yy][Ee][Ss]$ ]]
+}
+
+require_root() {
+    if [[ $EUID -ne 0 ]]; then
+        error "This script must be run as root"
+        exit 1
+    fi
+}
+
+#
+# Stop all services
+#
+stop_all_services() {
+    local services=(
+        "spacy-db-processor"
+        "spacy-release-api"
+        "spacy-whitelist-api"
+        "spacy-block-api"
+        "spacyweb"
+    )
+
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "${service}" 2>/dev/null; then
+            systemctl stop "${service}" 2>/dev/null || warn "Failed to stop ${service}"
+        fi
+    done
+    success "Services stopped"
+}
+
+#
+# Remove systemd service files
+#
+remove_services() {
+    local services=(
+        "spacy-db-processor"
+        "spacy-release-api"
+        "spacy-whitelist-api"
+        "spacy-block-api"
+        "spacyweb"
+    )
+
+    for service in "${services[@]}"; do
+        if [[ -f "/etc/systemd/system/${service}.service" ]]; then
+            systemctl disable "${service}" 2>/dev/null || true
+            rm -f "/etc/systemd/system/${service}.service"
+        fi
+    done
+    systemctl daemon-reload
+    success "Services removed"
+}
+
+#
+# Backup Postfix configuration
+#
+backup_postfix_config() {
+    local backup_dir="/etc/postfix/backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "${backup_dir}"
+
+    if [[ -d /etc/postfix ]]; then
+        cp -r /etc/postfix/* "${backup_dir}/" 2>/dev/null || true
+        success "Postfix config backed up to ${backup_dir}"
+    fi
+}
+
+#
+# Remove database
+#
+remove_database() {
+    local db_name="${DB_NAME:-spacy_email_db}"
+    local db_user="${DB_USER:-spacy_user}"
+
+    info "Removing database ${db_name}..."
+    mysql -e "DROP DATABASE IF EXISTS ${db_name};" 2>/dev/null || warn "Failed to drop database"
+    mysql -e "DROP USER IF EXISTS '${db_user}'@'localhost';" 2>/dev/null || warn "Failed to drop database user"
+    success "Database removed"
+}
 
 #
 # Main uninstall flow
 #
 main() {
-    show_banner
+    clear 2>/dev/null || true
 
-    cat << EOFWARNING
-
-${COLOR_RED}╔════════════════════════════════════════════════════════════════╗
-║                    UNINSTALL OpenEFA                           ║
-╚════════════════════════════════════════════════════════════════╝${COLOR_RESET}
-
-${COLOR_YELLOW}WARNING: This will completely remove OpenEFA from your system!${COLOR_RESET}
-
-The following will be removed:
-  • All OpenEFA services
-  • Database: spacy_email_db  
-  • Database user: spacy_user
-  • Installation directory: /opt/spacyserver
-  • System user: spacy-filter
-  • Postfix will be stopped (config backed up)
-
-Postfix configuration will be backed up to /etc/postfix/backup_*
-
-EOFWARNING
-
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                    UNINSTALL OpenEFA                           ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
-    
+    echo "WARNING: This will completely remove OpenEFA from your system!"
+    echo ""
+    echo "The following will be removed:"
+    echo "  • All OpenEFA services"
+    echo "  • Database: spacy_email_db"
+    echo "  • Database user: spacy_user"
+    echo "  • Installation directory: /opt/spacyserver"
+    echo "  • System user: spacy-filter"
+    echo "  • Postfix will be stopped (config backed up)"
+    echo ""
+    echo "Postfix configuration will be backed up to /etc/postfix/backup_*"
+    echo ""
+
     if ! confirm "Are you ABSOLUTELY SURE you want to uninstall OpenEFA?"; then
         info "Uninstall cancelled"
         exit 0
@@ -64,10 +158,13 @@ EOFWARNING
     DB_USER="${DB_USER:-spacy_user}"
 
     # Initialize logging
-    init_logging
-    log_message "=== UNINSTALL STARTED ===" "INFO"
+    echo "=== OpenEFA Uninstall Started: $(date) ===" > "${LOG_FILE}"
 
-    section "Uninstalling OpenEFA"
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                  Uninstalling OpenEFA                          ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
 
     # Stop services
     info "Stopping OpenEFA services..."
@@ -83,10 +180,10 @@ EOFWARNING
 
     # Stop Postfix
     info "Stopping Postfix..."
-    systemctl stop postfix || true
+    systemctl stop postfix 2>/dev/null || true
 
     # Remove database
-    if confirm "Remove database '${DB_NAME:-spacy_email_db}' and user '${DB_USER:-spacy_user}'?"; then
+    if confirm "Remove database '${DB_NAME}' and user '${DB_USER}'?"; then
         remove_database
     else
         warn "Database preserved"
@@ -111,31 +208,26 @@ EOFWARNING
     # Remove logrotate config
     if [[ -f /etc/logrotate.d/openefa ]]; then
         rm -f /etc/logrotate.d/openefa
-        debug "Removed logrotate config"
+        info "Removed logrotate config"
     fi
 
-    # Cleanup
-    cleanup_state
-
-    cat << EOFSUCCESS
-
-${COLOR_GREEN}╔════════════════════════════════════════════════════════════════╗
-║                  UNINSTALL COMPLETE                            ║
-╚════════════════════════════════════════════════════════════════╝${COLOR_RESET}
-
-OpenEFA has been removed from your system.
-
-${COLOR_WHITE}What remains:${COLOR_RESET}
-  • Postfix (stopped, config backed up to /etc/postfix/backup_*)
-  • MariaDB server (can be removed with: apt remove mariadb-server)
-  • Redis server (can be removed with: apt remove redis-server)
-  • System packages (can be cleaned with: apt autoremove)
-
-${COLOR_WHITE}Log file preserved:${COLOR_RESET} ${LOG_FILE}
-
-${COLOR_CYAN}Thank you for trying OpenEFA!${COLOR_RESET}
-
-EOFSUCCESS
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                  UNINSTALL COMPLETE                            ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "OpenEFA has been removed from your system."
+    echo ""
+    echo "What remains:"
+    echo "  • Postfix (stopped, config backed up to /etc/postfix/backup_*)"
+    echo "  • MariaDB server (can be removed with: apt remove mariadb-server)"
+    echo "  • Redis server (can be removed with: apt remove redis-server)"
+    echo "  • System packages (can be cleaned with: apt autoremove)"
+    echo ""
+    echo "Log file preserved: ${LOG_FILE}"
+    echo ""
+    echo "Thank you for trying OpenEFA!"
+    echo ""
 
     exit 0
 }
