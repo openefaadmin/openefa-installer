@@ -214,8 +214,8 @@
                     <h6>Rule Types</h6>
                     <ul>
                         <li><strong>Domain:</strong> Block emails from specific domains (e.g., spam.com)</li>
-                        <li><strong>Sender:</strong> Block emails from specific email addresses</li>
-                        <li><strong>Country:</strong> Block emails from specific countries (e.g., CN for China)</li>
+                        <li><strong>Sender:</strong> Block emails from specific email addresses (e.g., spammer@example.com)</li>
+                        <li><strong>Country:</strong> Block emails from specific countries using 2-letter ISO codes (e.g., RU=Russia, CN=China, KP=North Korea, IR=Iran, NG=Nigeria)</li>
                     </ul>
 
                     <h6 class="mt-3">Pattern Matching</h6>
@@ -246,7 +246,7 @@
                 <form id="addRuleForm">
                     <div class="mb-3">
                         <label for="rule_type" class="form-label">Rule Type <span class="text-danger">*</span></label>
-                        <select class="form-select" id="rule_type" name="rule_type" required>
+                        <select class="form-select" id="rule_type" name="rule_type" required onchange="updatePlaceholder()">
                             <option value="">Select type...</option>
                             <option value="domain">Domain</option>
                             <option value="sender">Sender (Email Address)</option>
@@ -256,7 +256,8 @@
                     <div class="mb-3">
                         <label for="rule_value" class="form-label">Value <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="rule_value" name="rule_value"
-                               placeholder="e.g., spam.com or spammer@example.com" required>
+                               placeholder="Select rule type first..." required>
+                        <small class="form-text text-muted" id="rule_help"></small>
                     </div>
                     <div class="mb-3">
                         <label for="rule_pattern" class="form-label">Pattern Match</label>
@@ -286,6 +287,27 @@
 
 {% block extra_js %}
 <script>
+function updatePlaceholder() {
+    const ruleType = document.getElementById('rule_type').value;
+    const ruleValueInput = document.getElementById('rule_value');
+    const ruleHelp = document.getElementById('rule_help');
+
+    const placeholders = {
+        'domain': 'e.g., spam.com',
+        'sender': 'e.g., spammer@example.com',
+        'country': 'e.g., RU, CN, KP, IR, NG'
+    };
+
+    const helpTexts = {
+        'domain': 'Enter a domain name to block (e.g., badsite.com)',
+        'sender': 'Enter an email address to block (e.g., spam@example.com)',
+        'country': '2-letter ISO country code (RU=Russia, CN=China, KP=North Korea, IR=Iran, NG=Nigeria, etc.)'
+    };
+
+    ruleValueInput.placeholder = placeholders[ruleType] || 'Select rule type first...';
+    ruleHelp.textContent = helpTexts[ruleType] || '';
+}
+
 function showAlert(message, type = 'success') {
     const alertContainer = document.getElementById('alert-container');
     const alertDiv = document.createElement('div');
