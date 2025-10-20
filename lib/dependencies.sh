@@ -86,6 +86,7 @@ install_additional_python_packages() {
         "flask-wtf"
         "flask-limiter"
         "flask-talisman"
+        "flask-caching"
     )
 
     for pkg in "${additional_packages[@]}"; do
