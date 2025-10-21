@@ -128,12 +128,20 @@ install_module_configs() {
         fi
     done
 
-    # Copy .app_config.ini (Flask secret key)
+    # Generate .app_config.ini with unique Flask secret key
     if [[ -f "${template_dir}/.app_config.ini" ]]; then
-        cp "${template_dir}/.app_config.ini" "${config_dir}/.app_config.ini"
+        # Generate a unique, cryptographically secure secret key
+        local flask_secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(64))")
+
+        # Create .app_config.ini with the generated secret key
+        cat > "${config_dir}/.app_config.ini" << EOCONFIG
+[flask]
+secret_key = ${flask_secret}
+EOCONFIG
+
         chown spacy-filter:spacy-filter "${config_dir}/.app_config.ini"
         chmod 640 "${config_dir}/.app_config.ini"
-        debug "Installed: .app_config.ini"
+        debug "Generated unique .app_config.ini with secure secret key"
     fi
 
     # Update quarantine_config.json with actual relay host
