@@ -154,8 +154,8 @@ MAX_CONTENT_LENGTH=16777216
 UPLOAD_FOLDER=/opt/spacyserver/uploads
 EOENV
 
-    chown root:spacy-filter "${env_file}"
-    chmod 640 "${env_file}"
+    chown spacy-filter:spacy-filter "${env_file}"
+    chmod 600 "${env_file}"
 
     success ".env file created: ${env_file}"
     save_state "env_file_created"
@@ -192,6 +192,47 @@ EOMYCNF
 
     success "MySQL config created: ${config_file}"
     save_state "mysql_config_created"
+    return 0
+}
+
+#
+# Create symlinks in /opt/spacyserver/config/ pointing to /etc/spacy-server/
+#
+create_config_symlinks() {
+    info "Creating config file symlinks..."
+
+    local etc_config="/etc/spacy-server"
+    local app_config="/opt/spacyserver/config"
+
+    # Create application config directory if it doesn't exist
+    if [[ ! -d "${app_config}" ]]; then
+        create_directory "${app_config}" "spacy-filter:spacy-filter" "750"
+    fi
+
+    # Create symlink for .env
+    if [[ -f "${etc_config}/.env" ]]; then
+        if [[ -L "${app_config}/.env" ]] || [[ -f "${app_config}/.env" ]]; then
+            rm -f "${app_config}/.env"
+        fi
+        ln -s "${etc_config}/.env" "${app_config}/.env"
+        debug "Created symlink: ${app_config}/.env → ${etc_config}/.env"
+    else
+        warn ".env not found in ${etc_config}, skipping symlink"
+    fi
+
+    # Create symlink for .my.cnf
+    if [[ -f "${etc_config}/.my.cnf" ]]; then
+        if [[ -L "${app_config}/.my.cnf" ]] || [[ -f "${app_config}/.my.cnf" ]]; then
+            rm -f "${app_config}/.my.cnf"
+        fi
+        ln -s "${etc_config}/.my.cnf" "${app_config}/.my.cnf"
+        debug "Created symlink: ${app_config}/.my.cnf → ${etc_config}/.my.cnf"
+    else
+        warn ".my.cnf not found in ${etc_config}, skipping symlink"
+    fi
+
+    success "Config symlinks created"
+    save_state "config_symlinks_created"
     return 0
 }
 
@@ -322,6 +363,7 @@ setup_database() {
     import_database_schema || return 1
     create_env_file || return 1
     create_mysql_config || return 1
+    create_config_symlinks || return 1
     insert_initial_domain || return 1
     create_admin_user || return 1
     configure_conversation_learning || return 1
@@ -334,5 +376,5 @@ setup_database() {
 
 # Export functions
 export -f secure_mariadb create_database_and_user import_database_schema
-export -f create_env_file create_mysql_config insert_initial_domain create_admin_user
+export -f create_env_file create_mysql_config create_config_symlinks insert_initial_domain create_admin_user
 export -f configure_conversation_learning setup_module_tables setup_database

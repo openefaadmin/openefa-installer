@@ -217,12 +217,22 @@ fix_config_permissions() {
     find "${install_dir}/config" -maxdepth 1 -type f -name "*.json" -exec chmod 640 {} \;
     debug "Fixed permissions for all JSON config files"
 
-    # Fix .my.cnf (database credentials)
-    if [[ -f "${install_dir}/config/.my.cnf" ]]; then
-        chown spacy-filter:spacy-filter "${install_dir}/config/.my.cnf"
-        chmod 600 "${install_dir}/config/.my.cnf"
-        debug "Set permissions: .my.cnf (600, spacy-filter:spacy-filter)"
+    # Fix .my.cnf (database credentials) - actual file in /etc/spacy-server
+    if [[ -f "/etc/spacy-server/.my.cnf" ]]; then
+        chown spacy-filter:spacy-filter "/etc/spacy-server/.my.cnf"
+        chmod 600 "/etc/spacy-server/.my.cnf"
+        debug "Set permissions: /etc/spacy-server/.my.cnf (600, spacy-filter:spacy-filter)"
     fi
+
+    # Fix .env (environment variables) - actual file in /etc/spacy-server
+    if [[ -f "/etc/spacy-server/.env" ]]; then
+        chown spacy-filter:spacy-filter "/etc/spacy-server/.env"
+        chmod 600 "/etc/spacy-server/.env"
+        debug "Set permissions: /etc/spacy-server/.env (600, spacy-filter:spacy-filter)"
+    fi
+
+    # Symlinks in /opt/spacyserver/config/ will follow to actual files
+    # No need to set permissions on symlinks themselves
 
     # Fix modules.ini
     if [[ -f "${install_dir}/config/modules.ini" ]]; then

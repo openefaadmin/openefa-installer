@@ -2504,7 +2504,7 @@ EOF
         # Copy to SDNAS1 backup location
         echo ""
         echo -e "${BLUE}6. Copying backup to SDNAS1...${NC}"
-        sdnas_dir="/home/barbours/backups/spacy_files"
+        sdnas_dir="/home/admin/backups/spacy_files"
         
         # Create directory if it doesn't exist
         if [[ ! -d "$sdnas_dir" ]]; then
@@ -4454,7 +4454,7 @@ backup_all_configs() {
     # Copy to SDNAS1 backup location
     echo ""
     echo -e "${BLUE}Copying backups to SDNAS1...${NC}"
-    sdnas_dir="/home/barbours/backups/spacy_files"
+    sdnas_dir="/home/admin/backups/spacy_files"
     
     # Create directory if it doesn't exist
     if [[ ! -d "$sdnas_dir" ]]; then
@@ -4724,7 +4724,7 @@ for module, name in modules:
     fi
     
     # Check SDNAS1 backup
-    sdnas_dir="/home/barbours/backups/spacy_files"
+    sdnas_dir="/home/admin/backups/spacy_files"
     if [[ -d "$sdnas_dir" ]]; then
         sdnas_count=$(find "$sdnas_dir" -type f 2>/dev/null | wc -l)
         echo -e "${BLUE}  SDNAS1 Backup:${NC} Connected ($sdnas_count files)"

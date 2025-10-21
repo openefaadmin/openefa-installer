@@ -265,8 +265,8 @@ UPLOAD_FOLDER=/opt/spacyserver/uploads
 
 ### Step 4: Set permissions
 ```bash
-sudo chown root:spacy-filter /etc/spacy-server/.env
-sudo chmod 640 /etc/spacy-server/.env
+sudo chown spacy-filter:spacy-filter /etc/spacy-server/.env
+sudo chmod 600 /etc/spacy-server/.env
 ```
 
 ### Step 5: Update app.py (if using old version)
@@ -299,7 +299,7 @@ ls -la /etc/spacy-server/
 Expected output:
 ```
 drwxr-x--- 2 root         spacy-filter  4096 Oct 20 09:00 .
--rw-r----- 1 root         spacy-filter   640 Oct 20 09:00 .env
+-rw------- 1 spacy-filter spacy-filter   600 Oct 20 09:00 .env
 -rw------- 1 spacy-filter spacy-filter   142 Oct 20 09:00 .my.cnf
 ```
 

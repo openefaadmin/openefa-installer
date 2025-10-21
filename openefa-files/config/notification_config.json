@@ -1,16 +1,16 @@
 {
   "clicksend": {
-    "enabled": true,
-    "username": "barbours",
-    "api_key": "80018933-8768-B24C-D411-FD7421961BF9",
+    "enabled": false,
+    "username": "YOUR_CLICKSEND_USERNAME",
+    "api_key": "YOUR_CLICKSEND_API_KEY",
     "from_number": "OpenEFA"
   },
   "notification_settings": {
     "high_risk_alerts": {
-      "enabled": true,
+      "enabled": false,
       "spam_score_threshold": 80,
       "recipients": [
-        "+17025618743"
+        "+1234567890"
       ],
       "triggers": {
         "phishing_detected": true,
@@ -20,9 +20,9 @@
       }
     },
     "system_alerts": {
-      "enabled": true,
+      "enabled": false,
       "recipients": [
-        "+17025618743"
+        "+1234567890"
       ],
       "triggers": {
         "service_failures": true,
@@ -31,9 +31,9 @@
       }
     },
     "daily_summary": {
-      "enabled": true,
+      "enabled": false,
       "recipients": [
-        "+17025618743"
+        "+1234567890"
       ],
       "send_time": "08:00",
       "timezone": "America/Los_Angeles",

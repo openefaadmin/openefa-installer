@@ -6,7 +6,7 @@
 myhostname = {{HOSTNAME}}
 mydomain = {{DOMAIN}}
 myorigin = $myhostname
-mydestination = localhost
+mydestination = localhost, $myhostname, localhost.$mydomain
 mynetworks = 127.0.0.0/8 [::1]/128
 
 # Mail relay configuration

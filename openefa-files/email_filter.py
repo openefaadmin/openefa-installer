@@ -176,7 +176,9 @@ class EmailFilterConfig:
                 "internal_ips": [
                     # Add your internal mail server IPs/hostnames here
                     # Example: '10.0.0.10', 'mailserver.local'
-                ]
+                ],
+                # Per-domain relay hosts loaded from database
+                "domain_relays": {}  # Format: {'domain': {'relay_host': 'host', 'relay_port': port}}
             },
             
             # ENHANCED: Analysis thresholds with new blocking parameters + funding spam
@@ -233,15 +235,30 @@ class EmailFilterConfig:
                 connect_timeout=5
             )
             cursor = conn.cursor()
-            cursor.execute("SELECT domain FROM client_domains WHERE active = 1")
-            domains = {row[0] for row in cursor.fetchall()}
+            cursor.execute("SELECT domain, relay_host, relay_port FROM client_domains WHERE active = 1")
+            rows = cursor.fetchall()
             cursor.close()
             conn.close()
 
-            if domains:
+            if rows:
+                domains = set()
+                domain_relays = {}
+                for row in rows:
+                    domain = row[0]
+                    relay_host = row[1] if row[1] else self.config['servers']['mailguard_host']
+                    relay_port = row[2] if row[2] else self.config['servers']['mailguard_port']
+                    domains.add(domain)
+                    domain_relays[domain] = {
+                        'relay_host': relay_host,
+                        'relay_port': relay_port
+                    }
+
                 # Replace hardcoded domains with database domains
                 self.config['domains']['processed_domains'] = domains
+                self.config['servers']['domain_relays'] = domain_relays
                 print(f"✅ Loaded {len(domains)} processed domains from database", file=sys.stderr)
+                for domain, relay in domain_relays.items():
+                    print(f"   {domain} -> {relay['relay_host']}:{relay['relay_port']}", file=sys.stderr)
             else:
                 print(f"⚠️  No active domains in database, using hardcoded processed_domains", file=sys.stderr)
 
@@ -2065,86 +2082,112 @@ def store_email_analysis_via_queue(msg: EmailMessage, text_content: str, analysi
 # ============================================================================
 
 def relay_to_mailguard(msg: EmailMessage, recipients: List[str]) -> bool:
-    """Relay email to mailguard with improved encoding handling"""
+    """Relay email to mailguard with improved encoding handling - SUPPORTS PER-DOMAIN RELAY HOSTS"""
     try:
         processed_domains = CONFIG.config['domains']['processed_domains']
-        mailguard_host, mailguard_port = CONFIG.config['servers']['mailguard_host'], CONFIG.config['servers']['mailguard_port']
+        domain_relays = CONFIG.config['servers'].get('domain_relays', {})
+        default_host = CONFIG.config['servers']['mailguard_host']
+        default_port = CONFIG.config['servers']['mailguard_port']
         smtp_timeout = CONFIG.config['timeouts']['smtp_timeout']
-        
-        validated_recipients = []
+
+        # Group recipients by domain
+        recipients_by_domain = {}
         filtered_recipients = []
+
         for recipient in recipients:
             try:
                 if '@' in recipient:
                     domain = recipient.split('@')[1].lower()
                     if domain in processed_domains:
-                        validated_recipients.append(recipient)
+                        if domain not in recipients_by_domain:
+                            recipients_by_domain[domain] = []
+                        recipients_by_domain[domain].append(recipient)
                     else:
                         filtered_recipients.append(recipient)
                         safe_log(f"📧 Filtering external recipient (not relaying): {recipient}")
             except Exception as e:
                 safe_log(f"Error validating recipient {recipient}: {e}")
-        
-        if not validated_recipients:
+
+        if not recipients_by_domain:
             if filtered_recipients:
                 safe_log(f"✅ All {len(filtered_recipients)} recipients were external - no relay needed")
                 return True  # Return success - we've handled the email correctly by not relaying it
             else:
                 safe_log("❌ No valid recipients after domain validation")
                 return False
-        
+
         if filtered_recipients:
-            safe_log(f"📬 Processing mixed recipients: {len(validated_recipients)} internal, {len(filtered_recipients)} external (filtered)")
-        safe_log(f"Relaying to {mailguard_host}:{mailguard_port}")
-        
-        with smtplib.SMTP(mailguard_host, mailguard_port, timeout=smtp_timeout) as smtp:
-            sender = safe_get_header(msg, 'Return-Path', safe_get_header(msg, 'From', ''))
-            if sender.startswith('<') and sender.endswith('>'):
-                sender = sender[1:-1]
-            
-            # IMPROVED ENCODING HANDLING
-            email_bytes = None
-            
+            total_internal = sum(len(recips) for recips in recipients_by_domain.values())
+            safe_log(f"📬 Processing mixed recipients: {total_internal} internal, {len(filtered_recipients)} external (filtered)")
+
+        # Relay to each domain's specific relay host
+        all_success = True
+        for domain, domain_recipients in recipients_by_domain.items():
+            # Get relay host for this domain
+            if domain in domain_relays:
+                mailguard_host = domain_relays[domain]['relay_host']
+                mailguard_port = domain_relays[domain]['relay_port']
+            else:
+                mailguard_host = default_host
+                mailguard_port = default_port
+
+            safe_log(f"Relaying {len(domain_recipients)} recipients for {domain} to {mailguard_host}:{mailguard_port}")
+
             try:
-                # Method 1: Try as_bytes() first (preserves original encoding)
-                email_bytes = msg.as_bytes()
-                safe_log("Using as_bytes() for SMTP relay")
-            except Exception as e1:
-                safe_log(f"as_bytes() failed: {e1}")
-                try:
-                    # Method 2: Try as_string() with UTF-8
-                    email_string = msg.as_string(policy=default)
-                    email_bytes = email_string.encode('utf-8', errors='replace')
-                    safe_log("Using as_string() with UTF-8 encoding")
-                except Exception as e2:
-                    safe_log(f"as_string() with UTF-8 failed: {e2}")
+                with smtplib.SMTP(mailguard_host, mailguard_port, timeout=smtp_timeout) as smtp:
+                    sender = safe_get_header(msg, 'Return-Path', safe_get_header(msg, 'From', ''))
+                    if sender.startswith('<') and sender.endswith('>'):
+                        sender = sender[1:-1]
+
+                    # IMPROVED ENCODING HANDLING
+                    email_bytes = None
+
                     try:
-                        # Method 3: Force ASCII with replacement
-                        email_string = msg.as_string(policy=default)
-                        email_bytes = email_string.encode('ascii', errors='replace')
-                        safe_log("Using ASCII encoding with replacements")
-                    except Exception as e3:
-                        safe_log(f"ASCII encoding failed: {e3}")
-                        # Method 4: Last resort - convert to string and clean
+                        # Method 1: Try as_bytes() first (preserves original encoding)
+                        email_bytes = msg.as_bytes()
+                        safe_log("Using as_bytes() for SMTP relay")
+                    except Exception as e1:
+                        safe_log(f"as_bytes() failed: {e1}")
                         try:
-                            email_string = str(msg)
-                            # Remove non-ASCII characters
-                            email_string = ''.join(char if ord(char) < 128 else '?' for char in email_string)
-                            email_bytes = email_string.encode('ascii')
-                            safe_log("Using cleaned ASCII as last resort")
-                        except Exception as e4:
-                            safe_log(f"❌ All encoding methods failed: {e4}")
-                            return False
-            
-            # Send the email using bytes
-            smtp.sendmail(sender, validated_recipients, email_bytes)
-            safe_log(f"✅ Relayed to {len(validated_recipients)} recipients")
-            return True
-            
-    except smtplib.SMTPRecipientsRefused as e:
-        safe_log(f"⚠️  Mailguard rejected recipients: {e}")
-        return True
-        
+                            # Method 2: Try as_string() with UTF-8
+                            email_string = msg.as_string(policy=default)
+                            email_bytes = email_string.encode('utf-8', errors='replace')
+                            safe_log("Using as_string() with UTF-8 encoding")
+                        except Exception as e2:
+                            safe_log(f"as_string() with UTF-8 failed: {e2}")
+                            try:
+                                # Method 3: Force ASCII with replacement
+                                email_string = msg.as_string(policy=default)
+                                email_bytes = email_string.encode('ascii', errors='replace')
+                                safe_log("Using ASCII encoding with replacements")
+                            except Exception as e3:
+                                safe_log(f"ASCII encoding failed: {e3}")
+                                # Method 4: Last resort - convert to string and clean
+                                try:
+                                    email_string = str(msg)
+                                    # Remove non-ASCII characters
+                                    email_string = ''.join(char if ord(char) < 128 else '?' for char in email_string)
+                                    email_bytes = email_string.encode('ascii')
+                                    safe_log("Using cleaned ASCII as last resort")
+                                except Exception as e4:
+                                    safe_log(f"❌ All encoding methods failed: {e4}")
+                                    all_success = False
+                                    continue
+
+                    # Send the email using bytes to this domain's relay
+                    smtp.sendmail(sender, domain_recipients, email_bytes)
+                    safe_log(f"✅ Relayed to {len(domain_recipients)} recipients for {domain}")
+
+            except smtplib.SMTPRecipientsRefused as e:
+                safe_log(f"⚠️  Mailguard rejected recipients for {domain}: {e}")
+                # Continue to next domain even if this one failed
+
+            except Exception as e:
+                safe_log(f"❌ Relay error for {domain}: {e}")
+                all_success = False
+
+        return all_success
+
     except Exception as e:
         safe_log(f"❌ Relay error: {e}")
         return False
@@ -3002,23 +3045,57 @@ def main():
             except Exception as debug_e:
                 safe_log(f"Debug file write error: {debug_e}")
 
-            safe_log("🚀 STARTING RELAY BLOCK")
+            safe_log("🚀 STARTING RELAY BLOCK - Using per-domain relay hosts")
 
-            # Relay to MailGuard
+            # Relay to MailGuard using per-domain relay hosts
             try:
-                safe_log("🚀 Inside relay try block")
-                mailguard_host = CONFIG.config['servers']['mailguard_host']
-                mailguard_port = CONFIG.config['servers']['mailguard_port']
+                # Group recipients by domain and relay to each domain's specific relay host
+                domain_relays = CONFIG.config['servers'].get('domain_relays', {})
+                processed_domains = CONFIG.config['domains']['processed_domains']
+                default_host = CONFIG.config['servers']['mailguard_host']
+                default_port = CONFIG.config['servers']['mailguard_port']
+                smtp_timeout = CONFIG.config['timeouts']['smtp_timeout']
 
-                safe_log(f"Relaying to {mailguard_host}:{mailguard_port}")
+                # Group recipients by domain
+                recipients_by_domain = {}
+                for recipient in recipients:
+                    if '@' in recipient:
+                        domain = recipient.split('@')[1].lower()
+                        if domain in processed_domains:
+                            if domain not in recipients_by_domain:
+                                recipients_by_domain[domain] = []
+                            recipients_by_domain[domain].append(recipient)
 
-                with smtplib.SMTP(mailguard_host, mailguard_port, timeout=CONFIG.config['timeouts']['smtp_timeout']) as smtp:
-                    smtp.sendmail(envelope_sender, recipients, msg.as_bytes())
-                    safe_log(f"✅ Email relayed to MailGuard for {len(recipients)} recipients")
+                # Relay to each domain's specific relay host
+                relay_success = True
+                for domain, domain_recipients in recipients_by_domain.items():
+                    # Get relay host for this domain
+                    if domain in domain_relays:
+                        mailguard_host = domain_relays[domain]['relay_host']
+                        mailguard_port = domain_relays[domain]['relay_port']
+                    else:
+                        mailguard_host = default_host
+                        mailguard_port = default_port
 
-                monitor.log_performance(safe_log)
-                signal.alarm(0)
-                sys.exit(0)
+                    safe_log(f"Relaying {len(domain_recipients)} recipients for {domain} to {mailguard_host}:{mailguard_port}")
+
+                    try:
+                        with smtplib.SMTP(mailguard_host, mailguard_port, timeout=smtp_timeout) as smtp:
+                            smtp.sendmail(envelope_sender, domain_recipients, msg.as_bytes())
+                            safe_log(f"✅ Email relayed to {mailguard_host}:{mailguard_port} for {len(domain_recipients)} recipients ({domain})")
+                    except Exception as relay_error:
+                        safe_log(f"❌ Failed to relay to {mailguard_host}:{mailguard_port} for {domain}: {relay_error}")
+                        relay_success = False
+
+                if relay_success:
+                    monitor.log_performance(safe_log)
+                    signal.alarm(0)
+                    sys.exit(0)
+                else:
+                    safe_log("❌ Some relay operations failed")
+                    monitor.log_performance(safe_log)
+                    signal.alarm(0)
+                    sys.exit(1)
 
             except Exception as e:
                 safe_log(f"❌ Failed to relay to MailGuard: {e}")

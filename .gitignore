@@ -56,4 +56,7 @@ SECURITY_*.md
 # Backups
 backups/
 *.backup
+*.backup-*
 *.bak
+*-backup
+*.bak-*

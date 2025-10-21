@@ -286,13 +286,52 @@ cache = Cache(app, config={
     'CACHE_KEY_PREFIX': 'spacy_'
 })
 
+# Content Security Policy (CSP) - REPORT-ONLY MODE
+# This restrictive policy helps prevent XSS attacks and code injection
+# Starting in report-only mode to monitor violations without blocking
+CSP_POLICY = {
+    'default-src': "'self'",
+    'script-src': [
+        "'self'",
+        'https://cdn.jsdelivr.net',      # Bootstrap JS, Chart.js
+        'https://code.jquery.com',       # jQuery
+        "'unsafe-inline'",               # TODO: Remove after implementing nonces
+    ],
+    'style-src': [
+        "'self'",
+        'https://cdn.jsdelivr.net',      # Bootstrap CSS
+        'https://cdnjs.cloudflare.com',  # Font Awesome
+        "'unsafe-inline'",               # TODO: Remove after implementing nonces
+    ],
+    'font-src': [
+        "'self'",
+        'https://cdnjs.cloudflare.com',  # Font Awesome fonts
+        'data:',                         # Base64 encoded fonts
+    ],
+    'img-src': [
+        "'self'",
+        'data:',                         # Base64 encoded images (charts, graphs)
+        'blob:',                         # Blob URLs for generated content
+    ],
+    'connect-src': [
+        "'self'",                        # AJAX requests to same origin only
+    ],
+    'frame-ancestors': "'none'",         # Prevent clickjacking (X-Frame-Options equivalent)
+    'base-uri': "'self'",                # Prevent base tag injection
+    'form-action': "'self'",             # Forms can only submit to same origin
+    'object-src': "'none'",              # Block plugins (Flash, Java, etc.)
+    'upgrade-insecure-requests': True,   # Auto-upgrade HTTP to HTTPS
+}
+
 # Security Headers - Talisman enforces HTTPS and security headers
 Talisman(app,
     force_https=False,  # Disable HTTPS redirect for now (already using HTTPS)
     strict_transport_security=True,
     strict_transport_security_max_age=31536000,  # 1 year
     strict_transport_security_include_subdomains=True,
-    content_security_policy=None,  # Disable CSP for now to fix layout issues
+    content_security_policy=CSP_POLICY,
+    content_security_policy_report_only=True,  # REPORT-ONLY MODE - Monitor violations without blocking
+    content_security_policy_report_uri='/csp-violation-report',  # Endpoint to receive violation reports
     referrer_policy='strict-origin-when-cross-origin',
     force_https_permanent=False
 )
@@ -308,6 +347,54 @@ def set_security_headers(response):
     # Add any additional custom headers here if needed
     return response
 
+# CSP Violation Reporting Endpoint
+# Receives violation reports when CSP policy is violated
+# These reports help identify legitimate resources that need to be whitelisted
+# or actual XSS/injection attempts
+@app.route('/csp-violation-report', methods=['POST'])
+def csp_violation_report():
+    """
+    CSP violation reporting endpoint.
+    Browsers automatically POST violation reports here when CSP is violated.
+
+    IMPORTANT: This endpoint must be accessible without authentication
+    since browsers send reports automatically.
+    """
+    try:
+        # Parse the violation report
+        violation_report = request.get_json(force=True)
+
+        # Extract useful information
+        csp_report = violation_report.get('csp-report', {})
+
+        # Log the violation for security monitoring
+        logger.warning(
+            f"CSP Violation Detected:\n"
+            f"  Blocked URI: {csp_report.get('blocked-uri', 'unknown')}\n"
+            f"  Violated Directive: {csp_report.get('violated-directive', 'unknown')}\n"
+            f"  Original Policy: {csp_report.get('original-policy', 'unknown')}\n"
+            f"  Document URI: {csp_report.get('document-uri', 'unknown')}\n"
+            f"  Source File: {csp_report.get('source-file', 'unknown')}\n"
+            f"  Line Number: {csp_report.get('line-number', 'unknown')}\n"
+            f"  Referrer: {csp_report.get('referrer', 'none')}"
+        )
+
+        # Optionally store violations in a file for analysis
+        # (only in report-only mode to avoid disk space issues)
+        try:
+            with open('/opt/spacyserver/logs/csp_violations.log', 'a') as f:
+                f.write(f"{datetime.now().isoformat()} - {json.dumps(csp_report)}\n")
+        except Exception as e:
+            logger.error(f"Failed to write CSP violation to file: {e}")
+
+        # Return 204 No Content (standard response for CSP reports)
+        return '', 204
+
+    except Exception as e:
+        logger.error(f"Error processing CSP violation report: {e}")
+        # Still return 204 to prevent browser retries
+        return '', 204
+
 # Initialize authentication
 login_manager = init_auth(app)
 
@@ -316,9 +403,9 @@ login_manager = init_auth(app)
 def manage_session_timeout():
     """
     Enforce role-based session timeouts and activity tracking.
-    - Superadmin: 8 hours
-    - Domain Admin: 4 hours
-    - Regular Users: 2 hours
+    - All roles: 30 minutes of inactivity
+    - Automatic logout on timeout
+    - User-friendly timeout message displayed
     """
     from flask_login import current_user
     from flask import session

@@ -197,7 +197,7 @@ set_postfix_parameters() {
 
     # Key parameters
     postconf -e "myhostname=$(hostname -f)"
-    postconf -e "mydestination=localhost"
+    postconf -e "mydestination=localhost, \$myhostname, localhost.\$mydomain"
     postconf -e "mynetworks=127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128"
 
     # Set relay_domains (supports multiple domains)
