@@ -105,6 +105,33 @@ else
     warn ".env file not found at $ENV_FILE"
 fi
 
+# Fix Flask-Talisman session_cookie_secure parameter
+APP_PY="/opt/spacyserver/web/app.py"
+info "Checking Flask-Talisman configuration..."
+if [[ -f "$APP_PY" ]]; then
+    if grep -q "^Talisman(app," "$APP_PY"; then
+        if ! grep -A1 "^Talisman(app," "$APP_PY" | grep -q "session_cookie_secure=False"; then
+            info "Adding session_cookie_secure=False to Talisman configuration..."
+
+            # Backup app.py
+            APP_BACKUP="${APP_PY}.backup.$(date +%Y%m%d_%H%M%S)"
+            cp "$APP_PY" "$APP_BACKUP"
+            info "Created app.py backup: $APP_BACKUP"
+
+            # Add session_cookie_secure=False parameter after Talisman(app,
+            sed -i '/^Talisman(app,/a\    session_cookie_secure=False,  # Allow HTTP for local deployments' "$APP_PY"
+
+            success "Updated Talisman configuration"
+        else
+            success "Talisman session_cookie_secure already configured"
+        fi
+    else
+        warn "Talisman configuration not found in app.py (older version?)"
+    fi
+else
+    warn "app.py not found at $APP_PY"
+fi
+
 # Restart spacyweb service
 info "Restarting spacyweb service..."
 if systemctl restart spacyweb; then
@@ -135,7 +162,8 @@ if [[ -f "$ENV_BACKUP_FILE" ]]; then
     echo "  - .env backup saved to: $ENV_BACKUP_FILE"
 fi
 echo "  - New secret key generated and installed"
-echo "  - SESSION_COOKIE_SECURE configured for HTTP access"
+echo "  - SESSION_COOKIE_SECURE configured for HTTP access (.env)"
+echo "  - Flask-Talisman configured for HTTP access (app.py)"
 echo "  - Service restarted and verified"
 echo ""
 info "Next steps:"
@@ -144,5 +172,8 @@ echo "  2. Try accessing the web interface again"
 echo "  3. If issues persist, check logs: sudo journalctl -u spacyweb -f"
 echo ""
 info "Security Note:"
-echo "  - If you plan to use HTTPS in the future, set SESSION_COOKIE_SECURE=True in $ENV_FILE"
+echo "  - If you plan to use HTTPS in the future:"
+echo "    1. Set SESSION_COOKIE_SECURE=True in $ENV_FILE"
+echo "    2. Set session_cookie_secure=True in Talisman() in $APP_PY"
+echo "    3. Restart spacyweb service"
 echo ""

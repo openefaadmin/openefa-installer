@@ -324,6 +324,7 @@ CSP_POLICY = {
 
 # Security Headers - Talisman enforces HTTPS and security headers
 Talisman(app,
+    session_cookie_secure=False,  # Allow session cookies over HTTP (set True when using HTTPS)
     force_https=False,  # Disable HTTPS redirect for now (already using HTTPS)
     strict_transport_security=True,
     strict_transport_security_max_age=31536000,  # 1 year
