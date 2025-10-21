@@ -290,7 +290,7 @@ cache = Cache(app, config={
 # This restrictive policy helps prevent XSS attacks and code injection
 # Starting in report-only mode to monitor violations without blocking
 CSP_POLICY = {
-    'default-src': "'self'",
+    'default-src': ["'self'"],
     'script-src': [
         "'self'",
         'https://cdn.jsdelivr.net',      # Bootstrap JS, Chart.js
@@ -316,11 +316,10 @@ CSP_POLICY = {
     'connect-src': [
         "'self'",                        # AJAX requests to same origin only
     ],
-    'frame-ancestors': "'none'",         # Prevent clickjacking (X-Frame-Options equivalent)
-    'base-uri': "'self'",                # Prevent base tag injection
-    'form-action': "'self'",             # Forms can only submit to same origin
-    'object-src': "'none'",              # Block plugins (Flash, Java, etc.)
-    'upgrade-insecure-requests': True,   # Auto-upgrade HTTP to HTTPS
+    'frame-ancestors': ["'none'"],       # Prevent clickjacking (X-Frame-Options equivalent)
+    'base-uri': ["'self'"],              # Prevent base tag injection
+    'form-action': ["'self'"],           # Forms can only submit to same origin
+    'object-src': ["'none'"],            # Block plugins (Flash, Java, etc.)
 }
 
 # Security Headers - Talisman enforces HTTPS and security headers
