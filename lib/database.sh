@@ -132,7 +132,9 @@ FLASK_SECRET_KEY=${flask_secret}
 DEBUG_MODE=False
 
 # Security Configuration
-SESSION_COOKIE_SECURE=True
+# SESSION_COOKIE_SECURE should be True only when using HTTPS
+# For HTTP-only deployments (local/internal), set to False
+SESSION_COOKIE_SECURE=False
 SESSION_COOKIE_HTTPONLY=True
 SESSION_COOKIE_SAMESITE=Lax
 SESSION_TIMEOUT_HOURS=2

@@ -33,7 +33,9 @@ echo ""
 
 # Configuration
 CONFIG_FILE="/opt/spacyserver/config/.app_config.ini"
+ENV_FILE="/etc/spacy-server/.env"
 BACKUP_FILE="${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+ENV_BACKUP_FILE="${ENV_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Check if config file exists
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -83,6 +85,26 @@ else
     exit 1
 fi
 
+# Fix SESSION_COOKIE_SECURE if accessing over HTTP
+info "Checking SESSION_COOKIE_SECURE setting..."
+if [[ -f "$ENV_FILE" ]]; then
+    if grep -q "^SESSION_COOKIE_SECURE=True" "$ENV_FILE"; then
+        info "Found SESSION_COOKIE_SECURE=True (this causes CSRF errors over HTTP)"
+        info "Creating backup of .env file..."
+        cp "$ENV_FILE" "$ENV_BACKUP_FILE"
+
+        info "Setting SESSION_COOKIE_SECURE=False for HTTP access..."
+        sed -i 's/^SESSION_COOKIE_SECURE=True/SESSION_COOKIE_SECURE=False/' "$ENV_FILE"
+
+        success "Updated SESSION_COOKIE_SECURE to False"
+        info "Note: Set this back to True if you configure HTTPS"
+    else
+        success "SESSION_COOKIE_SECURE is already correctly configured"
+    fi
+else
+    warn ".env file not found at $ENV_FILE"
+fi
+
 # Restart spacyweb service
 info "Restarting spacyweb service..."
 if systemctl restart spacyweb; then
@@ -108,12 +130,19 @@ echo ""
 success "CSRF token fix completed successfully!"
 echo ""
 info "Summary:"
-echo "  - Backup saved to: $BACKUP_FILE"
+echo "  - Config backup saved to: $BACKUP_FILE"
+if [[ -f "$ENV_BACKUP_FILE" ]]; then
+    echo "  - .env backup saved to: $ENV_BACKUP_FILE"
+fi
 echo "  - New secret key generated and installed"
+echo "  - SESSION_COOKIE_SECURE configured for HTTP access"
 echo "  - Service restarted and verified"
 echo ""
 info "Next steps:"
 echo "  1. Clear your browser cache/cookies"
 echo "  2. Try accessing the web interface again"
 echo "  3. If issues persist, check logs: sudo journalctl -u spacyweb -f"
+echo ""
+info "Security Note:"
+echo "  - If you plan to use HTTPS in the future, set SESSION_COOKIE_SECURE=True in $ENV_FILE"
 echo ""
