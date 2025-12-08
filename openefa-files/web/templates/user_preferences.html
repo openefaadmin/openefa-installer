@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}User Preferences - OpenEFA{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .pref-card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+    }
+
+    .format-option {
+        cursor: pointer;
+        padding: 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 0.5rem;
+        transition: all 0.3s;
+        margin-bottom: 0.5rem;
+    }
+
+    .format-option:hover {
+        border-color: #667eea;
+        background-color: #f8f9fa;
+    }
+
+    .format-option.selected {
+        border-color: #667eea;
+        background-color: #e7ebfd;
+    }
+
+    .format-example {
+        font-family: monospace;
+        font-size: 1.1rem;
+        color: #495057;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <h4 class="mb-1"><i class="fas fa-user-cog me-2"></i>User Preferences</h4>
+        <p class="mb-0 small">Customize your OpenEFA experience</p>
+    </div>
+
+    <!-- Alert messages -->
+    <div id="alert-container"></div>
+
+    <!-- Date Format Preference Card -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card pref-card">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Date Format</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Choose how dates are displayed throughout the application.
+                    </p>
+
+                    <div class="format-option {% if current_user.date_format == 'US' or not current_user.date_format %}selected{% endif %}" data-format="US">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong><i class="fas fa-flag-usa me-2"></i>US Format (Month/Day/Year)</strong>
+                                <div class="format-example">10/28/2025 03:30 PM</div>
+                            </div>
+                            <div>
+                                <i class="fas fa-check-circle text-success" style="font-size: 1.5rem; {% if current_user.date_format != 'US' and current_user.date_format %}display: none;{% endif %}"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="format-option {% if current_user.date_format == 'UK' %}selected{% endif %}" data-format="UK">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong><i class="fas fa-globe-europe me-2"></i>UK/European Format (Day/Month/Year)</strong>
+                                <div class="format-example">28/10/2025 15:30</div>
+                            </div>
+                            <div>
+                                <i class="fas fa-check-circle text-success" style="font-size: 1.5rem; {% if current_user.date_format != 'UK' %}display: none;{% endif %}"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <button id="saveDateFormat" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Preference
+                        </button>
+                        <a href="/dashboard" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Card -->
+            <div class="card pref-card">
+                <div class="card-header bg-white border-bottom">
+                    <h6 class="mb-0"><i class="fas fa-info-circle"></i> About Date Formats</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">Your date format preference will apply to:</p>
+                    <ul>
+                        <li>Email list timestamps</li>
+                        <li>Quarantine page dates</li>
+                        <li>Report generation dates</li>
+                        <li>Audit logs and activity history</li>
+                        <li>All other date displays throughout the application</li>
+                    </ul>
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-lightbulb"></i> Changes take effect immediately after saving.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+let selectedFormat = '{{ current_user.date_format or "US" }}';
+
+function showAlert(message, type = 'success') {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    alertContainer.appendChild(alertDiv);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Handle format option selection
+document.querySelectorAll('.format-option').forEach(option => {
+    option.addEventListener('click', function() {
+        // Remove selected class from all options
+        document.querySelectorAll('.format-option').forEach(opt => {
+            opt.classList.remove('selected');
+            opt.querySelector('.fa-check-circle').style.display = 'none';
+        });
+
+        // Add selected class to clicked option
+        this.classList.add('selected');
+        this.querySelector('.fa-check-circle').style.display = 'block';
+
+        // Store selected format
+        selectedFormat = this.getAttribute('data-format');
+    });
+});
+
+// Save date format preference
+document.getElementById('saveDateFormat').addEventListener('click', function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    fetch('/api/user/preferences', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            date_format: selectedFormat
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}. Reloading...`, 'success');
+            // Reload after 1 second to show new format
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert(`<i class="fas fa-exclamation-circle"></i> Error saving preference: ${error}`, 'danger');
+    });
+});
+</script>
+{% endblock %}

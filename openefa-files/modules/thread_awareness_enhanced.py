@@ -46,8 +46,9 @@ def normalize_subject(subject: str) -> str:
     """Normalize subject by removing Re:, Fwd:, etc."""
     if not subject:
         return ''
-    # Remove common reply/forward prefixes
-    pattern = r'^(?:Re:|RE:|Fwd:|FW:|Fw:|\[.*?\])\s*'
+    # Remove common reply/forward prefixes, including malformed variations like Re":", RE":"
+    # Pattern catches: Re:, Re :, Re":", Re":", RE":"Re : etc.
+    pattern = r'^(?:Re|RE|Fwd|FW|Fw)\s*[":]+\s*|\[.*?\]\s*'
     normalized = re.sub(pattern, '', subject, flags=re.IGNORECASE)
     # Remove multiple occurrences
     while re.match(pattern, normalized):
@@ -160,6 +161,58 @@ class EnhancedThreadAnalyzer:
             except Exception as e:
                 safe_log(f"Failed to initialize database: {e}", "ERROR")
                 self.db_handler = None
+
+    def _check_sender_history(self, sender_domain: str, recipients: List[str],
+                              lookback_days: int = 90) -> bool:
+        """Check if we have any prior communication with this sender domain
+
+        Args:
+            sender_domain: Domain of the sender
+            recipients: List of recipients in current message
+            lookback_days: How far back to search
+
+        Returns:
+            True if we have history with this sender domain
+        """
+        if not self.db_handler or not self.db_handler.db_ready:
+            return False
+
+        session = None
+        try:
+            session = self.db_handler.get_db_session()
+            lookback_date = datetime.utcnow() - timedelta(days=lookback_days)
+
+            # Check for any messages from this domain to our recipients
+            recipient_emails = [extract_email_address(r) for r in recipients]
+
+            for recip in recipient_emails:
+                # Look for previous NON-SPAM messages from this domain to this recipient
+                # Only legitimate emails count as "history" - not spam
+                result = session.query(SpacyAnalysis).filter(
+                    and_(
+                        SpacyAnalysis.timestamp > lookback_date,
+                        SpacyAnalysis.sender.like(f'%@{sender_domain}%'),
+                        SpacyAnalysis.recipients.like(f'%{recip}%'),
+                        or_(
+                            SpacyAnalysis.spam_score == None,  # No score yet
+                            SpacyAnalysis.spam_score < 5.0      # Not spam (threshold: 5.0)
+                        )
+                    )
+                ).first()
+
+                if result:
+                    safe_log(f"Found legitimate sender history: {sender_domain} -> {recip} (spam_score: {result.spam_score})")
+                    return True
+
+            safe_log(f"No sender history found for {sender_domain}")
+            return False
+
+        except Exception as e:
+            safe_log(f"Sender history check error: {e}", "ERROR")
+            return False  # Assume no history on error
+        finally:
+            if session:
+                session.close()
 
     def get_thread_history(self, message_ids: List[str], subject: str,
                           sender: str, recipients: List[str]) -> Dict:
@@ -425,7 +478,9 @@ class EnhancedThreadAnalyzer:
         # Check for thread indicators
         has_references = bool(references)
         has_reply_to = bool(in_reply_to)
-        has_re_subject = bool(re.match(r'^(Re:|RE:|Fwd:|FW:)', subject))
+        # Match Re:/RE:/Fwd:/FW: including malformed variations (handles "RE :", Re":", Re":" spam tricks)
+        # Pattern catches: Re:, Re :, Re":", Re":", RE":"Re : etc.
+        has_re_subject = bool(re.match(r'^(Re|RE|Fwd|FW)\s*[":]+\s*', subject))
         
         if not (has_references or has_reply_to or has_re_subject):
             # Not a thread reply
@@ -523,10 +578,30 @@ class EnhancedThreadAnalyzer:
                 result['fake_reply_confidence'] = 0.7
                 trust_score -= 2  # Moderate penalty
                 safe_log(f"SUSPICIOUS REPLY: Re: from suspicious domain {sender_domain}")
+            elif has_re_subject and (has_references or has_reply_to):
+                # NEW: Claims to be a reply with thread headers, but no DB history
+                # Check if we have ANY history with this sender/domain
+                has_sender_history = self._check_sender_history(sender_domain, recipients)
+
+                if not has_sender_history and not result.get('has_any_quoted_content', False):
+                    # First contact + RE: + no quotes + no DB refs = HIGHLY SUSPICIOUS
+                    result['risk_factors'].append('fabricated_thread_first_contact')
+                    result['is_fake_reply'] = True
+                    result['fake_reply_confidence'] = 0.90
+                    trust_score -= 4  # Major penalty
+                    safe_log(f"FAKE REPLY DETECTED: First contact claiming thread continuation from {sender_domain}")
+                elif not has_sender_history:
+                    # First contact claiming reply - moderately suspicious
+                    result['risk_factors'].append('suspicious_first_contact_reply')
+                    trust_score -= 2
+                    safe_log(f"SUSPICIOUS: First contact with RE: subject from {sender_domain}")
+                else:
+                    # Known sender - external reply is normal
+                    safe_log(f"External reply from known contact {sender_domain} - no DB history (normal)")
+                    trust_score -= 0.5
             else:
-                # Legitimate external reply - no penalty for missing DB history
-                # This is expected behavior for external email conversations
-                safe_log(f"External reply from {sender_domain} - no DB history (normal behavior)")
+                # Not claiming to be a reply
+                safe_log(f"External email from {sender_domain} - no DB history (normal behavior)")
                 trust_score -= 0.5  # Very minor trust reduction only
         
         # Internal participation bonus (with alias awareness)
@@ -714,14 +789,16 @@ class EnhancedThreadAnalyzer:
         risk_factors = thread_analysis.get('risk_factors', [])
         
         factor_penalties = {
-            'references_previous_spam': 10.0,  # NEW: Spam campaign continuation
-            'fake_reply_no_headers': 5.0,  # REBALANCED: Reduced from 10.0
-            'fake_reply_suspicious_domain': 3.0,  # REBALANCED: Reduced from 5.0
-            'reply_no_quoted_suspicious': 2.0,  # REBALANCED: Reduced from 3.0
-            'suspicious_domain_': 1.0,  # REBALANCED: Reduced from 2.0
-            'fake_phrase_': 0.5,  # REBALANCED: Reduced from 1.5
-            'thread_not_in_database': 0.0,  # REBALANCED: Removed - too many false positives
-            'no_internal_participation': 0.0  # REBALANCED: Removed - normal for new conversations
+            'references_previous_spam': 10.0,  # Spam campaign continuation
+            'fabricated_thread_first_contact': 7.0,  # NEW: First contact fake reply - very high penalty
+            'suspicious_first_contact_reply': 4.0,  # NEW: First contact with RE: - moderate penalty
+            'fake_reply_no_headers': 5.0,  # RE: with no thread headers
+            'fake_reply_suspicious_domain': 3.0,  # Suspicious domain claiming reply
+            'reply_no_quoted_suspicious': 2.0,  # No quoted content + suspicious
+            'suspicious_domain_': 1.0,  # General suspicious domain
+            'fake_phrase_': 0.5,  # Fake conversational phrases
+            'thread_not_in_database': 0.0,  # Removed - too many false positives
+            'no_internal_participation': 0.0  # Removed - normal for new conversations
         }
         
         for factor in risk_factors:

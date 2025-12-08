@@ -286,11 +286,35 @@ create_admin_user() {
     info "Creating SpacyWeb admin user: ${ADMIN_USER}"
 
     # Hash password using Python bcrypt
-    local password_hash
-    password_hash=$(/opt/spacyserver/venv/bin/python3 -c "import bcrypt; print(bcrypt.hashpw('${ADMIN_PASSWORD}'.encode(), bcrypt.gensalt()).decode())")
+    # Try multiple methods for robustness
+    local password_hash=""
+    local venv_python="/opt/spacyserver/venv/bin/python3"
 
-    if [[ $? -ne 0 ]]; then
-        error "Failed to hash password"
+    # Method 1: Try venv python with bcrypt
+    if [[ -x "${venv_python}" ]]; then
+        password_hash=$("${venv_python}" -c "import bcrypt; print(bcrypt.hashpw('${ADMIN_PASSWORD}'.encode(), bcrypt.gensalt()).decode())" 2>/dev/null) || true
+    fi
+
+    # Method 2: If venv failed, try system python with bcrypt
+    if [[ -z "${password_hash:-}" ]]; then
+        debug "Venv bcrypt not available, trying system python..."
+        # Ensure bcrypt is installed for system python
+        pip3 install bcrypt >> "${LOG_FILE}" 2>&1 || true
+        password_hash=$(python3 -c "import bcrypt; print(bcrypt.hashpw('${ADMIN_PASSWORD}'.encode(), bcrypt.gensalt()).decode())" 2>/dev/null) || true
+    fi
+
+    # Method 3: Last resort - create minimal venv with bcrypt
+    if [[ -z "${password_hash:-}" ]]; then
+        debug "System bcrypt not available, creating temporary venv..."
+        local temp_venv="/tmp/bcrypt_venv"
+        python3 -m venv "${temp_venv}" >> "${LOG_FILE}" 2>&1 || true
+        "${temp_venv}/bin/pip" install bcrypt >> "${LOG_FILE}" 2>&1 || true
+        password_hash=$("${temp_venv}/bin/python3" -c "import bcrypt; print(bcrypt.hashpw('${ADMIN_PASSWORD}'.encode(), bcrypt.gensalt()).decode())" 2>/dev/null) || true
+        rm -rf "${temp_venv}" 2>/dev/null || true
+    fi
+
+    if [[ -z "${password_hash:-}" ]]; then
+        error "Failed to hash password - bcrypt not available"
         return 1
     fi
 
@@ -299,12 +323,12 @@ create_admin_user() {
 
     mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" << EOSQL >> "${LOG_FILE}" 2>&1
 INSERT INTO users (email, password_hash, domain, authorized_domains, role, is_active, created_at)
-VALUES ('${ADMIN_EMAIL}', '${password_hash}', '${INSTALL_DOMAIN}', '${authorized_domains}', 'admin', 1, NOW())
+VALUES ('${ADMIN_EMAIL}', '${password_hash}', '${INSTALL_DOMAIN}', '${authorized_domains}', 'superadmin', 1, NOW())
 ON DUPLICATE KEY UPDATE
     password_hash = '${password_hash}',
     domain = '${INSTALL_DOMAIN}',
     authorized_domains = '${authorized_domains}',
-    role = 'admin';
+    role = 'superadmin';
 EOSQL
 
     if [[ $? -eq 0 ]]; then

@@ -3,31 +3,31 @@
 {% block title %}System Configuration - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
     .config-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         transition: transform 0.3s, box-shadow 0.3s;
         height: 100%;
     }
 
     .config-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        transform: translateY(-3px);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.15);
     }
 
     .config-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-
-    .config-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
     }
 
     .feature-badge {
@@ -38,24 +38,30 @@
     }
 
     .config-section {
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Configuration Header -->
-<div class="config-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-cogs"></i> System Configuration</h1>
-                <p class="mb-0">Manage your SpaCy Email Security System settings</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-cogs me-2"></i>System Configuration</h4>
+                <p class="mb-0 small">Manage your SpaCy Email Security System settings</p>
             </div>
-            <div class="col-md-4 text-md-end">
+            <div>
                 {% if user_domains|length > 1 %}
                 <div class="dropdown">
-                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                         <i class="fas fa-globe"></i> {{ selected_domain }}
                     </button>
                     <ul class="dropdown-menu">
@@ -65,51 +71,45 @@
                     </ul>
                 </div>
                 {% else %}
-                <span class="badge bg-light text-dark fs-6">
+                <span class="badge bg-light text-dark">
                     <i class="fas fa-globe"></i> {{ selected_domain }}
                 </span>
                 {% endif %}
             </div>
         </div>
     </div>
-</div>
 
-<div class="container">
     <!-- Quick Stats -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-check-circle fa-2x mb-2"></i>
-                    <h3>{{ stats.whitelisted_senders }}</h3>
-                    <p class="mb-0">Whitelisted Senders</p>
+    <div class="d-flex gap-2 flex-wrap mb-3">
+        <div class="flex-fill">
+            <div class="card stat-card bg-success text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-check-circle"></i> Whitelisted Senders</h6>
+                    <h4 class="mb-0">{{ stats.whitelisted_senders }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-ban fa-2x mb-2"></i>
-                    <h3>{{ stats.blocked_patterns }}</h3>
-                    <p class="mb-0">Blocking Rules</p>
+        <div class="flex-fill">
+            <div class="card stat-card bg-danger text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-ban"></i> Blocking Rules</h6>
+                    <h4 class="mb-0">{{ stats.blocked_patterns }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-shield-alt fa-2x mb-2"></i>
-                    <h3>{{ stats.trusted_domains }}</h3>
-                    <p class="mb-0">Trusted Domains</p>
+        <div class="flex-fill">
+            <div class="card stat-card bg-info text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-shield-alt"></i> Trusted Domains</h6>
+                    <h4 class="mb-0">{{ stats.trusted_domains }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-users fa-2x mb-2"></i>
-                    <h3>{{ stats.active_domains }}</h3>
-                    <p class="mb-0">Active Domains</p>
+        <div class="flex-fill">
+            <div class="card stat-card bg-warning text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-users"></i> Active Domains</h6>
+                    <h4 class="mb-0">{{ stats.active_domains }}</h4>
                 </div>
             </div>
         </div>
@@ -117,7 +117,7 @@
 
     <!-- Main Configuration Sections -->
     <div class="config-section">
-        <h3><i class="fas fa-user-shield"></i> Email Security</h3>
+        <h5><i class="fas fa-user-shield"></i> Email Security</h5>
         <div class="row">
             <div class="col-md-4 mb-4">
                 <div class="card config-card">
@@ -137,13 +137,16 @@
             <div class="col-md-4 mb-4">
                 <div class="card config-card">
                     <div class="card-body text-center">
-                        <div class="config-icon text-danger">
-                            <i class="fas fa-ban"></i>
+                        {% if current_user.is_admin() %}
+                        <span class="badge bg-primary feature-badge">Global Support</span>
+                        {% endif %}
+                        <div class="config-icon text-primary">
+                            <i class="fas fa-shield-alt"></i>
                         </div>
-                        <h5 class="card-title">Blocking Rules</h5>
-                        <p class="card-text">Configure email blocking patterns and rules</p>
-                        <a href="/config/blocking" class="btn btn-danger">
-                            <i class="fas fa-edit"></i> Configure
+                        <h5 class="card-title">Rules Management</h5>
+                        <p class="card-text">Unified blocking and whitelist rules with global support</p>
+                        <a href="/config/rules" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Manage Rules
                         </a>
                     </div>
                 </div>
@@ -171,7 +174,7 @@
 
     {% if current_user.is_admin() %}
     <div class="config-section">
-        <h3><i class="fas fa-cog"></i> System Settings</h3>
+        <h5><i class="fas fa-cog"></i> System Settings</h5>
         <div class="row">
             <div class="col-md-4 mb-4">
                 <div class="card config-card">
@@ -210,7 +213,7 @@
 
     <!-- Reports Section - Available to All Users -->
     <div class="config-section">
-        <h3><i class="fas fa-chart-bar"></i> Reports</h3>
+        <h5><i class="fas fa-chart-bar"></i> Reports</h5>
         <div class="row">
             <div class="col-md-4 mb-4">
                 <div class="card config-card">
@@ -232,7 +235,7 @@
     {% if current_user.is_admin() %}
     <!-- Administration Section - Admin Only -->
     <div class="config-section">
-        <h3><i class="fas fa-tools"></i> System Administration</h3>
+        <h5><i class="fas fa-tools"></i> System Administration</h5>
         <div class="row">
             <div class="col-md-4 mb-4">
                 <div class="card config-card">
@@ -282,6 +285,22 @@
                     </div>
                 </div>
             </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card config-card">
+                    <div class="card-body text-center">
+                        <span class="badge bg-danger feature-badge">Superadmin</span>
+                        <div class="config-icon text-warning">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h5 class="card-title">VIP Alerts Billing</h5>
+                        <p class="card-text">Platform-wide usage, revenue, and invoicing</p>
+                        <a href="/admin/vip-billing" class="btn btn-warning">
+                            <i class="fas fa-file-invoice-dollar"></i> View Billing
+                        </a>
+                    </div>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>
@@ -289,7 +308,7 @@
 
     <!-- Recent Activity -->
     <div class="config-section">
-        <h3><i class="fas fa-history"></i> Recent Configuration Changes</h3>
+        <h5><i class="fas fa-history"></i> Recent Configuration Changes</h5>
         <div class="card">
             <div class="card-body">
                 <div class="table-responsive">
@@ -335,7 +354,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
     // Add any necessary JavaScript here
     document.addEventListener('DOMContentLoaded', function() {
         // Handle domain switching if needed

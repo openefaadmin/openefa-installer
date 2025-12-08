@@ -26,6 +26,7 @@ def quarantine_view():
         domain_filter = request.args.get('domain', '')
         status_filter = request.args.get('status', 'held')
         search_query = request.args.get('search', '')
+        show_deleted = request.args.get('show_deleted', '')
         page = int(request.args.get('page', 1))
         per_page = 50
 
@@ -50,8 +51,8 @@ def quarantine_view():
         """
         params = []
 
-        # Filter by status
-        if status_filter and status_filter != 'all':
+        # Filter by status (only if not showing deleted)
+        if status_filter and status_filter != 'all' and show_deleted != '1':
             query += " AND quarantine_status = %s"
             params.append(status_filter)
 
@@ -84,6 +85,20 @@ def quarantine_view():
             search_param = f'%{search_query}%'
             params.extend([search_param, search_param, search_param])
 
+        # Add deleted filter
+        # status=all means show everything (including deleted)
+        # show_deleted=1 means show ONLY deleted
+        # otherwise exclude deleted emails
+        if status_filter == 'all':
+            # Show all statuses including deleted
+            logger.info(f"Quarantine: Showing ALL statuses (status={status_filter})")
+        elif show_deleted == '1':
+            query += " AND quarantine_status = 'deleted'"
+            logger.info(f"Quarantine: Showing ONLY deleted emails (show_deleted={show_deleted})")
+        else:
+            query += " AND quarantine_status != 'deleted'"
+            logger.info(f"Quarantine: Hiding deleted emails (status={status_filter})")
+
         # Only show non-expired
         query += " AND quarantine_expires_at > NOW()"
 
@@ -100,8 +115,12 @@ def quarantine_view():
         query += f" LIMIT {per_page} OFFSET {offset}"
 
         # Execute main query
+        logger.info(f"QUARANTINE QUERY: {query}")
+        logger.info(f"QUARANTINE PARAMS: {params}")
+        logger.info(f"QUARANTINE show_deleted={show_deleted}")
         cursor.execute(query, params)
         quarantined_emails = cursor.fetchall()
+        logger.info(f"QUARANTINE RESULTS: {len(quarantined_emails)} emails")
 
         # Calculate pagination
         total_pages = (total_count + per_page - 1) // per_page
@@ -139,6 +158,7 @@ def quarantine_view():
                              status_filter=status_filter,
                              domain_filter=domain_filter,
                              search_query=search_query,
+                             show_deleted=show_deleted,
                              user_domains=user_domains,
                              selected_domain=domain_filter or (user_domains[0] if user_domains else ''))
 
@@ -273,26 +293,46 @@ def api_quarantine_release(email_id):
         if email['quarantine_status'] != 'held':
             return jsonify({'success': False, 'error': 'Email already released or deleted'}), 400
 
-        # Check permissions
-        if not current_user.is_admin():
-            user_domains = get_user_authorized_domains(current_user)
-            sender_domain = email['sender_domain']
-
-            if sender_domain not in user_domains:
-                return jsonify({'success': False, 'error': 'Access denied'}), 403
-
-        # Parse recipients
+        # Parse recipients first
         recipients = json.loads(email['recipients']) if email['recipients'] else []
+
+        # Check role-based permissions for release
+        spam_score = email.get('spam_score', 0)
+        virus_detected = email.get('virus_detected', False)
+        user_domains = get_user_authorized_domains(current_user)
+        recipient_domains = [r.split('@')[1] if '@' in r else '' for r in recipients]
+
+        # Superadmin can release everything
+        if current_user.is_superadmin():
+            pass  # Full access
+        # Domain admin can release any email for their authorized domains
+        elif current_user.is_domain_admin():
+            if not any(domain in user_domains for domain in recipient_domains):
+                return jsonify({'success': False, 'error': 'Access denied: Email not for your domain'}), 403
+            if virus_detected:
+                return jsonify({'success': False, 'error': 'Access denied: Only superadmin can release virus emails'}), 403
+        # Client can only release low-level spam (≤25 points) for their domain
+        elif current_user.is_client():
+            if not any(domain in user_domains for domain in recipient_domains):
+                return jsonify({'success': False, 'error': 'Access denied: Email not for your domain'}), 403
+            if spam_score > 25:
+                return jsonify({'success': False, 'error': f'Access denied: Spam score {spam_score:.1f} exceeds client limit (25)'}), 403
+            if virus_detected:
+                return jsonify({'success': False, 'error': 'Access denied: Only superadmin can release virus emails'}), 403
+        else:
+            return jsonify({'success': False, 'error': 'Access denied: Invalid role'}), 403
 
         # Relay email using SMTP
         try:
-            # Parse raw email
-            msg = EmailMessage()
-            msg.set_content(email['raw_email'])
+            # Use the raw email message as-is (already in RFC822 format)
+            raw_message = email['raw_email']
+
+            if not raw_message:
+                return jsonify({'success': False, 'error': 'Email content not found in quarantine'}), 500
 
             # Connect and send
             with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
-                smtp.sendmail(email['sender'], recipients, email['raw_email'])
+                smtp.sendmail(email['sender'], recipients, raw_message)
 
             # Update database
             update_query = """

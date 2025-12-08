@@ -3,7 +3,7 @@
 {% block title %}Conversation Learning - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .progress {
         height: 25px;
     }
@@ -350,7 +350,7 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Inline JavaScript for feed functionality
 console.log('Learning functions loaded');
 

@@ -29,6 +29,13 @@ BACKUP_DIR=""
 TEMP_DIR="/tmp/openefa-update-$$"
 LOG_FILE="/tmp/openefa-update-$(date +%Y%m%d_%H%M%S).log"
 
+# Load database configuration from environment
+if [[ -f /etc/spacy-server/.env ]]; then
+    source /etc/spacy-server/.env
+fi
+: "${DB_NAME:=spacy_email_db}"
+: "${DB_USER:=spacy_user}"
+
 # Flags
 DRY_RUN=0
 FORCE=0
@@ -257,7 +264,7 @@ create_backup() {
 
     # Backup database
     info "Backing up database..."
-    mysqldump --defaults-file="${INSTALL_DIR}/config/.my.cnf" spacy_email_db > "${BACKUP_DIR}/database_backup.sql" 2>/dev/null || {
+    mysqldump --defaults-file="${INSTALL_DIR}/config/.my.cnf" $DB_NAME > "${BACKUP_DIR}/database_backup.sql" 2>/dev/null || {
         warn "Database backup failed (non-fatal)"
     }
 
@@ -594,7 +601,7 @@ perform_rollback() {
     # Restore database
     if [[ -f "${last_backup}/database_backup.sql" ]]; then
         info "Restoring database..."
-        mysql --defaults-file="${INSTALL_DIR}/config/.my.cnf" spacy_email_db < "${last_backup}/database_backup.sql" 2>/dev/null || {
+        mysql --defaults-file="${INSTALL_DIR}/config/.my.cnf" $DB_NAME < "${last_backup}/database_backup.sql" 2>/dev/null || {
             warn "Database restore failed (you may need to restore manually)"
         }
     fi

@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-shield-alt me-2"></i>System Effectiveness Dashboard</h4>
+                <p class="mb-0 small">System-wide spam filtering performance metrics</p>
+            </div>
+            <div class="text-end">
+                <small class="d-block"><i class="fas fa-clock me-1"></i>Statistics updated every 4 hours</small>
+                <small class="text-light opacity-75">Next update: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Status Cards -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <div class="card h-100 border-0 shadow-sm border-start border-primary border-3">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-trophy text-primary me-2"></i>
+                        <h6 class="text-muted mb-0">F1 Score</h6>
+                    </div>
+                    <h2 class="text-primary mb-2">{{ (current.f1_score|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar {{ 'bg-success' if (current.f1_score|default(0)) >= 90 else 'bg-warning' if (current.f1_score|default(0)) >= 80 else 'bg-danger' }}"
+                             role="progressbar"
+                             style="width: {{ (current.f1_score|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">F1 = 2 × (Precision × Recall) / (Precision + Recall)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-primary"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100 border-0 shadow-sm border-start border-success border-3">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-shield-alt text-success me-2"></i>
+                        <h6 class="text-muted mb-0">Detection Rate (Recall)</h6>
+                    </div>
+                    <h2 class="text-success mb-2">{{ (current.detection_rate|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-success"
+                             role="progressbar"
+                             style="width: {{ (current.detection_rate|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Recall = True Positives / (True Positives + False Negatives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-success"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100 border-0 shadow-sm border-start border-primary border-3">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-bullseye text-primary me-2"></i>
+                        <h6 class="text-muted mb-0">Precision</h6>
+                    </div>
+                    <h2 class="text-primary mb-2">{{ (current.precision_score|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-primary"
+                             role="progressbar"
+                             style="width: {{ (current.precision_score|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Precision = True Positives / (True Positives + False Positives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-primary"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100 border-0 shadow-sm border-start border-info border-3">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-exclamation-triangle text-info me-2"></i>
+                        <h6 class="text-muted mb-0">False Positive Rate</h6>
+                    </div>
+                    <h2 class="text-info mb-2">{{ (current.false_positive_rate|default(0))|round(2) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-info"
+                             role="progressbar"
+                             style="width: {{ (current.false_positive_rate|default(0))|round(2) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">FPR = False Positives / (False Positives + True Negatives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-info"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Statistics -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Today's Performance ({{ current.metric_date|default('Loading...') }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-primary">{{ current.total_emails|default(0) }}</h5>
+                            <small class="text-muted">Total Emails</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-danger">{{ current.spam_caught|default(0) }}</h5>
+                            <small class="text-muted">Spam Blocked</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-success">{{ current.clean_passed|default(0) }}</h5>
+                            <small class="text-muted">Clean Passed</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-warning">{{ current.gray_area|default(0) }}</h5>
+                            <small class="text-muted">Gray Area</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h5 class="text-info">{{ current.avg_spam_score|default(0)|round(1) }}</h5>
+                            <small class="text-muted">Avg Score</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <h5 class="text-primary">{{ current.effectiveness_score|default(0)|round(1) }}%</h5>
+                            <small class="text-muted">Overall Effectiveness</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trends Chart -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0"><i class="fas fa-chart-area"></i> 30-Day Effectiveness Trend</h5>
+                </div>
+                <div class="card-body">
+                    {% if trend_dates and trend_dates|length > 0 %}
+                    <canvas id="effectivenessChart" height="80"></canvas>
+                    {% else %}
+                    <p class="text-muted text-center">No trend data available yet. Metrics are calculated every 4 hours.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Note -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-info border-0 shadow-sm">
+                <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>About These Metrics</h6>
+                <p class="mb-0 small">
+                    This dashboard shows system-wide effectiveness metrics across all domains protected by OpenEFA.
+                    These metrics demonstrate the overall performance and accuracy of the spam filtering system without
+                    exposing domain-specific details to maintain privacy between clients.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+{% if trend_dates and trend_dates|length > 0 %}
+<script nonce="{{ csp_nonce }}">
+// Effectiveness Trend Chart
+const ctx = document.getElementById('effectivenessChart').getContext('2d');
+const effectivenessChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ trend_dates|tojson|safe }},
+        datasets: [{
+            label: 'Effectiveness Score',
+            data: {{ trend_scores|tojson|safe }},
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            tension: 0.1
+        }, {
+            label: '7-Day Average',
+            data: {{ trend_week_avg|tojson|safe }},
+            borderColor: 'rgb(255, 206, 86)',
+            backgroundColor: 'rgba(255, 206, 86, 0.2)',
+            borderDash: [5, 5],
+            tension: 0.1
+        }, {
+            label: '30-Day Average',
+            data: {{ trend_month_avg|tojson|safe }},
+            borderColor: 'rgb(153, 102, 255)',
+            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+            borderDash: [10, 5],
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

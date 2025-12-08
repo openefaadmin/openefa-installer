@@ -201,7 +201,7 @@ set_postfix_parameters() {
     postconf -e "mynetworks=127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128"
 
     # Set relay_domains (supports multiple domains)
-    if [[ -n "${INSTALL_DOMAINS_LIST}" ]]; then
+    if [[ -n "${INSTALL_DOMAINS_LIST:-}" ]]; then
         postconf -e "relay_domains=${INSTALL_DOMAINS_LIST}"
     else
         postconf -e "relay_domains=${INSTALL_DOMAIN}"

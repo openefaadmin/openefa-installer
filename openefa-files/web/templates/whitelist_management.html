@@ -4,33 +4,26 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
-<style>
-    .config-header {
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .config-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        transition: transform 0.3s, box-shadow 0.3s;
-        margin-bottom: 1.5rem;
-    }
-
-    .config-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .stat-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        height: 100%;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
     .trust-badge {
@@ -75,38 +68,37 @@
     .nav-tabs {
         border-bottom: 1px solid #dee2e6;
     }
+
+    /* Filter classes */
+    .domain-filtered-hidden {
+        display: none !important;
+    }
+    .search-filtered-hidden {
+        display: none !important;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Configuration Header -->
-<div class="config-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-user-check"></i> Whitelist Management</h1>
-                <div class="d-flex align-items-center gap-2">
-                    <p class="mb-0">Current Domain:</p>
-                    <span class="badge bg-light text-dark fs-6 px-3 py-2">
-                        <i class="fas fa-globe"></i> {{ domain }}
-                    </span>
-                </div>
-                {% if multi_domain %}
-                <small class="text-white-50">Available domains: {{ user_domains|join(', ') }}</small>
-                {% endif %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-user-check me-2"></i>Whitelist Management</h4>
+                <p class="mb-0 small">
+                    Manage trusted senders and domains for {{ domain }}
+                    {% if multi_domain %} ({{ user_domains|length }} domains){% endif %}
+                </p>
             </div>
-            <div class="col-md-4 text-md-end">
-                <a href="/config" class="btn btn-light me-2">
-                    <i class="fas fa-cogs"></i> Configuration
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-arrow-left"></i> Back to Config
                 </a>
-                <a href="/dashboard" class="btn btn-outline-light">
-                    <i class="fas fa-tachometer-alt"></i> Dashboard
-                </a>
-
                 {% if user_domains|length > 1 %}
-                <div class="dropdown mt-2">
-                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-globe"></i> Switch Domain
+                <div class="dropdown d-inline-block">
+                    <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe"></i> {{ domain }}
                     </button>
                     <ul class="dropdown-menu">
                         {% for d in user_domains %}
@@ -114,54 +106,51 @@
                                 <a class="dropdown-item {% if d == domain %}active fw-bold{% endif %}" href="/whitelist/{{ d }}">
                                     {% if d == domain %}<i class="fas fa-check text-success"></i> {% endif %}
                                     {{ d }}
-                                    {% if d == domain %}<span class="badge bg-success ms-2">Current</span>{% endif %}
                                 </a>
                             </li>
                         {% endfor %}
                     </ul>
                 </div>
+                {% else %}
+                <span class="badge bg-light text-dark">
+                    <i class="fas fa-globe"></i> {{ domain }}
+                </span>
                 {% endif %}
             </div>
         </div>
     </div>
-</div>
 
-<div class="container">
     <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
+    <div class="d-flex gap-2 flex-wrap mb-3">
+        <div class="flex-fill">
             <div class="card stat-card bg-success text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-user-check fa-2x mb-2"></i>
-                    <h3>{{ stats.total_senders }}</h3>
-                    <p class="mb-0">Whitelisted Senders</p>
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-user-check"></i> Whitelisted Senders</h6>
+                    <h4 class="mb-0">{{ stats.total_senders }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="flex-fill">
             <div class="card stat-card bg-info text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-globe fa-2x mb-2"></i>
-                    <h3>{{ stats.total_domains }}</h3>
-                    <p class="mb-0">Trusted Domains</p>
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-globe"></i> Trusted Domains</h6>
+                    <h4 class="mb-0">{{ stats.total_domains }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="flex-fill">
             <div class="card stat-card bg-warning text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-clock fa-2x mb-2"></i>
-                    <h3>{{ stats.recent_additions|length }}</h3>
-                    <p class="mb-0">Recent Additions</p>
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-clock"></i> Recent Additions</h6>
+                    <h4 class="mb-0">{{ stats.recent_additions|length }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="flex-fill">
             <div class="card stat-card bg-primary text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-chart-line fa-2x mb-2"></i>
-                    <h3>{{ stats.most_active|length }}</h3>
-                    <p class="mb-0">Active Senders</p>
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small"><i class="fas fa-chart-line"></i> Active Senders</h6>
+                    <h4 class="mb-0">{{ stats.most_active|length }}</h4>
                 </div>
             </div>
         </div>
@@ -202,12 +191,22 @@
                 <div class="tab-pane fade show active" id="senders" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0">Whitelisted Senders</h5>
-                        <div class="input-group" style="width: 300px;">
-                            <input type="text" class="form-control" id="filterSenders"
-                                   placeholder="Filter senders..." autocomplete="off">
-                            <button class="btn btn-outline-secondary" type="button" id="clearFilter">
-                                <i class="bi bi-x"></i>
-                            </button>
+                        <div class="d-flex gap-2">
+                            {% if multi_domain %}
+                            <select class="form-select" id="domainFilter" style="width: 200px;">
+                                <option value="">All Domains</option>
+                                {% for d in user_domains %}
+                                <option value="{{ d }}" {% if d == domain %}selected{% endif %}>{{ d }}</option>
+                                {% endfor %}
+                            </select>
+                            {% endif %}
+                            <div class="input-group" style="width: 300px;">
+                                <input type="text" class="form-control" id="filterSenders"
+                                       placeholder="Filter senders..." autocomplete="off">
+                                <button class="btn btn-outline-secondary" type="button" id="clearFilter">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -239,7 +238,7 @@
                             </thead>
                             <tbody id="sendersTableBody">
                                 {% for sender in whitelist.senders %}
-                                <tr class="sender-row">
+                                <tr class="sender-row" data-for-domain="{{ sender.for_domain | default('') | lower }}">
                                     <td>
                                         <i class="bi bi-envelope"></i>
                                         {{ sender.email }}
@@ -269,9 +268,16 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
+                                            <button class="btn btn-sm btn-primary edit-sender me-1"
+                                                    data-email="{{ sender.email }}"
+                                                    data-trust="{{ sender.trust_bonus }}"
+                                                    data-auth="{{ sender.require_auth | join(',') }}"
+                                                    data-for-domain="{{ sender.for_domain | default('') }}">
+                                                E
+                                            </button>
                                             <button class="btn btn-sm btn-danger remove-sender"
                                                     data-email="{{ sender.email }}">
-                                                <i class="bi bi-trash"></i>
+                                                D
                                             </button>
                                         </div>
                                     </td>
@@ -379,7 +385,7 @@
                                 <label class="form-check-label" for="authSpf">SPF</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="authDkim" value="dkim">
+                                <input class="form-check-input" type="checkbox" id="authDkim" value="dkim" checked>
                                 <label class="form-check-label" for="authDkim">DKIM</label>
                             </div>
                             <div class="form-check">
@@ -402,19 +408,28 @@
 
                     {% if whitelist.domains %}
                     <div class="table-responsive mb-4">
-                        <table class="table">
+                        <table class="table" id="domainsTable">
                             <thead>
                                 <tr>
                                     <th>Domain</th>
+                                    {% if multi_domain %}
+                                    <th>For Domain</th>
+                                    {% endif %}
                                     <th>Trust Level</th>
                                     <th>Bypass Checks</th>
                                     <th>Required Auth</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="domainsTableBody">
                                 {% for domain_wl in whitelist.domains %}
-                                <tr>
+                                <tr class="domain-row" data-for-domain="{{ domain_wl.for_domain | default('global') | lower }}">
                                     <td><i class="bi bi-globe"></i> {{ domain_wl.domain }}</td>
+                                    {% if multi_domain %}
+                                    <td>
+                                        <span class="badge bg-info">{{ domain_wl.for_domain | default('global') }}</span>
+                                    </td>
+                                    {% endif %}
                                     <td>
                                         <span class="trust-badge trust-high">{{ domain_wl.trust_level }}</span>
                                     </td>
@@ -430,6 +445,22 @@
                                         {% for auth in domain_wl.require_auth %}
                                         <span class="auth-badge auth-{{ auth }}">{{ auth|upper }}</span>
                                         {% endfor %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary edit-domain me-1"
+                                                data-domain="{{ domain_wl.domain }}"
+                                                data-trust="{{ domain_wl.trust_level }}"
+                                                data-auth="{{ domain_wl.require_auth | join(',') }}"
+                                                data-bypass-bec="{{ domain_wl.bypass_bec | default(false) | lower }}"
+                                                data-bypass-typo="{{ domain_wl.bypass_typo | default(false) | lower }}"
+                                                data-for-domain="{{ domain_wl.for_domain | default('') }}">
+                                            E
+                                        </button>
+                                        <button class="btn btn-sm btn-danger remove-domain"
+                                                data-domain="{{ domain_wl.domain }}"
+                                                data-for-domain="{{ domain_wl.for_domain | default('') }}">
+                                            D
+                                        </button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -451,9 +482,9 @@
                             </div>
                             <div class="col-md-3">
                                 <select class="form-select" id="domainTrustLevel">
-                                    <option value="5" selected>Trust Level 5</option>
+                                    <option value="5">Trust Level 5</option>
                                     <option value="4">Trust Level 4</option>
-                                    <option value="3">Trust Level 3</option>
+                                    <option value="3" selected>Trust Level 3</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
@@ -477,11 +508,124 @@
         </div>
     </div>
 
+    <!-- Edit Sender Modal -->
+    <div class="modal fade" id="editSenderModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Whitelist Entry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editSenderForm">
+                        <input type="hidden" id="editSenderEmail">
+                        <div class="mb-3">
+                            <label class="form-label">Email Address</label>
+                            <input type="text" class="form-control" id="editSenderEmailDisplay" disabled>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Trust Bonus</label>
+                            <select class="form-select" id="editSenderTrust">
+                                <option value="1">1 - Minimal trust</option>
+                                <option value="2">2 - Low trust</option>
+                                <option value="3">3 - Medium trust</option>
+                                <option value="4">4 - High trust</option>
+                                <option value="5">5 - Very high trust</option>
+                                <option value="10">10 - Complete trust</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Required Authentication</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editAuthSpf" value="spf">
+                                <label class="form-check-label" for="editAuthSpf">SPF</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editAuthDkim" value="dkim">
+                                <label class="form-check-label" for="editAuthDkim">DKIM</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editAuthDmarc" value="dmarc">
+                                <label class="form-check-label" for="editAuthDmarc">DMARC</label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveSenderEdit">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Domain Modal -->
+    <div class="modal fade" id="editDomainModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Domain Whitelist</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editDomainForm">
+                        <input type="hidden" id="editDomainName">
+                        <div class="mb-3">
+                            <label class="form-label">Domain</label>
+                            <input type="text" class="form-control" id="editDomainNameDisplay" disabled>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Trust Level</label>
+                            <select class="form-select" id="editDomainTrust">
+                                <option value="1">1 - Minimal trust</option>
+                                <option value="2">2 - Low trust</option>
+                                <option value="3">3 - Medium trust</option>
+                                <option value="4">4 - High trust</option>
+                                <option value="5">5 - Very high trust</option>
+                                <option value="10">10 - Complete trust</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Required Authentication</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editDomainAuthSpf" value="spf">
+                                <label class="form-check-label" for="editDomainAuthSpf">SPF</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editDomainAuthDkim" value="dkim">
+                                <label class="form-check-label" for="editDomainAuthDkim">DKIM</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editDomainAuthDmarc" value="dmarc">
+                                <label class="form-check-label" for="editDomainAuthDmarc">DMARC</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Bypass Checks</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editDomainBypassBec">
+                                <label class="form-check-label" for="editDomainBypassBec">Bypass BEC checks</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editDomainBypassTypo">
+                                <label class="form-check-label" for="editDomainBypassTypo">Bypass typosquatting checks</label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveDomainEdit">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Most Active Whitelisted Senders -->
     {% if stats.most_active %}
-    <div class="card config-card mt-4">
-        <div class="card-header">
-            <h5>Most Active Whitelisted Senders (Last 30 Days)</h5>
+    <div class="card config-card">
+        <div class="card-header bg-white border-bottom">
+            <h6 class="mb-0"><i class="fas fa-chart-line"></i> Most Active Whitelisted Senders (Last 30 Days)</h6>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -513,7 +657,7 @@
 {% block extra_js %}
 <!-- JavaScript -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 $(document).ready(function() {
     const domain = '{{ domain }}';
 
@@ -536,7 +680,7 @@ $(document).ready(function() {
         if (searchTerm === '') {
             $('#highlightedMatch').hide();
             document.querySelectorAll('#sendersTableBody tr.sender-row').forEach(function(row) {
-                row.style.display = '';
+                row.classList.remove('search-filtered-hidden');
                 row.classList.remove('table-warning');
             });
             $('#noMatchMessage').remove();
@@ -581,7 +725,7 @@ $(document).ready(function() {
             const emailCell = row.cells[0].textContent.trim().toLowerCase();
 
             if (emailCell.includes(searchTerm)) {
-                row.style.display = '';
+                row.classList.remove('search-filtered-hidden');
                 matchFound = true;
                 if (exactMatch && emailCell.includes(exactMatch.email.toLowerCase())) {
                     row.classList.add('table-warning');
@@ -589,7 +733,7 @@ $(document).ready(function() {
                     row.classList.remove('table-warning');
                 }
             } else {
-                row.style.display = 'none';
+                row.classList.add('search-filtered-hidden');
                 row.classList.remove('table-warning');
             }
         });
@@ -612,17 +756,286 @@ $(document).ready(function() {
         $('#filterSenders').val('').trigger('input');
     });
 
-    // Remove sender from whitelist
-    $('.remove-sender').click(function() {
-        const email = $(this).data('email');
-        if (confirm(`Remove ${email} from whitelist?`)) {
-            $.post(`/whitelist/${domain}/remove_sender`, {sender_email: email}, function(response) {
-                if (response.success) {
-                    location.reload();
+    // Domain filter (for multi-domain users)
+    function applyDomainFilter() {
+        const selectedDomain = $('#domainFilter').val().toLowerCase();
+        console.log('=== Applying domain filter:', selectedDomain || 'all', '===');
+
+        // Filter senders table using data-for-domain attribute
+        const senderRows = document.querySelectorAll('#sendersTableBody tr.sender-row');
+        console.log(`Total sender rows: ${senderRows.length}`);
+
+        senderRows.forEach(function(row, idx) {
+            const rowDomain = row.getAttribute('data-for-domain') || '';
+            const emailCell = row.querySelector('td:first-child');
+            const email = emailCell ? emailCell.textContent.trim() : 'unknown';
+
+            console.log(`Sender ${idx}: email="${email}", data-for-domain="${rowDomain}"`);
+
+            // Show all if "All Domains" selected
+            if (selectedDomain === '') {
+                row.classList.remove('domain-filtered-hidden');
+            } else {
+                // Show only rows matching the selected domain
+                if (rowDomain === selectedDomain) {
+                    row.classList.remove('domain-filtered-hidden');
+                    console.log(`  ✓ SHOWING (matches ${selectedDomain})`);
                 } else {
-                    alert('Error: ' + response.message);
+                    row.classList.add('domain-filtered-hidden');
+                    console.log(`  ✗ HIDING (${rowDomain} != ${selectedDomain})`);
                 }
-            });
+            }
+        });
+
+        // Filter domains table using data-for-domain attribute
+        const domainRows = document.querySelectorAll('#domainsTableBody tr.domain-row');
+        console.log(`Total domain rows: ${domainRows.length}`);
+
+        domainRows.forEach(function(row, idx) {
+            const rowDomain = row.getAttribute('data-for-domain') || '';
+            const domainCell = row.querySelector('td:first-child');
+            const domainName = domainCell ? domainCell.textContent.trim() : 'unknown';
+
+            console.log(`Domain ${idx}: domain="${domainName}", data-for-domain="${rowDomain}"`);
+
+            // Show all if "All Domains" selected, or if it's a global whitelist
+            if (selectedDomain === '' || rowDomain === 'global') {
+                row.classList.remove('domain-filtered-hidden');
+                console.log(`  ✓ SHOWING (${selectedDomain === '' ? 'all selected' : 'global entry'})`);
+            } else {
+                // Show only rows matching the selected domain
+                if (rowDomain === selectedDomain) {
+                    row.classList.remove('domain-filtered-hidden');
+                    console.log(`  ✓ SHOWING (matches ${selectedDomain})`);
+                } else {
+                    row.classList.add('domain-filtered-hidden');
+                    console.log(`  ✗ HIDING (${rowDomain} != ${selectedDomain})`);
+                }
+            }
+        });
+
+        // Update visible counts
+        const visibleSenders = Array.from(senderRows).filter(r => !r.classList.contains('domain-filtered-hidden')).length;
+        const visibleDomains = Array.from(domainRows).filter(r => !r.classList.contains('domain-filtered-hidden')).length;
+        console.log(`=== RESULT: ${visibleSenders} senders, ${visibleDomains} domains visible ===`);
+    }
+
+    // Apply filter when dropdown changes
+    $('#domainFilter').on('change', applyDomainFilter);
+
+    // Re-apply filter when switching tabs
+    $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+        console.log('Tab switched to:', e.target.id);
+        if ($('#domainFilter').length > 0) {
+            applyDomainFilter();
+        }
+    });
+
+    // Apply filter on page load to respect the current domain from URL
+    $(document).ready(function() {
+        if ($('#domainFilter').length > 0) {
+            console.log('Page loaded, applying initial filter');
+            applyDomainFilter();
+        }
+    });
+
+    // Edit sender whitelist
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.edit-sender')) {
+            const button = e.target.closest('.edit-sender');
+            const email = button.getAttribute('data-email');
+            const trust = button.getAttribute('data-trust');
+            const authStr = button.getAttribute('data-auth');
+            const forDomain = button.getAttribute('data-for-domain');
+
+            // Populate modal
+            $('#editSenderEmail').val(email);
+            $('#editSenderEmailDisplay').val(email);
+            $('#editSenderTrust').val(trust);
+
+            // Clear and set auth checkboxes
+            $('#editAuthSpf, #editAuthDkim, #editAuthDmarc').prop('checked', false);
+            if (authStr) {
+                const authMethods = authStr.split(',');
+                authMethods.forEach(function(auth) {
+                    $(`#editAuth${auth.charAt(0).toUpperCase() + auth.slice(1)}`).prop('checked', true);
+                });
+            }
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editSenderModal'));
+            modal.show();
+        }
+    });
+
+    // Save sender edit
+    $('#saveSenderEdit').click(function() {
+        const email = $('#editSenderEmail').val();
+        const trust = $('#editSenderTrust').val();
+        const auth = [];
+        if ($('#editAuthSpf').is(':checked')) auth.push('spf');
+        if ($('#editAuthDkim').is(':checked')) auth.push('dkim');
+        if ($('#editAuthDmarc').is(':checked')) auth.push('dmarc');
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('sender_email', email);
+        formData.append('trust_bonus', trust);
+        auth.forEach(a => formData.append('require_auth', a));
+
+        fetch(`/whitelist/${domain}/add_sender`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken},
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || data.error));
+            }
+        })
+        .catch(error => {
+            alert('Error updating sender: ' + error);
+        });
+    });
+
+    // Edit domain whitelist
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.edit-domain')) {
+            const button = e.target.closest('.edit-domain');
+            const domainName = button.getAttribute('data-domain');
+            const trust = button.getAttribute('data-trust');
+            const authStr = button.getAttribute('data-auth');
+            const bypassBec = button.getAttribute('data-bypass-bec') === 'true';
+            const bypassTypo = button.getAttribute('data-bypass-typo') === 'true';
+
+            // Populate modal
+            $('#editDomainName').val(domainName);
+            $('#editDomainNameDisplay').val(domainName);
+            $('#editDomainTrust').val(trust);
+
+            // Clear and set auth checkboxes
+            $('#editDomainAuthSpf, #editDomainAuthDkim, #editDomainAuthDmarc').prop('checked', false);
+            if (authStr) {
+                const authMethods = authStr.split(',');
+                authMethods.forEach(function(auth) {
+                    $(`#editDomainAuth${auth.charAt(0).toUpperCase() + auth.slice(1)}`).prop('checked', true);
+                });
+            }
+
+            // Set bypass checkboxes
+            $('#editDomainBypassBec').prop('checked', bypassBec);
+            $('#editDomainBypassTypo').prop('checked', bypassTypo);
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editDomainModal'));
+            modal.show();
+        }
+    });
+
+    // Save domain edit
+    $('#saveDomainEdit').click(function() {
+        const domainName = $('#editDomainName').val();
+        const trust = $('#editDomainTrust').val();
+        const auth = [];
+        if ($('#editDomainAuthSpf').is(':checked')) auth.push('spf');
+        if ($('#editDomainAuthDkim').is(':checked')) auth.push('dkim');
+        if ($('#editDomainAuthDmarc').is(':checked')) auth.push('dmarc');
+        const bypassBec = $('#editDomainBypassBec').is(':checked');
+        const bypassTypo = $('#editDomainBypassTypo').is(':checked');
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('target_domain', domainName);
+        formData.append('trust_level', trust);
+        auth.forEach(a => formData.append('require_auth', a));
+        formData.append('bypass_checks', bypassBec || bypassTypo);
+
+        fetch(`/whitelist/${domain}/add_domain`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken},
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || data.error));
+            }
+        })
+        .catch(error => {
+            alert('Error updating domain: ' + error);
+        });
+    });
+
+    // Remove sender from whitelist
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-sender')) {
+            const button = e.target.closest('.remove-sender');
+            const email = button.getAttribute('data-email');
+            if (confirm(`Remove ${email} from whitelist?`)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const formData = new FormData();
+                formData.append('sender_email', email);
+
+                fetch(`/whitelist/${domain}/remove_sender`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + (data.message || data.error));
+                    }
+                })
+                .catch(error => {
+                    alert('Error removing sender: ' + error);
+                });
+            }
+        }
+    });
+
+    // Remove domain from whitelist
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-domain')) {
+            const button = e.target.closest('.remove-domain');
+            const domainToRemove = button.getAttribute('data-domain');
+            const forDomain = button.getAttribute('data-for-domain');
+            if (confirm(`Remove ${domainToRemove} from whitelist?`)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const formData = new FormData();
+                formData.append('whitelist_domain', domainToRemove);
+                if (forDomain) {
+                    formData.append('for_domain', forDomain);
+                }
+
+                fetch(`/whitelist/${domain}/remove_domain`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + (data.message || data.error));
+                    }
+                })
+                .catch(error => {
+                    alert('Error removing domain: ' + error);
+                });
+            }
         }
     });
 
@@ -632,10 +1045,20 @@ $(document).ready(function() {
         const email = $('#searchEmail').val();
         const days = $('#searchDays').val();
 
-        $.post(`/whitelist/${domain}/search_sender`, {
-            sender_email: email,
-            days: days
-        }, function(response) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('sender_email', email);
+        formData.append('days', days);
+
+        fetch(`/whitelist/${domain}/search_sender`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(response => {
             if (response.success) {
                 $('#searchResults').show();
                 const tbody = $('#searchResultsBody');
@@ -643,8 +1066,8 @@ $(document).ready(function() {
 
                 if (response.results.length > 0) {
                     response.results.forEach(function(emailData) {
-                        const scoreClass = emailData.spam_score > 5 ? 'text-danger' :
-                                          emailData.spam_score > 3 ? 'text-warning' : 'text-success';
+                        const scoreClass = emailData.spam_score >= 10 ? 'text-danger' :
+                                          emailData.spam_score >= 6 ? 'text-warning' : 'text-success';
 
                         tbody.append(`
                             <tr>
@@ -670,6 +1093,10 @@ $(document).ready(function() {
             } else {
                 alert('Error: ' + response.error);
             }
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            alert('Error searching: ' + error);
         });
     });
 
@@ -692,18 +1119,32 @@ $(document).ready(function() {
         if ($('#authDkim').is(':checked')) requireAuth.push('dkim');
         if ($('#authDmarc').is(':checked')) requireAuth.push('dmarc');
 
-        $.post(`/whitelist/${forDomain || domain}/add_sender`, {
-            sender_email: email,
-            trust_bonus: trustBonus,
-            require_auth: requireAuth,
-            for_domain: forDomain || domain
-        }, function(response) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('sender_email', email);
+        formData.append('trust_bonus', trustBonus);
+        formData.append('for_domain', forDomain || domain);
+        requireAuth.forEach(auth => formData.append('require_auth', auth));
+
+        fetch(`/whitelist/${forDomain || domain}/add_sender`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(response => {
             if (response.success) {
                 alert(response.message);
                 location.reload();
             } else {
-                alert('Error: ' + response.message);
+                alert('Error: ' + (response.message || response.error));
             }
+        })
+        .catch(error => {
+            console.error('Add sender error:', error);
+            alert('Error adding sender: ' + error);
         });
     });
 
@@ -714,18 +1155,32 @@ $(document).ready(function() {
         const trustLevel = $('#domainTrustLevel').val();
         const bypassChecks = $('#bypassChecks').is(':checked');
 
-        $.post(`/whitelist/${domain}/add_domain`, {
-            target_domain: targetDomain,
-            trust_level: trustLevel,
-            bypass_checks: bypassChecks,
-            require_auth: ['spf']
-        }, function(response) {
-            if (response.success) {
-                alert(response.message);
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('target_domain', targetDomain);
+        formData.append('trust_level', trustLevel);
+        formData.append('bypass_checks', bypassChecks);
+        formData.append('require_auth', 'spf');
+
+        fetch(`/whitelist/${domain}/add_domain`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
                 location.reload();
             } else {
-                alert('Error: ' + response.error);
+                alert('Error: ' + (data.error || data.message));
             }
+        })
+        .catch(error => {
+            console.error('Add domain error:', error);
+            alert('Error adding domain: ' + error);
         });
     });
 });

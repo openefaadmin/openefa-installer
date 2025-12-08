@@ -1,0 +1,74 @@
+{
+  "_setup_instructions": {
+    "description": "SMS/Text notifications via ClickSend API for VIP email alerts",
+    "step_1": "Create a ClickSend account at https://www.clicksend.com/",
+    "step_2": "Get your API credentials from: Dashboard > Account > API Credentials",
+    "step_3": "Add credentials to /etc/spacy-server/.env file:",
+    "step_3_example": "CLICKSEND_USERNAME=your_username\nCLICKSEND_API_KEY=your_api_key",
+    "step_4": "Update 'recipients' arrays below with phone numbers in E.164 format (+1XXXXXXXXXX)",
+    "step_5": "Set 'enabled' to true for clicksend and desired notification types",
+    "step_6": "Restart spacyweb service: sudo systemctl restart spacyweb",
+    "note": "ClickSend offers free trial credits for testing"
+  },
+  "clicksend": {
+    "enabled": false,
+    "from_number": "OpenEFA",
+    "sender_name": "OpenEFA Security"
+  },
+  "notification_settings": {
+    "high_risk_alerts": {
+      "enabled": true,
+      "spam_score_threshold": 30,
+      "recipients": [
+        "+1XXXXXXXXXX"
+      ],
+      "triggers": {
+        "phishing_detected": false,
+        "bec_detected": true,
+        "virus_detected": true,
+        "recipient_domain_impersonation": false,
+        "high_spam_score": false
+      }
+    },
+    "system_alerts": {
+      "enabled": true,
+      "recipients": [
+        "+1XXXXXXXXXX"
+      ],
+      "triggers": {
+        "service_failures": true,
+        "database_errors": true,
+        "critical_errors": true
+      }
+    },
+    "daily_summary": {
+      "enabled": false,
+      "recipients": [
+        "+1XXXXXXXXXX"
+      ],
+      "send_time": "08:00",
+      "timezone": "America/Los_Angeles",
+      "include_stats": {
+        "total_processed": true,
+        "spam_blocked": true,
+        "threats_detected": true,
+        "quarantined": true
+      }
+    }
+  },
+  "rate_limiting": {
+    "max_notifications_per_hour": 10,
+    "cooldown_minutes": 5,
+    "duplicate_suppression_minutes": 30
+  },
+  "message_templates": {
+    "high_risk_email": "[OpenEFA] ALERT: High-risk email detected. From: {sender}, Score: {score}, Reason: {reason}",
+    "phishing_detected": "[OpenEFA] SECURITY ALERT: Phishing attempt blocked from {sender}",
+    "bec_detected": "[OpenEFA] SECURITY ALERT: Business Email Compromise attempt from {sender}",
+    "virus_detected": "[OpenEFA] SECURITY ALERT: Virus detected in email from {sender}",
+    "system_error": "[OpenEFA] SYSTEM ALERT: {error_type} - {message}",
+    "daily_summary": "[OpenEFA] Daily Report: Processed {total}, Blocked {spam}, Threats {threats}, Quarantined {quarantined}"
+  },
+  "version": "1.0",
+  "last_modified": null
+}

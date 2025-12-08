@@ -26,25 +26,49 @@ def safe_log(message):
 def clean_text_for_language_detection(text):
     """
     Clean text to remove content that can cause false language detection
+    Enhanced to better extract message body content
     """
+    # Remove email headers (everything before first double newline or HTML tag)
+    # This helps extract just the body content
+    if '\n\n' in text:
+        parts = text.split('\n\n', 1)
+        # If first part looks like headers (has colons and common header keywords)
+        if ':' in parts[0] and any(h in parts[0] for h in ['From:', 'To:', 'Subject:', 'Date:', 'Received:']):
+            text = parts[1]
+
+    # Remove MIME boundaries and content-type declarations
+    text = re.sub(r'--=+.*?=+--', ' ', text)
+    text = re.sub(r'Content-Type:.*?\n', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'Content-Transfer-Encoding:.*?\n', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'boundary=.*?\n', ' ', text, flags=re.IGNORECASE)
+
     # Remove base64-like content (long strings of alphanumeric + =/)
     text = re.sub(r'[A-Za-z0-9+/]{50,}={0,2}', ' ', text)
-    
+
     # Remove HTML tags and entities
     text = re.sub(r'<[^>]+>', ' ', text)
     text = re.sub(r'&[a-zA-Z]+;', ' ', text)
     text = re.sub(r'&#\d+;', ' ', text)
-    
-    # Remove email addresses and URLs
+
+    # Remove email addresses and URLs (but preserve the text around them)
     text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', ' ', text)
     text = re.sub(r'https?://[^\s]+', ' ', text)
-    
+    text = re.sub(r'www\.[^\s]+', ' ', text)
+
     # Remove tracking codes and IDs (common in marketing emails)
     text = re.sub(r'\b[A-Za-z0-9]{20,}\b', ' ', text)
-    
+
+    # Remove common email footer patterns
+    text = re.sub(r'(unsubscribe|click here|view in browser)', ' ', text, flags=re.IGNORECASE)
+
+    # Remove excessive punctuation and separators
+    text = re.sub(r'[─]{4,}', ' ', text)
+    text = re.sub(r'[=]{4,}', ' ', text)
+    text = re.sub(r'[-]{4,}', ' ', text)
+
     # Remove excessive whitespace
     text = re.sub(r'\s+', ' ', text).strip()
-    
+
     return text
 
 def detect_cjk_language(text):
@@ -86,12 +110,13 @@ def detect_cjk_language(text):
     if char_counts['total_meaningful'] < 20:
         return 'en', 0.0, char_counts
 
-    cjk_total = (char_counts['chinese'] + char_counts['japanese_hiragana'] + 
+    cjk_total = (char_counts['chinese'] + char_counts['japanese_hiragana'] +
                  char_counts['japanese_katakana'] + char_counts['korean'])
     cjk_ratio = cjk_total / char_counts['total_meaningful']
 
-    # INCREASED threshold from 0.05 to 0.3 (30% CJK characters required)
-    if cjk_ratio < 0.3:
+    # Lowered threshold from 0.3 to 0.15 (15% CJK characters required)
+    # This better handles emails with mixed content (HTML, headers, etc.)
+    if cjk_ratio < 0.15:
         return 'en', 0.0, char_counts
 
     # Require significant presence for each language
@@ -166,8 +191,9 @@ def detect_language_comprehensive(text, sender_domain='', sender_address=''):
     cjk_lang, cjk_confidence, char_counts = detect_cjk_language(clean_text)
     result['char_stats'] = char_counts
 
-    # INCREASED confidence threshold from 0.1 to 0.5
-    if cjk_lang in ['ja', 'ko', 'zh'] and cjk_confidence > 0.5:
+    # Lowered confidence threshold from 0.5 to 0.2 for better CJK detection
+    # 20% confidence is sufficient when CJK characters are clearly present
+    if cjk_lang in ['ja', 'ko', 'zh'] and cjk_confidence > 0.2:
         result['language'] = cjk_lang
         result['confidence'] = cjk_confidence
         result['method'] = 'cjk_detection'
@@ -198,8 +224,9 @@ def detect_language_comprehensive(text, sender_domain='', sender_address=''):
 
             result['langdetect_results'] = [(l.lang, l.prob) for l in all_langs[:3]]
 
-            # INCREASED confidence threshold from 0.8 to 0.9
-            if lang_confidence > 0.9:
+            # Use 0.7 (70%) confidence threshold for better Spanish/other language detection
+            # Old threshold of 0.9 was too high and caused false English defaults
+            if lang_confidence > 0.7:
                 result['language'] = detected_lang
                 result['confidence'] = lang_confidence
                 result['method'] = 'langdetect'
@@ -209,8 +236,9 @@ def detect_language_comprehensive(text, sender_domain='', sender_address=''):
             safe_log(f"Langdetect error: {e}")
 
     # Default to English if no clear language detected
+    # Only use this as last resort when confidence is very low
     result['language'] = 'en'
-    result['confidence'] = 0.5
+    result['confidence'] = 0.3  # Lower confidence for default to indicate uncertainty
     result['method'] = 'default'
     return result
 
@@ -226,7 +254,10 @@ def analyze_email_language(msg, text_content, from_header):
         'headers_to_add': {}
     }
 
-    # REMOVED blanket language blocking - now use context-based approach
+    # Define allowed languages (English and Spanish)
+    ALLOWED_LANGUAGES = ['en', 'es', 'unknown']
+
+    # HIGH_RISK_COMBINATIONS for extra penalties
     HIGH_RISK_COMBINATIONS = [
         ('ja', ['.cn']),  # Japanese content from Chinese domains
         ('zh', ['.jp']),  # Chinese content from Japanese domains
@@ -266,11 +297,32 @@ def analyze_email_language(msg, text_content, from_header):
                 analysis['headers_to_add']['X-Language-Phishing-Risk'] = 'high'
                 safe_log(f"High-risk language/domain combo: {risk_msg}")
 
-        # Only apply penalties for confirmed high-risk scenarios
+        # Apply penalties based on language
+        spam_penalty = 0.0
+
+        # Check if language is not English or Spanish
+        if (lang_result['language'] not in ALLOWED_LANGUAGES and
+            lang_result['confidence'] > 0.3 and  # Only if we're confident about the detection
+            not lang_result['is_legitimate_sender']):
+
+            # Heavy penalty for non-English/Spanish languages
+            spam_penalty = 15.0
+            analysis['risk_indicators'].append(f"Non-English/Spanish language: {lang_result['language']}")
+            analysis['headers_to_add']['X-Language-Block-Reason'] = f"Language not allowed: {lang_result['language']}"
+            safe_log(f"⚠️  Heavy spam penalty ({spam_penalty}) for non-allowed language: {lang_result['language']}")
+
+        # Extra penalty for high-risk combinations
         if analysis['risk_indicators'] and not lang_result['is_legitimate_sender']:
-            # Much lower penalty than before
-            analysis['headers_to_add']['X-Language-Spam-Penalty'] = '2.0'  # Reduced from 7.0
-        elif lang_result['is_legitimate_sender']:
+            # Add extra penalty for suspicious domain/language combos
+            spam_penalty += 5.0
+            safe_log(f"⚠️  Additional penalty (+5.0) for high-risk language/domain combination")
+
+        # Apply the penalty
+        if spam_penalty > 0:
+            analysis['headers_to_add']['X-Language-Spam-Penalty'] = str(spam_penalty)
+
+        # Mark legitimate senders
+        if lang_result['is_legitimate_sender']:
             analysis['headers_to_add']['X-Language-Sender-Trusted'] = 'true'
 
         safe_log(f"Language detection: {analysis['language']} ({analysis['confidence']:.2f}) via {analysis['method']}")

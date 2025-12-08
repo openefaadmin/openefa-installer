@@ -60,33 +60,45 @@ class EnhancedEmailReportGenerator:
             fontName='Helvetica-Bold'
         ))
 
-    def get_enhanced_domain_stats(self, engine, domain, date_from, date_to):
-        """Get comprehensive statistics for a domain including 30-day trends"""
+    def get_enhanced_domain_stats(self, engine, domain, date_from, date_to, user_filter_clause=None):
+        """Get comprehensive statistics for a domain including 30-day trends
+
+        Args:
+            engine: Database engine
+            domain: Domain name (for backwards compatibility, may be ignored if user_filter_clause provided)
+            date_from: Start date (YYYY-MM-DD)
+            date_to: End date (YYYY-MM-DD)
+            user_filter_clause: Optional WHERE clause for user-specific filtering
+                               If provided, this overrides domain-based filtering
+        """
         try:
             print(f"Getting stats for {domain} from {date_from} to {date_to}")
+            if user_filter_clause:
+                print(f"Using user-specific filter: {user_filter_clause[:100]}...")
+
             with engine.connect() as conn:
                 # Get current period stats
-                current_stats = self._get_period_stats(conn, domain, date_from, date_to)
-                
+                current_stats = self._get_period_stats(conn, domain, date_from, date_to, user_filter_clause)
+
                 # Get previous 30-day period for comparison
                 previous_date_to = datetime.strptime(date_from, '%Y-%m-%d')
                 previous_date_from = (previous_date_to - timedelta(days=30)).strftime('%Y-%m-%d')
                 previous_date_to_str = (previous_date_to - timedelta(days=1)).strftime('%Y-%m-%d')
-                
-                previous_stats = self._get_period_stats(conn, domain, previous_date_from, previous_date_to_str)
-                
+
+                previous_stats = self._get_period_stats(conn, domain, previous_date_from, previous_date_to_str, user_filter_clause)
+
                 # Get daily email volume for trend analysis
-                daily_volume = self._get_daily_volume(conn, domain, date_from, date_to)
-                
+                daily_volume = self._get_daily_volume(conn, domain, date_from, date_to, user_filter_clause)
+
                 # Get hourly distribution
-                hourly_distribution = self._get_hourly_distribution(conn, domain, date_from, date_to)
-                
+                hourly_distribution = self._get_hourly_distribution(conn, domain, date_from, date_to, user_filter_clause)
+
                 # Get top senders
-                top_senders = self._get_top_senders(conn, domain, date_from, date_to)
-                
+                top_senders = self._get_top_senders(conn, domain, date_from, date_to, user_filter_clause=user_filter_clause)
+
                 # Get security threats by type
-                security_threats = self._get_security_threats(conn, domain, date_from, date_to)
-                
+                security_threats = self._get_security_threats(conn, domain, date_from, date_to, user_filter_clause)
+
                 return {
                     'current_period': current_stats,
                     'previous_period': previous_stats,
@@ -95,16 +107,22 @@ class EnhancedEmailReportGenerator:
                     'top_senders': top_senders,
                     'security_threats': security_threats
                 }
-                
+
         except Exception as e:
             print(f"Error getting enhanced domain stats: {e}")
             return None
 
-    def _get_period_stats(self, conn, domain, date_from, date_to):
-        """Get statistics for a specific time period"""
+    def _get_period_stats(self, conn, domain, date_from, date_to, user_filter_clause=None):
+        """Get statistics for a specific time period with optional user filtering"""
+        # Use user-specific filter if provided, otherwise fall back to domain filter
+        if user_filter_clause:
+            filter_condition = user_filter_clause
+        else:
+            filter_condition = f"recipients LIKE '%@{domain}%'"
+
         base_query = f"""
             FROM email_analysis
-            WHERE recipients LIKE '%@{domain}%'
+            WHERE ({filter_condition})
             AND DATE(timestamp) >= '{date_from}'
             AND DATE(timestamp) <= '{date_to}'
         """
@@ -177,12 +195,18 @@ class EnhancedEmailReportGenerator:
             'blocked_domains': blocked_domains
         }
 
-    def _get_daily_volume(self, conn, domain, date_from, date_to):
-        """Get daily email volume for trend analysis"""
+    def _get_daily_volume(self, conn, domain, date_from, date_to, user_filter_clause=None):
+        """Get daily email volume for trend analysis with optional user filtering"""
+        # Use user-specific filter if provided, otherwise fall back to domain filter
+        if user_filter_clause:
+            filter_condition = user_filter_clause
+        else:
+            filter_condition = f"recipients LIKE '%@{domain}%'"
+
         query = f"""
             SELECT DATE(timestamp) as email_date, COUNT(*) as count
             FROM email_analysis
-            WHERE recipients LIKE '%@{domain}%'
+            WHERE ({filter_condition})
             AND DATE(timestamp) >= '{date_from}'
             AND DATE(timestamp) <= '{date_to}'
             GROUP BY DATE(timestamp)
@@ -190,12 +214,18 @@ class EnhancedEmailReportGenerator:
         """
         return dict(conn.execute(text(query)).fetchall())
 
-    def _get_hourly_distribution(self, conn, domain, date_from, date_to):
-        """Get hourly distribution of emails"""
+    def _get_hourly_distribution(self, conn, domain, date_from, date_to, user_filter_clause=None):
+        """Get hourly distribution of emails with optional user filtering"""
+        # Use user-specific filter if provided, otherwise fall back to domain filter
+        if user_filter_clause:
+            filter_condition = user_filter_clause
+        else:
+            filter_condition = f"recipients LIKE '%@{domain}%'"
+
         query = f"""
             SELECT HOUR(timestamp) as hour, COUNT(*) as count
             FROM email_analysis
-            WHERE recipients LIKE '%@{domain}%'
+            WHERE ({filter_condition})
             AND DATE(timestamp) >= '{date_from}'
             AND DATE(timestamp) <= '{date_to}'
             GROUP BY HOUR(timestamp)
@@ -203,12 +233,18 @@ class EnhancedEmailReportGenerator:
         """
         return dict(conn.execute(text(query)).fetchall())
 
-    def _get_top_senders(self, conn, domain, date_from, date_to, limit=10):
-        """Get top email senders by volume"""
+    def _get_top_senders(self, conn, domain, date_from, date_to, limit=10, user_filter_clause=None):
+        """Get top email senders by volume with optional user filtering"""
+        # Use user-specific filter if provided, otherwise fall back to domain filter
+        if user_filter_clause:
+            filter_condition = user_filter_clause
+        else:
+            filter_condition = f"recipients LIKE '%@{domain}%'"
+
         query = f"""
             SELECT sender, COUNT(*) as count
             FROM email_analysis
-            WHERE recipients LIKE '%@{domain}%'
+            WHERE ({filter_condition})
             AND DATE(timestamp) >= '{date_from}'
             AND DATE(timestamp) <= '{date_to}'
             GROUP BY sender
@@ -276,16 +312,22 @@ class EnhancedEmailReportGenerator:
                 'rules': []
             }
     
-    def _get_security_threats(self, conn, domain, date_from, date_to):
-        """Get detailed security threat breakdown"""
+    def _get_security_threats(self, conn, domain, date_from, date_to, user_filter_clause=None):
+        """Get detailed security threat breakdown with optional user filtering"""
+        # Use user-specific filter if provided, otherwise fall back to domain filter
+        if user_filter_clause:
+            filter_condition = user_filter_clause
+        else:
+            filter_condition = f"recipients LIKE '%@{domain}%'"
+
         query = f"""
-            SELECT 
+            SELECT
                 email_category,
                 COUNT(*) as count,
                 AVG(spam_score) as avg_score,
                 MAX(spam_score) as max_score
-            FROM spacy_analysis
-            WHERE recipients LIKE '%@{domain}%'
+            FROM email_analysis
+            WHERE ({filter_condition})
             AND DATE(timestamp) >= '{date_from}'
             AND DATE(timestamp) <= '{date_to}'
             AND email_category IN ('spam', 'phishing', 'suspicious')
@@ -358,12 +400,22 @@ class EnhancedEmailReportGenerator:
         
         return img_buffer
 
-    def generate_enhanced_domain_report(self, engine, domain, date_from, date_to, output_path, user_info=None):
-        """Generate comprehensive PDF report for a domain"""
-        
+    def generate_enhanced_domain_report(self, engine, domain, date_from, date_to, output_path, user_info=None, user_filter_clause=None):
+        """Generate comprehensive PDF report for a domain with optional user-specific filtering
+
+        Args:
+            engine: Database engine
+            domain: Domain name
+            date_from: Start date (YYYY-MM-DD)
+            date_to: End date (YYYY-MM-DD)
+            output_path: Path to save the PDF
+            user_info: Dict with user information (name, email, etc.)
+            user_filter_clause: Optional WHERE clause for user-specific filtering
+        """
+
         try:
-            # Get enhanced statistics
-            stats = self.get_enhanced_domain_stats(engine, domain, date_from, date_to)
+            # Get enhanced statistics with user-specific filtering
+            stats = self.get_enhanced_domain_stats(engine, domain, date_from, date_to, user_filter_clause)
             if not stats:
                 print(f"ERROR: No stats returned for domain {domain}")
                 return False
@@ -387,7 +439,34 @@ class EnhancedEmailReportGenerator:
         )
         
         story = []
-        
+
+        # OpenEFA Branding Header
+        branding_style = ParagraphStyle(
+            name='Branding',
+            parent=self.styles['Normal'],
+            fontSize=28,
+            textColor=colors.HexColor('#1e3a8a'),  # Dark blue
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceAfter=30  # Increased spacing to prevent overlap
+        )
+        tagline_style = ParagraphStyle(
+            name='Tagline',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            textColor=colors.HexColor('#64748b'),  # Slate gray
+            alignment=TA_CENTER,
+            spaceAfter=20
+        )
+
+        story.append(Paragraph("OpenEFA", branding_style))
+        story.append(Paragraph("Open Email Filtering Appliance", tagline_style))
+
+        # Separator line
+        from reportlab.platypus import HRFlowable
+        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1e3a8a'),
+                               spaceAfter=20, spaceBefore=10))
+
         # Title and header
         title = Paragraph(f"Executive Email Security Report", self.styles['CustomTitle'])
         story.append(title)

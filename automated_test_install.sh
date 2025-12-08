@@ -30,7 +30,6 @@ export OPENEFA_DB_NAME="spacy_email_db"
 export OPENEFA_DB_USER="spacy_user"
 export OPENEFA_ADMIN_USER="admin"
 export OPENEFA_RELAY_PORT="25"
-export OPENEFA_DNS_RESOLVER=""  # Empty = use system default
 export OPENEFA_MODULE_TIER="2"  # 1=Core, 2=Standard, 3=Advanced
 export OPENEFA_DEBUG_LOGGING="1"  # 1=enabled, 0=disabled
 

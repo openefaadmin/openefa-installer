@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenEFA Quarantine Digest</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .summary {
+            padding: 25px 20px;
+            background-color: #f8f9fa;
+            border-bottom: 3px solid #667eea;
+        }
+        .summary h2 {
+            margin: 0 0 15px 0;
+            font-size: 22px;
+            color: #333;
+        }
+        .summary-stats {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-box {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .content {
+            padding: 20px;
+        }
+        .email-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .email-table thead {
+            background-color: #e9ecef;
+        }
+        .email-table th {
+            padding: 12px 8px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .email-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 14px;
+            color: #333;
+            vertical-align: middle;
+        }
+        .email-row:hover {
+            background-color: #f8f9fa;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .sender {
+            font-weight: 500;
+            color: #495057;
+        }
+        .subject {
+            color: #212529;
+        }
+        .score {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            font-size: 13px;
+        }
+        .score-high {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .score-medium {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .score-low {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .actions {
+            white-space: nowrap;
+        }
+        .btn {
+            display: inline-block;
+            padding: 6px 12px;
+            margin: 2px;
+            font-size: 12px;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 4px;
+            text-align: center;
+            transition: opacity 0.2s;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .btn-release {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-whitelist {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .btn-view {
+            background-color: #6c757d;
+            color: white;
+        }
+        .no-emails {
+            padding: 40px 20px;
+            text-align: center;
+            color: #6c757d;
+        }
+        .no-emails-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .footer {
+            padding: 25px 20px;
+            background-color: #f8f9fa;
+            text-align: center;
+            margin-top: 30px;
+        }
+        .footer-links {
+            margin: 15px 0;
+        }
+        .footer-link {
+            color: #667eea;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 14px;
+        }
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+        .footer-text {
+            color: #6c757d;
+            font-size: 12px;
+            line-height: 1.6;
+            margin-top: 15px;
+        }
+        .footer-branding {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        .footer-logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        .footer-tagline {
+            font-size: 11px;
+            color: #6c757d;
+        }
+        @media only screen and (max-width: 600px) {
+            .summary-stats {
+                flex-direction: column;
+            }
+            .email-table {
+                font-size: 12px;
+            }
+            .email-table th,
+            .email-table td {
+                padding: 8px 4px;
+            }
+            .btn {
+                display: block;
+                margin: 4px 0;
+            }
+            .header h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛡️ OpenEFA Quarantine Digest</h1>
+            <p>{{ frequency|capitalize }} Summary for {{ domain }}</p>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="summary">
+            <h2>Summary</h2>
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <div class="stat-label">Quarantined Emails</div>
+                    <div class="stat-value">{{ email_count }}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Period</div>
+                    <div class="stat-value" style="font-size: 14px;">{{ start_date }} to {{ end_date }}</div>
+                </div>
+                {% if avg_spam_score %}
+                <div class="stat-box">
+                    <div class="stat-label">Avg Spam Score</div>
+                    <div class="stat-value">{{ "%.1f"|format(avg_spam_score) }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Content Section -->
+        <div class="content">
+            {% if emails %}
+                <p>You have <strong>{{ email_count }}</strong> email{{ 's' if email_count != 1 else '' }} to review (includes recently released emails if enabled):</p>
+
+                {% for domain in sorted_domains %}
+                    {% set domain_emails = emails_by_domain[domain] %}
+
+                    <!-- Domain Header -->
+                    <h3 style="margin-top: 25px; margin-bottom: 10px; color: #667eea; font-size: 18px; border-bottom: 2px solid #667eea; padding-bottom: 5px;">
+                        📧 {{ domain|upper }} ({{ domain_emails|length }} email{{ 's' if domain_emails|length != 1 else '' }})
+                    </h3>
+
+                    <table class="email-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 120px;">Time</th>
+                                <th style="width: 180px;">From</th>
+                                <th>Subject</th>
+                                <th style="width: 80px; text-align: center;">Score</th>
+                                <th style="width: 200px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for email in domain_emails %}
+                            <tr class="email-row" {% if email.disposition == 'released' %}style="background-color: #f0f9ff;"{% endif %}>
+                                <td class="timestamp">{{ email.timestamp }}</td>
+                                <td class="sender">{{ email.sender|truncate(40, True, '...') }}</td>
+                                <td class="subject">
+                                    {{ email.subject|truncate(60, True, '...') }}
+                                    {% if email.disposition == 'released' %}
+                                    <span style="display: inline-block; margin-left: 8px; padding: 2px 8px; background-color: #059669; color: white; font-size: 10px; border-radius: 3px; font-weight: bold;">✓ RELEASED</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if email.spam_score >= 10 %}
+                                    <span class="score score-high">{{ "%.1f"|format(email.spam_score) }}</span>
+                                    {% elif email.spam_score >= 5 %}
+                                    <span class="score score-medium">{{ "%.1f"|format(email.spam_score) }}</span>
+                                    {% else %}
+                                    <span class="score score-low">{{ "%.1f"|format(email.spam_score) }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="actions" style="text-align: center;">
+                                    {% if email.disposition == 'released' %}
+                                    <span style="color: #059669; font-size: 12px; font-style: italic;">Already released</span>
+                                    {% else %}
+                                    {% if release_enabled %}
+                                    <a href="{{ base_url }}{{ action_path }}/{{ email.release_token }}" class="btn btn-release">Release</a>
+                                    {% endif %}
+                                    {% if whitelist_enabled %}
+                                    <a href="{{ base_url }}{{ action_path }}/{{ email.whitelist_token }}" class="btn btn-whitelist">Whitelist</a>
+                                    {% endif %}
+                                    {% endif %}
+                                    <a href="{{ base_url }}{{ quarantine_path }}/{{ email.id }}" class="btn btn-view">View</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endfor %}
+
+            {% else %}
+                <div class="no-emails">
+                    <div class="no-emails-icon">✅</div>
+                    <h3>No Quarantined Emails</h3>
+                    <p>Great news! You have no emails in quarantine matching your preferences.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-links">
+                <a href="{{ base_url }}{{ quarantine_path }}" class="footer-link">View All Quarantined Emails</a>
+                <a href="{{ base_url }}{{ settings_path }}" class="footer-link">Manage Preferences</a>
+            </div>
+
+            <div class="footer-text">
+                This is an automated quarantine digest from OpenEFA Email Security.<br>
+                {% if token_expiration_hours %}
+                Action links in this email expire in {{ token_expiration_hours }} hours.<br>
+                {% endif %}
+                To unsubscribe from these notifications, <a href="{{ base_url }}{{ settings_path }}" style="color: #667eea;">visit your settings</a>.
+            </div>
+
+            <div class="footer-branding">
+                <div class="footer-logo">
+                    <a href="https://openefa.com" style="color: #667eea; text-decoration: none;">🛡️ OpenEFA Email Security</a>
+                </div>
+                <div class="footer-tagline">
+                    Advanced Spam Filtering • Real-Time Protection • Enterprise-Grade Security
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

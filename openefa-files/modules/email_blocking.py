@@ -25,6 +25,10 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Set, Tuple, Any
 from functools import lru_cache
 import threading
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Database imports
 try:
@@ -82,7 +86,7 @@ class BlockingRule(Base):
     __tablename__ = 'blocking_rules'
 
     id = Column(Integer, primary_key=True)
-    client_domain_id = Column(Integer, ForeignKey('client_domains.id'), nullable=False)
+    client_domain_id = Column(Integer, ForeignKey('client_domains.id'), nullable=True)  # NULL for global rules
     rule_type = Column(String(50), nullable=False)  # 'domain', 'country', 'ip', 'cidr'
     rule_value = Column(String(255), nullable=False)  # .cn, CN, 192.168.1.1, etc.
     rule_pattern = Column(String(50), default='exact')  # 'exact', 'wildcard', 'regex'
@@ -93,13 +97,15 @@ class BlockingRule(Base):
     active = Column(Boolean, default=True)
     priority = Column(Integer, default=100)  # Lower number = higher priority
     whitelist = Column(Boolean, default=False)  # If True, this is an exception to blocking
-    
+    is_global = Column(Boolean, default=False)  # If True, applies to all client domains
+
     # Indexes for performance
     __table_args__ = (
         Index('idx_blocking_rules_lookup', 'client_domain_id', 'rule_type', 'active'),
         Index('idx_blocking_rules_priority', 'priority'),
+        Index('idx_global_rules', 'is_global', 'active', 'rule_type'),
     )
-    
+
     # Relationship
     client_domain = relationship("ClientDomain", back_populates="blocking_rules")
 
@@ -168,27 +174,31 @@ class EmailBlockingEngine:
             config = configparser.ConfigParser()
             config.read(self.config_path)
             
+            # Get database name from environment variable
+            db_name = os.getenv('DB_NAME', 'spacy_email_db')
+
             if config.has_section('client'):
                 user = config.get('client', 'user', fallback='root')
                 password = config.get('client', 'password', fallback='')
                 host = config.get('client', 'host', fallback='localhost')
-                database = config.get('client', 'database', fallback='spacy_email_db')
+                database = config.get('client', 'database', fallback=db_name)
             else:
                 # Fallback to reading file manually
                 user = 'root'
                 password = ''
+                database = db_name
                 with open(self.config_path, 'r') as f:
                     for line in f:
                         if line.startswith('user'):
                             user = line.split('=')[1].strip()
                         elif line.startswith('password'):
                             password = line.split('=')[1].strip()
-            
+
             # Build connection string with credentials
             if password:
-                db_url = f"mysql+pymysql://{user}:{password}@localhost:3306/spacy_email_db"
+                db_url = f"mysql+pymysql://{user}:{password}@localhost:3306/{database}"
             else:
-                db_url = f"mysql+pymysql://{user}@localhost:3306/spacy_email_db"
+                db_url = f"mysql+pymysql://{user}@localhost:3306/{database}"
             
             self.engine = create_engine(
                 db_url,
@@ -303,36 +313,41 @@ class EmailBlockingEngine:
                 pass
     
     def load_rules_for_domain(self, client_domain: str) -> List[Dict]:
-        """Load blocking rules for a specific client domain"""
+        """Load blocking rules for a specific client domain (includes global rules)"""
         # Check cache first
         cached_rules = self._get_cached_rules(client_domain)
         if cached_rules is not None:
             return cached_rules
-        
+
         if not self.SessionLocal:
             return []
-        
+
         rules = []
         session = None
-        
+
         try:
             session = self.SessionLocal()
-            
+
             # Get client domain
             client = session.query(ClientDomain).filter_by(
                 domain=client_domain,
                 active=True
             ).first()
-            
+
             if not client:
                 return []
-            
-            # Get active rules ordered by priority
-            db_rules = session.query(BlockingRule).filter_by(
-                client_domain_id=client.id,
-                active=True
+
+            # Get active rules for this domain + global rules, ordered by priority
+            # Global rules (is_global=1) apply to all domains
+            from sqlalchemy import or_
+            db_rules = session.query(BlockingRule).filter(
+                BlockingRule.active == True,
+                or_(
+                    BlockingRule.client_domain_id == client.id,
+                    BlockingRule.is_global == True
+                )
             ).order_by(BlockingRule.priority).all()
-            
+
             # Convert to dict for easier processing
             for rule in db_rules:
                 rules.append({
@@ -342,10 +357,11 @@ class EmailBlockingEngine:
                     'pattern': rule.rule_pattern,
                     'recipient_pattern': rule.recipient_pattern,
                     'whitelist': rule.whitelist,
+                    'is_global': rule.is_global,
                     'priority': rule.priority,
                     'description': rule.description
                 })
-            
+
             # Cache the rules
             self._cache_rules(client_domain, rules)
             

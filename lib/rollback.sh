@@ -16,9 +16,6 @@ stop_all_services() {
     local services=(
         "spacy-db-processor"
         "spacyweb"
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
     )
 
     for service in "${services[@]}"; do
@@ -40,9 +37,6 @@ remove_services() {
     local services=(
         "spacy-db-processor"
         "spacyweb"
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
     )
 
     for service in "${services[@]}"; do

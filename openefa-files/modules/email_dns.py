@@ -9,6 +9,8 @@ import json
 import os
 import re
 import sys
+import redis
+from datetime import datetime, timedelta
 
 class DNSValidator:
     def __init__(self, timeout=5, config_file='/opt/spacyserver/config/dns_whitelist.json'):
@@ -16,7 +18,38 @@ class DNSValidator:
         self.resolver.lifetime = timeout
         self.logger = logging.getLogger('email_dns')
         self.config_file = config_file
-        
+
+        # Initialize Redis cache
+        self.cache_enabled = True
+        self.cache_ttl = {
+            'mx': 3600,      # 1 hour for MX records
+            'spf': 3600,     # 1 hour for SPF records
+            'dmarc': 3600,   # 1 hour for DMARC records
+            'negative': 300  # 5 minutes for failed lookups
+        }
+        self.cache_stats = {
+            'hits': 0,
+            'misses': 0,
+            'errors': 0
+        }
+
+        try:
+            self.redis_client = redis.Redis(
+                host='localhost',
+                port=6379,
+                db=1,  # Use DB 1 for DNS cache
+                decode_responses=True,
+                socket_timeout=1,
+                socket_connect_timeout=1
+            )
+            # Test connection
+            self.redis_client.ping()
+            self.logger.info("Redis DNS cache initialized successfully")
+        except Exception as e:
+            self.logger.warning(f"Redis cache unavailable, falling back to no caching: {e}")
+            self.cache_enabled = False
+            self.redis_client = None
+
         # Load whitelist from config file
         self.dns_whitelist = set()
         self.config = {}
@@ -144,10 +177,10 @@ class DNSValidator:
         """Check if domain pair is a legitimate multi-domain architecture"""
         if not claimed_domain or not sending_domain:
             return False
-        
+
         claimed_lower = claimed_domain.lower()
         sending_lower = sending_domain.lower()
-        
+
         # Microsoft's legitimate multi-domain architecture
         microsoft_domains = {
             'microsoft.com', 'microsoftonline.com', 'outlook.com',
@@ -156,32 +189,107 @@ class DNSValidator:
             'azurerms.com', 'windows.net', 'azure.com', 'live.com',
             'hotmail.com', 'msn.com', 'passport.com'
         }
-        
-        # Both domains are Microsoft - legitimate architecture
-        if claimed_lower in microsoft_domains and sending_lower in microsoft_domains:
+
+        # Check if either domain is Microsoft (including subdomains)
+        claimed_is_microsoft = any(claimed_lower == d or claimed_lower.endswith('.' + d) for d in microsoft_domains)
+        sending_is_microsoft = any(sending_lower == d or sending_lower.endswith('.' + d) for d in microsoft_domains)
+
+        if claimed_is_microsoft and sending_is_microsoft:
             self.logger.info(f"✅ Microsoft multi-domain architecture: {claimed_domain} / {sending_domain}")
             return True
-        
+
         # Google's multi-domain architecture
         google_domains = {
-            'gmail.com', 'google.com', 'googlemail.com', 
+            'gmail.com', 'google.com', 'googlemail.com',
             'googleapis.com', 'gstatic.com', 'youtube.com'
         }
-        
-        if claimed_lower in google_domains and sending_lower in google_domains:
+
+        # Check if either domain is Google (including subdomains like mail.google.com)
+        claimed_is_google = any(claimed_lower == d or claimed_lower.endswith('.' + d) for d in google_domains)
+        sending_is_google = any(sending_lower == d or sending_lower.endswith('.' + d) for d in google_domains)
+
+        if claimed_is_google and sending_is_google:
             self.logger.info(f"✅ Google multi-domain architecture: {claimed_domain} / {sending_domain}")
             return True
-        
+
         # Amazon's multi-domain architecture
         amazon_domains = {
             'amazon.com', 'amazonaws.com', 'amazonses.com',
             'aws.amazon.com', 'awscloud.com'
         }
-        
-        if claimed_lower in amazon_domains and sending_lower in amazon_domains:
+
+        # Check if either domain is Amazon (including subdomains)
+        claimed_is_amazon = any(claimed_lower == d or claimed_lower.endswith('.' + d) for d in amazon_domains)
+        sending_is_amazon = any(sending_lower == d or sending_lower.endswith('.' + d) for d in amazon_domains)
+
+        if claimed_is_amazon and sending_is_amazon:
             self.logger.info(f"✅ Amazon multi-domain architecture: {claimed_domain} / {sending_domain}")
             return True
-        
+
+        # Email Service Provider (ESP) legitimate architectures
+        # These are third-party email services used by companies for bulk/marketing emails
+        esp_mappings = {
+            # Qualtrics (used by eBay, Synchrony, and many others)
+            'qemailserver.com': {'ebay.com', 'reply.ebay.com', 'qualtrics.com', 'synchronyfinancial.com', 'e.synchronyfinancial.com'},
+
+            # Epsilon (major ESP used by financial institutions)
+            'epsl1.com': {'synchronyfinancial.com', 'e.synchronyfinancial.com', 'epsilon.com'},
+            'pmx1.epsl1.com': {'synchronyfinancial.com', 'e.synchronyfinancial.com', 'epsilon.com'},
+
+            # SendGrid (major ESP)
+            'sendgrid.net': set(),  # Will be populated by reverse lookup
+            'sendgrid.com': set(),
+
+            # Mailchimp
+            'mcsv.net': set(),
+            'mailchimp.com': set(),
+
+            # Salesforce Marketing Cloud (ExactTarget)
+            'exacttarget.com': set(),
+            's10.exacttarget.com': set(),
+
+            # Constant Contact
+            'constantcontact.com': set(),
+            'ctctcdn.com': set(),
+
+            # Campaign Monitor
+            'createsend.com': set(),
+
+            # Responsys (Oracle)
+            'responsys.net': set(),
+
+            # SparkPost
+            'sparkpostmail.com': set(),
+
+            # Twilio SendGrid
+            'twilio.com': set(),
+
+            # Mailgun
+            'mailgun.org': set(),
+            'mailgun.net': set(),
+
+            # Postmark
+            'postmarkapp.com': set(),
+
+            # Amazon SES (already in Amazon section but adding for completeness)
+            'amazonses.com': {'amazon.com', 'aws.amazon.com'},
+        }
+
+        # Check if sending domain is a known ESP
+        for esp_domain, allowed_claimed_domains in esp_mappings.items():
+            if sending_lower.endswith(esp_domain) or esp_domain in sending_lower:
+                # If we have specific allowed claimed domains, check them
+                if allowed_claimed_domains:
+                    for allowed_domain in allowed_claimed_domains:
+                        if claimed_lower.endswith(allowed_domain) or allowed_domain in claimed_lower:
+                            self.logger.info(f"✅ ESP architecture detected: {claimed_domain} via {sending_domain} (ESP: {esp_domain})")
+                            return True
+                else:
+                    # For ESPs without specific mappings, we'll be more permissive
+                    # but still require basic SPF/DMARC validation (checked elsewhere)
+                    self.logger.info(f"✅ Known ESP detected: {sending_domain} (ESP: {esp_domain})")
+                    return True
+
         # Check if they're related subdomains
         if '.' in claimed_lower and '.' in sending_lower:
             claimed_base = '.'.join(claimed_lower.split('.')[-2:])
@@ -189,8 +297,213 @@ class DNSValidator:
             if claimed_base == sending_base:
                 self.logger.debug(f"Related domains detected: {claimed_domain} / {sending_domain}")
                 return True
-        
+
         return False
+
+    def _get_cache_key(self, domain, record_type):
+        """Generate Redis cache key"""
+        return f"dns:{record_type}:{domain.lower()}"
+
+    def _get_from_cache(self, domain, record_type):
+        """Retrieve DNS record from Redis cache"""
+        if not self.cache_enabled or not self.redis_client:
+            return None
+
+        try:
+            cache_key = self._get_cache_key(domain, record_type)
+            cached_data = self.redis_client.get(cache_key)
+
+            if cached_data:
+                self.cache_stats['hits'] += 1
+                data = json.loads(cached_data)
+
+                # Check if it's a negative cache entry
+                if data.get('is_negative_cache'):
+                    self.logger.debug(f"Cache HIT (negative) for {record_type} {domain}")
+                    return []  # Return empty list for negative cache
+
+                self.logger.debug(f"Cache HIT for {record_type} {domain}")
+                return data.get('records', [])
+
+            self.cache_stats['misses'] += 1
+            return None
+
+        except Exception as e:
+            self.cache_stats['errors'] += 1
+            self.logger.warning(f"Cache read error for {domain} ({record_type}): {e}")
+            return None
+
+    def _save_to_cache(self, domain, record_type, records):
+        """Save DNS records to Redis cache"""
+        if not self.cache_enabled or not self.redis_client:
+            return
+
+        try:
+            cache_key = self._get_cache_key(domain, record_type)
+
+            # Determine if this is a negative cache (empty result)
+            is_negative = not records or len(records) == 0
+
+            cache_data = {
+                'records': records,
+                'is_negative_cache': is_negative,
+                'cached_at': datetime.now().isoformat(),
+                'domain': domain,
+                'record_type': record_type
+            }
+
+            # Use appropriate TTL
+            ttl = self.cache_ttl.get('negative' if is_negative else record_type, 3600)
+
+            self.redis_client.setex(
+                cache_key,
+                ttl,
+                json.dumps(cache_data)
+            )
+
+            cache_type = "negative" if is_negative else "positive"
+            self.logger.debug(f"Cached {cache_type} {record_type} for {domain} (TTL: {ttl}s)")
+
+        except Exception as e:
+            self.cache_stats['errors'] += 1
+            self.logger.warning(f"Cache write error for {domain} ({record_type}): {e}")
+
+    def get_cache_stats(self):
+        """Get cache performance statistics"""
+        total_requests = self.cache_stats['hits'] + self.cache_stats['misses']
+        hit_rate = (self.cache_stats['hits'] / total_requests * 100) if total_requests > 0 else 0
+
+        stats = {
+            'enabled': self.cache_enabled,
+            'hits': self.cache_stats['hits'],
+            'misses': self.cache_stats['misses'],
+            'errors': self.cache_stats['errors'],
+            'total_requests': total_requests,
+            'hit_rate_percent': round(hit_rate, 2)
+        }
+
+        if self.cache_enabled and self.redis_client:
+            try:
+                # Get cache size from Redis
+                stats['cache_size'] = self.redis_client.dbsize()
+            except:
+                pass
+
+        return stats
+
+    def get_top_domains_from_db(self, limit=30):
+        """
+        Query database for top sender domains to pre-warm cache
+        Returns list of domain names sorted by email volume
+        """
+        try:
+            import mysql.connector
+
+            # Connect to database using environment variables
+            db = mysql.connector.connect(
+                host=os.getenv('DB_HOST', 'localhost'),
+                user=os.getenv('DB_USER', 'spacy_user'),
+                password=os.getenv('DB_PASSWORD'),
+                database=os.getenv('DB_NAME', 'spacy_email_db'),
+                port=int(os.getenv('DB_PORT', 3306)),
+                connection_timeout=5
+            )
+
+            cursor = db.cursor()
+
+            # Get top domains from last 30 days
+            query = """
+                SELECT
+                    SUBSTRING_INDEX(sender, '@', -1) as domain,
+                    COUNT(*) as email_count
+                FROM email_analysis
+                WHERE sender LIKE '%@%'
+                    AND timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                GROUP BY domain
+                ORDER BY email_count DESC
+                LIMIT %s
+            """
+
+            cursor.execute(query, (limit,))
+            results = cursor.fetchall()
+
+            # Clean up domains (remove trailing > and duplicates)
+            domains = []
+            seen = set()
+            for row in results:
+                domain = row[0].rstrip('>').strip()
+                # Skip invalid domains
+                if domain and '.' in domain and domain not in seen and domain != 'example.com':
+                    domains.append(domain)
+                    seen.add(domain)
+
+            cursor.close()
+            db.close()
+
+            self.logger.info(f"Found {len(domains)} unique high-volume domains for DNS pre-warming")
+            return domains[:limit]  # Return up to limit after deduplication
+
+        except Exception as e:
+            self.logger.warning(f"Could not query database for top domains: {e}")
+            # Return fallback list of common domains
+            return [
+                'gmail.com',
+                'yahoo.com',
+                'outlook.com',
+                'hotmail.com',
+                'aol.com',
+                'icloud.com',
+                'protonmail.com'
+            ]
+
+    def prewarm_dns_cache(self, domains=None, limit=30):
+        """
+        Pre-warm DNS cache with high-volume domains on startup
+        This eliminates cold-start delays for frequently-seen senders
+
+        Args:
+            domains: Optional list of domains to pre-warm. If None, queries database.
+            limit: Maximum number of domains to pre-warm (default: 30)
+        """
+        if not self.cache_enabled:
+            self.logger.info("DNS cache not enabled, skipping pre-warm")
+            return
+
+        start_time = time.time()
+
+        # Get domains from database if not provided
+        if domains is None:
+            domains = self.get_top_domains_from_db(limit)
+
+        if not domains:
+            self.logger.warning("No domains to pre-warm")
+            return
+
+        self.logger.info(f"Pre-warming DNS cache with {len(domains)} domains...")
+
+        cached_count = 0
+        for domain in domains:
+            try:
+                # Cache MX records
+                self.validate_mx(domain)
+
+                # Cache SPF records
+                self.validate_spf(domain)
+
+                # Cache DMARC records
+                self.validate_dmarc(domain)
+
+                cached_count += 1
+
+            except Exception as e:
+                # Log but continue - some domains may have DNS issues
+                self.logger.debug(f"Pre-warm skipped {domain}: {e}")
+                continue
+
+        elapsed = time.time() - start_time
+        self.logger.info(f"✅ DNS pre-warm complete: {cached_count}/{len(domains)} domains cached in {elapsed:.2f}s")
+
+        return cached_count
 
     def _get_fallback_value(self, record_type):
         """Get fallback value for whitelisted domains"""
@@ -323,57 +636,84 @@ class DNSValidator:
 
     def validate_mx(self, domain):
         # Check if whitelisted and skip validation is enabled
-        if (self._is_whitelisted(domain) and 
+        if (self._is_whitelisted(domain) and
             self.config.get('whitelist_behavior', {}).get('skip_dns_validation', True)):
-            
+
             if self.config.get('whitelist_behavior', {}).get('log_whitelisted_domains', False):
                 self.logger.info(f"Domain {domain} is whitelisted - skipping MX validation")
-            
+
             return [self._get_fallback_value('mx')]
-            
+
+        # Check cache first
+        cached_result = self._get_from_cache(domain, 'mx')
+        if cached_result is not None:
+            return cached_result
+
+        # Cache miss - perform DNS lookup
         try:
             answers = self.resolver.resolve(domain, 'MX')
             mxs = [r.exchange.to_text() for r in answers]
+            self._save_to_cache(domain, 'mx', mxs)
             return mxs
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout) as e:
             self.logger.warning(f"MX lookup failed for {domain}: {e}")
+            # Cache negative result
+            self._save_to_cache(domain, 'mx', [])
             return []
 
     def validate_spf(self, domain):
         # Check if whitelisted and skip validation is enabled
-        if (self._is_whitelisted(domain) and 
+        if (self._is_whitelisted(domain) and
             self.config.get('whitelist_behavior', {}).get('skip_dns_validation', True)):
-            
+
             if self.config.get('whitelist_behavior', {}).get('log_whitelisted_domains', False):
                 self.logger.info(f"Domain {domain} is whitelisted - skipping SPF validation")
-            
+
             return [self._get_fallback_value('spf')]
-            
+
+        # Check cache first
+        cached_result = self._get_from_cache(domain, 'spf')
+        if cached_result is not None:
+            return cached_result
+
+        # Cache miss - perform DNS lookup
         try:
             answers = self.resolver.resolve(domain, 'TXT')
             spf_records = [r.to_text().strip('"') for r in answers if r.to_text().startswith('"v=spf1')]
+            self._save_to_cache(domain, 'spf', spf_records)
             return spf_records
         except Exception as e:
             self.logger.warning(f"SPF lookup failed for {domain}: {e}")
+            # Cache negative result
+            self._save_to_cache(domain, 'spf', [])
             return []
 
     def validate_dmarc(self, domain):
         # Check if whitelisted and skip validation is enabled
-        if (self._is_whitelisted(domain) and 
+        if (self._is_whitelisted(domain) and
             self.config.get('whitelist_behavior', {}).get('skip_dns_validation', True)):
-            
+
             if self.config.get('whitelist_behavior', {}).get('log_whitelisted_domains', False):
                 self.logger.info(f"Domain {domain} is whitelisted - skipping DMARC validation")
-            
+
             return [self._get_fallback_value('dmarc')]
-            
+
+        # Check cache first
+        cached_result = self._get_from_cache(domain, 'dmarc')
+        if cached_result is not None:
+            return cached_result
+
+        # Cache miss - perform DNS lookup
         try:
             dmarc_domain = f"_dmarc.{domain}"
             answers = self.resolver.resolve(dmarc_domain, 'TXT')
             dmarc_records = [r.to_text().strip('"') for r in answers]
+            self._save_to_cache(domain, 'dmarc', dmarc_records)
             return dmarc_records
         except Exception as e:
             self.logger.warning(f"DMARC lookup failed for {domain}: {e}")
+            # Cache negative result
+            self._save_to_cache(domain, 'dmarc', [])
             return []
 
     def calculate_domain_reputation(self, domain, ip, is_trusted, spf_result):
@@ -485,7 +825,27 @@ def analyze_dns(msg, text_content):
             dns_spam_score += abs(reputation) * 2  # Bad reputation
         elif reputation > 3:
             dns_spam_score -= reputation * 0.5  # Good reputation reduces spam score
-        
+
+        # High-risk TLD penalties
+        sender_domain = from_header.split('@')[-1].strip('>').lower() if '@' in from_header else ''
+        HIGH_RISK_TLDS = {
+            '.asia': 2.0,  # High spam volume from .asia domains
+            '.cn': 3.0,    # China domains - high phishing risk
+            '.top': 2.5,   # Frequently used for spam
+            '.xyz': 2.0,   # High abuse rate
+            '.tk': 3.0,    # Free domain - very high spam
+            '.ml': 3.0,    # Free domain - very high spam
+            '.ga': 3.0,    # Free domain - very high spam
+            '.cf': 3.0,    # Free domain - very high spam
+            '.gq': 3.0     # Free domain - very high spam
+        }
+
+        for tld, penalty in HIGH_RISK_TLDS.items():
+            if sender_domain.endswith(tld):
+                dns_spam_score += penalty
+                print(f"⚠️  High-risk TLD detected: {tld} (+{penalty} spam points)", file=sys.stderr)
+                break
+
         # Ensure spam score doesn't go negative
         dns_spam_score = max(0.0, dns_spam_score)
         
@@ -517,6 +877,17 @@ def analyze_dns(msg, text_content):
 
 # Create global instance for import
 dns_validator = DNSValidator()
+
+# ============================================================================
+# DNS CACHE PRE-WARMING ON STARTUP
+# ============================================================================
+# Pre-warm DNS cache with top domains to eliminate cold-start delays
+# This runs automatically when the module is first imported
+try:
+    dns_validator.prewarm_dns_cache(limit=30)
+except Exception as e:
+    # Don't let pre-warming failure prevent module from loading
+    print(f"DNS pre-warm error: {e}", file=sys.stderr)
 
 # Export the wrapper function as the primary interface
 __all__ = ['analyze_dns', 'dns_validator', 'DNSValidator']

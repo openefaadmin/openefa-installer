@@ -41,11 +41,18 @@ class EmailPhishingDetector:
             # Urgency-based
             "urgent action required", "immediate action", "act now", "expires today",
             "limited time", "deadline approaching", "time sensitive",
+            "last notice", "final notice", "last warning", "final warning",
+            "account will be deleted", "will be deleted", "will be closed",
+            "account deleted", "account closure", "account suspended permanently",
 
             # Account-related
             "account suspended", "account locked", "verify your account",
+            "verify this mailbox", "verify mailbox", "verify this account", "auto-verify",
+            "problem verifying", "verifying your", "verification required", "verification needed",
             "confirm your identity", "update your information", "unusual activity",
             "security alert", "unauthorized access", "login attempt",
+            "account will be disconnected", "will be disconnected", "disconnected after",
+            "mailbox will be", "unable to receive", "wont be able to receive", "won't be able to receive",
 
             # Financial
             "update payment", "payment failed", "billing problem", "refund pending",
@@ -145,6 +152,12 @@ class EmailPhishingDetector:
             r'[a-z0-9]+-[a-z0-9]+-[a-z0-9]+\.(tk|ml|ga|cf|pw)',  # Suspicious TLDs
             r'secure-[a-z]+\.(com|net|org)',  # Fake security domains
             r'[a-z]+-update\.(com|net|org)',  # Update-themed domains
+            r'[a-z0-9]{10,}\.mocha\.app',  # Random mocha.app subdomains (cloud hosting)
+            r'[a-z0-9]{10,}\.vercel\.app',  # Random vercel.app subdomains
+            r'[a-z0-9]{10,}\.herokuapp\.com',  # Random herokuapp subdomains
+            r'[a-z0-9]{10,}\.netlify\.app',  # Random netlify.app subdomains
+            r'[a-z0-9]{10,}\.web\.app',  # Random Firebase hosting
+            r'[a-z0-9]{10,}\.cloudflareaccess\.com',  # Random Cloudflare pages
         ]
 
         # Legitimate domains that are often spoofed
@@ -355,11 +368,29 @@ class EmailPhishingDetector:
 
         risk_score = 0.0
 
+        # High-risk cloud hosting platforms with random subdomains
+        high_risk_hosting = [
+            r'[a-z0-9]{10,}\.mocha\.app',
+            r'[a-z0-9]{10,}\.vercel\.app',
+            r'[a-z0-9]{10,}\.herokuapp\.com',
+            r'[a-z0-9]{10,}\.netlify\.app',
+            r'[a-z0-9]{10,}\.web\.app',
+            r'[a-z0-9]{10,}\.cloudflareaccess\.com'
+        ]
+
         for url in urls:
-            # Check against suspicious URL patterns
+            # Check for high-risk cloud hosting (very suspicious)
+            for pattern in high_risk_hosting:
+                if re.search(pattern, url, re.IGNORECASE):
+                    risk_score += 0.8  # High penalty for random cloud hosting
+                    break  # Don't double-count
+
+            # Check against other suspicious URL patterns
             for pattern in self.suspicious_url_patterns:
                 if re.search(pattern, url, re.IGNORECASE):
-                    risk_score += 0.4
+                    # Only add if not already caught by high-risk hosting
+                    if not any(re.search(p, url, re.IGNORECASE) for p in high_risk_hosting):
+                        risk_score += 0.4
 
             # Check for domain spoofing
             try:
@@ -420,7 +451,8 @@ class EmailPhishingDetector:
 
         urgency_indicators = [
             'urgent', 'immediate', 'asap', 'expires', 'deadline',
-            'now', 'today', 'within 24', 'limited time', 'hurry'
+            'now', 'today', 'within 24', '24 hours', '24hours', 'limited time', 'hurry',
+            'expires in', 'expiring', 'time is running out'
         ]
 
         urgency_count = sum(1 for indicator in urgency_indicators if indicator in combined_text)

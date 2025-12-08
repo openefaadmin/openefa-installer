@@ -3,20 +3,20 @@
 {% block title %}System Information - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
-    .info-header {
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .info-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .version-display {
@@ -24,10 +24,6 @@
         font-weight: bold;
         color: #667eea;
         margin: 1rem 0;
-    }
-
-    .component-table {
-        margin-top: 1rem;
     }
 
     .status-badge {
@@ -73,24 +69,24 @@
 {% endblock %}
 
 {% block content %}
-<!-- System Information Header -->
-<div class="info-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-info-circle"></i> System Information</h1>
-                <p class="mb-0">OpenEFA Email Filtering Appliance</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-info-circle me-2"></i>System Information</h4>
+                <p class="mb-0 small">OpenEFA Email Filtering Appliance Details</p>
             </div>
-            <div class="col-md-4 text-md-end">
-                <span class="badge bg-light text-dark fs-6">
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
+                <span class="badge bg-light text-dark">
                     <i class="fas fa-lock"></i> Superadmin Only
                 </span>
             </div>
         </div>
     </div>
-</div>
-
-<div class="container">
     <!-- Version Information -->
     <div class="card info-card">
         <div class="card-body text-center">
@@ -102,7 +98,7 @@
 
     <!-- System Details -->
     <div class="card info-card">
-        <div class="card-header bg-primary text-white">
+        <div class="card-header bg-white border-bottom">
             <h5 class="mb-0"><i class="fas fa-server"></i> System Details</h5>
         </div>
         <div class="card-body">
@@ -129,7 +125,7 @@
 
     <!-- Component Versions -->
     <div class="card info-card">
-        <div class="card-header bg-success text-white">
+        <div class="card-header bg-white border-bottom">
             <h5 class="mb-0"><i class="fas fa-puzzle-piece"></i> Component Versions</h5>
         </div>
         <div class="card-body">
@@ -170,9 +166,394 @@
         </div>
     </div>
 
+    <!-- Mail Queue Status -->
+    <div class="card info-card">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0"><i class="fas fa-envelope"></i> Mail Queue Status</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1
+                            {% if queue_info.status == 'critical' %}text-danger
+                            {% elif queue_info.status == 'warning' %}text-warning
+                            {% else %}text-success
+                            {% endif %}">
+                            {{ queue_info.client_messages }}
+                        </div>
+                        <div class="text-muted small">Client Emails</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1 text-muted">{{ queue_info.backscatter_messages }}</div>
+                        <div class="text-muted small">Spam Bounces</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1 text-info">{{ queue_info.total_messages }}</div>
+                        <div class="text-muted small">Total Messages</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3">
+                        {% if queue_info.status == 'critical' %}
+                        <span class="status-badge status-error">
+                            <i class="fas fa-exclamation-circle"></i> Critical
+                        </span>
+                        {% elif queue_info.status == 'warning' %}
+                        <span class="status-badge status-warning">
+                            <i class="fas fa-exclamation-triangle"></i> Warning
+                        </span>
+                        {% elif queue_info.status == 'error' %}
+                        <span class="status-badge status-error">
+                            <i class="fas fa-times-circle"></i> Error
+                        </span>
+                        {% else %}
+                        <span class="status-badge status-active">
+                            <i class="fas fa-check-circle"></i> Healthy
+                        </span>
+                        {% endif %}
+                        <div class="text-muted small mt-2">{{ queue_info.status_text }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-info mt-3 mb-0">
+                <small>
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Queue Monitoring:</strong> Only client-related emails are counted for alerts.
+                    Spam backscatter to suspicious domains (.cn, .ru, etc.) is filtered out and ignored.
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Retention & Cleanup Status -->
+    <div class="card info-card">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0"><i class="fas fa-database"></i> Data Retention & Cleanup Status</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1
+                            {% if retention_info.status == 'warning' %}text-warning
+                            {% elif retention_info.status == 'error' %}text-danger
+                            {% else %}text-success
+                            {% endif %}">
+                            {{ retention_info.retention_days }}
+                        </div>
+                        <div class="text-muted small">Retention Days</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1 text-info">{{ "{:,}".format(retention_info.total_emails) }}</div>
+                        <div class="text-muted small">Total Emails</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border-end">
+                        <div class="h2 mb-1
+                            {% if retention_info.emails_to_expire > 0 %}text-warning
+                            {% else %}text-muted
+                            {% endif %}">
+                            {{ retention_info.emails_to_expire }}
+                        </div>
+                        <div class="text-muted small">Pending Deletion</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3">
+                        {% if retention_info.enabled %}
+                        <span class="status-badge status-active">
+                            <i class="fas fa-check-circle"></i> Enabled
+                        </span>
+                        {% else %}
+                        <span class="status-badge status-warning">
+                            <i class="fas fa-exclamation-triangle"></i> Disabled
+                        </span>
+                        {% endif %}
+                        <div class="text-muted small mt-2">Cleanup Status</div>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-info mt-3 mb-0">
+                <div class="row">
+                    <div class="col-md-6">
+                        <small>
+                            <i class="fas fa-clock"></i> <strong>Next Expiration:</strong>
+                            {% if retention_info.days_until_first_expiration > 0 %}
+                                {{ retention_info.days_until_first_expiration }} days
+                                {% if retention_info.first_expiration_date %}
+                                    ({{ retention_info.first_expiration_date.strftime('%b %d, %Y') }})
+                                {% endif %}
+                            {% elif retention_info.emails_to_expire > 0 %}
+                                <span class="text-warning">Emails ready for deletion</span>
+                            {% else %}
+                                No emails older than {{ retention_info.retention_days }} days
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div class="col-md-6">
+                        <small>
+                            <i class="fas fa-broom"></i> <strong>Last Cleanup:</strong>
+                            {% if retention_info.last_cleanup_time %}
+                                {{ retention_info.last_cleanup_time.strftime('%Y-%m-%d %H:%M') }}
+                                ({{ retention_info.last_cleanup_deleted }} deleted)
+                            {% else %}
+                                Daily at 2:00 AM
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security & Access Control -->
+    <div class="card info-card">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Security & Access Control</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="p-3 border-end">
+                        <h6 class="info-label">
+                            <i class="fas fa-ban"></i> Fail2ban Service
+                        </h6>
+                        <div class="mt-2">
+                            {% if security_info.status == 'active' %}
+                            <span class="status-badge status-active">
+                                <i class="fas fa-check-circle"></i> Active
+                            </span>
+                            <div class="mt-2 text-muted small">
+                                Protection enabled against brute-force attacks
+                            </div>
+                            {% elif security_info.status == 'inactive' %}
+                            <span class="status-badge status-warning">
+                                <i class="fas fa-exclamation-triangle"></i> Inactive
+                            </span>
+                            <div class="mt-2 text-muted small">
+                                Fail2ban service is not running
+                            </div>
+                            {% else %}
+                            <span class="status-badge status-error">
+                                <i class="fas fa-times-circle"></i> Error
+                            </span>
+                            <div class="mt-2 text-muted small">
+                                Unable to check fail2ban status
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3">
+                        <h6 class="info-label">
+                            <i class="fas fa-user-lock"></i> Total IP Addresses Banned
+                        </h6>
+                        <div class="mt-2">
+                            <div class="h2 mb-1 text-danger">{{ security_info.total_banned }}</div>
+                            <div class="text-muted small">
+                                Since fail2ban service started
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Your IP Status -->
+            <div class="mt-3">
+                <div class="alert {% if security_info.client_is_banned %}alert-danger{% else %}alert-success{% endif %} mb-3">
+                    <h6 class="mb-2">
+                        <i class="fas fa-network-wired"></i> Your IP Address Status
+                    </h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Your Current IP:</strong> <code>{{ security_info.client_ip }}</code>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Status:</strong>
+                            {% if security_info.client_is_banned %}
+                            <span class="badge bg-danger">
+                                <i class="fas fa-ban"></i> BANNED
+                            </span>
+                            <div class="mt-2 small">
+                                Your IP is currently banned. Contact your administrator to unban.
+                            </div>
+                            {% else %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-check"></i> Not Banned
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Jails -->
+            {% if security_info.jails %}
+            <div class="mt-3">
+                <h6 class="info-label mb-3"><i class="fas fa-list"></i> Active Protection Jails</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Jail Name</th>
+                                <th>Currently Banned</th>
+                                <th>Total Banned</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for jail in security_info.jails %}
+                            <tr>
+                                <td><strong>{{ jail.name }}</strong></td>
+                                <td>
+                                    {% if jail.currently_banned > 0 %}
+                                    <span class="badge bg-danger">{{ jail.currently_banned }}</span>
+                                    {% else %}
+                                    <span class="text-muted">0</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ jail.total_banned }}</td>
+                                <td class="text-muted small">
+                                    {% if jail.name == 'sshd' %}
+                                    Protects SSH access (now using key-based auth)
+                                    {% elif jail.name == 'spacyweb' %}
+                                    Protects web interface login attempts
+                                    {% else %}
+                                    {{ jail.name }} protection
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Currently Banned IPs -->
+            {% if security_info.currently_banned_ips %}
+            <div class="mt-3">
+                <h6 class="info-label mb-3">
+                    <i class="fas fa-ban text-danger"></i> Currently Banned IP Addresses
+                </h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Jail</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in security_info.currently_banned_ips %}
+                            <tr {% if entry.ip == security_info.client_ip %}class="table-danger"{% endif %}>
+                                <td>
+                                    <code>{{ entry.ip }}</code>
+                                    {% if entry.ip == security_info.client_ip %}
+                                    <span class="badge bg-danger ms-2">YOU</span>
+                                    {% endif %}
+                                </td>
+                                <td><strong>{{ entry.jail }}</strong></td>
+                                <td class="text-muted small">
+                                    Unban: <code>sudo fail2ban-client set {{ entry.jail }} unbanip {{ entry.ip }}</code>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <div class="mt-3">
+                <div class="alert alert-success mb-0">
+                    <i class="fas fa-check-circle"></i> <strong>No IPs Currently Banned</strong> - All protection jails are clear.
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Recent Ban History -->
+            {% if security_info.ban_history %}
+            <div class="mt-4">
+                <h6 class="info-label mb-3">
+                    <i class="fas fa-history text-info"></i> Recent Ban History (Last 20 Events)
+                </h6>
+                <div class="alert alert-light">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i> <strong>Tip:</strong> When a user calls saying they can't log in,
+                        check this history for their IP address to see if they've been banned.
+                    </small>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Action</th>
+                                <th>IP Address</th>
+                                <th>Jail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in security_info.ban_history %}
+                            <tr>
+                                <td><small>{{ event.timestamp }}</small></td>
+                                <td>
+                                    {% if event.action == 'Ban' %}
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-ban"></i> Ban
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-unlock"></i> Unban
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ event.ip }}</code></td>
+                                <td><strong>{{ event.jail }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Account Lockout Information -->
+            <div class="alert alert-info mt-3 mb-0">
+                <h6 class="mb-2">
+                    <i class="fas fa-info-circle"></i> Account Lockout Policy
+                </h6>
+                <div class="small">
+                    <strong>Web Interface Protection:</strong>
+                    <ul class="mb-2">
+                        <li>After <strong>5 failed login attempts</strong>, your account will be locked for <strong>30 minutes</strong></li>
+                        <li>Your IP address may also be banned by fail2ban after repeated failures</li>
+                        <li>If locked out, wait 30 minutes or contact your system administrator</li>
+                    </ul>
+                    <strong>If You Are Locked Out:</strong>
+                    <ul class="mb-0">
+                        <li><i class="fas fa-clock"></i> Wait 30 minutes for automatic unlock</li>
+                        <li><i class="fas fa-user-shield"></i> Contact your system administrator to manually unlock your account</li>
+                        <li><i class="fas fa-network-wired"></i> If IP banned, admin can unban with: <code>sudo fail2ban-client set spacyweb unbanip YOUR_IP</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Support Information -->
     <div class="card info-card">
-        <div class="card-header bg-info text-white">
+        <div class="card-header bg-white border-bottom">
             <h5 class="mb-0"><i class="fas fa-life-ring"></i> Support Information</h5>
         </div>
         <div class="card-body">
@@ -202,18 +583,11 @@
             </div>
         </div>
     </div>
-
-    <!-- Back Button -->
-    <div class="text-center mb-4">
-        <a href="/config" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Back to Configuration
-        </a>
-    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
     // Auto-refresh component status every 30 seconds
     setTimeout(function() {
         location.reload();

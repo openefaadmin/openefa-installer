@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-VERSION="0.9.0"
-INSTALLER_DIR="/opt/spacyserver/installer"
+VERSION="1.6.0"
+INSTALLER_DIR="/opt/openefa-installer"
 RELEASE_NAME="openefa-${VERSION}"
 RELEASE_DIR="/tmp/${RELEASE_NAME}"
 
@@ -94,16 +94,18 @@ echo -e "${GREEN}✓ Installer framework copied${NC}"
 echo -e "${BLUE}Copying application files...${NC}"
 
 # Create application directory structure in release
-mkdir -p "$RELEASE_DIR/files"/{modules,services,web,api,tools,scripts}
+mkdir -p "$RELEASE_DIR/openefa-files"/{modules,services,web,api,tools,scripts}
 
 # Copy from openefa-files (already sanitized)
-cp "$INSTALLER_DIR/openefa-files/email_filter.py" "$RELEASE_DIR/files/" 2>/dev/null || echo "  Warning: email_filter.py not found"
-cp -r "$INSTALLER_DIR/openefa-files/modules"/* "$RELEASE_DIR/files/modules/" 2>/dev/null || echo "  Warning: modules not found"
-cp -r "$INSTALLER_DIR/openefa-files/services"/* "$RELEASE_DIR/files/services/" 2>/dev/null || echo "  Warning: services not found"
-cp -r "$INSTALLER_DIR/openefa-files/web"/* "$RELEASE_DIR/files/web/" 2>/dev/null || echo "  Warning: web files not found"
-cp -r "$INSTALLER_DIR/openefa-files/api"/* "$RELEASE_DIR/files/api/" 2>/dev/null || echo "  Warning: api files not found"
-cp -r "$INSTALLER_DIR/openefa-files/tools"/* "$RELEASE_DIR/files/tools/" 2>/dev/null || echo "  Warning: tools not found"
-cp -r "$INSTALLER_DIR/openefa-files/scripts"/* "$RELEASE_DIR/files/scripts/" 2>/dev/null || echo "  Warning: scripts not found"
+cp "$INSTALLER_DIR/openefa-files/email_filter.py" "$RELEASE_DIR/openefa-files/" 2>/dev/null || echo "  Warning: email_filter.py not found"
+cp "$INSTALLER_DIR/openefa-files/notification_service.py" "$RELEASE_DIR/openefa-files/" 2>/dev/null || echo "  Warning: notification_service.py not found"
+cp "$INSTALLER_DIR/openefa-files/cleanup_expired_emails.py" "$RELEASE_DIR/openefa-files/" 2>/dev/null || echo "  Warning: cleanup_expired_emails.py not found"
+cp -r "$INSTALLER_DIR/openefa-files/modules"/* "$RELEASE_DIR/openefa-files/modules/" 2>/dev/null || echo "  Warning: modules not found"
+cp -r "$INSTALLER_DIR/openefa-files/services"/* "$RELEASE_DIR/openefa-files/services/" 2>/dev/null || echo "  Warning: services not found"
+cp -r "$INSTALLER_DIR/openefa-files/web"/* "$RELEASE_DIR/openefa-files/web/" 2>/dev/null || echo "  Warning: web files not found"
+cp -r "$INSTALLER_DIR/openefa-files/api"/* "$RELEASE_DIR/openefa-files/api/" 2>/dev/null || echo "  Warning: api files not found"
+cp -r "$INSTALLER_DIR/openefa-files/tools"/* "$RELEASE_DIR/openefa-files/tools/" 2>/dev/null || echo "  Warning: tools not found"
+cp -r "$INSTALLER_DIR/openefa-files/scripts"/* "$RELEASE_DIR/openefa-files/scripts/" 2>/dev/null || echo "  Warning: scripts not found"
 
 echo -e "${GREEN}✓ Application files copied${NC}"
 
@@ -121,7 +123,7 @@ cat >> "$RELEASE_DIR/install.sh" << 'INSTALL_ADDITION'
 deploy_application_files() {
     log_info "Deploying application files..."
 
-    local files_dir="$SCRIPT_DIR/files"
+    local files_dir="$SCRIPT_DIR/openefa-files"
 
     if [[ ! -d "$files_dir" ]]; then
         log_error "Application files directory not found: $files_dir"
@@ -130,6 +132,7 @@ deploy_application_files() {
 
     # Copy application files
     cp "$files_dir/email_filter.py" "$INSTALL_DIR/" || log_warning "email_filter.py not found"
+    cp "$files_dir/notification_service.py" "$INSTALL_DIR/" || log_warning "notification_service.py not found"
     cp -r "$files_dir/modules"/* "$INSTALL_DIR/modules/" || log_warning "modules not found"
     cp -r "$files_dir/services"/* "$INSTALL_DIR/services/" || log_warning "services not found"
     cp -r "$files_dir/web"/* "$INSTALL_DIR/web/" || log_warning "web files not found"
@@ -148,8 +151,8 @@ echo -e "${GREEN}✓ install.sh updated${NC}"
 #######################################
 # Create README in release root
 #######################################
-cat > "$RELEASE_DIR/README.txt" << 'README'
-OpenEFA v0.9.0 - Installation Package
+cat > "$RELEASE_DIR/README.txt" << README
+OpenEFA v${VERSION} - Installation Package
 =====================================
 
 QUICK START:

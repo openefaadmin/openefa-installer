@@ -58,7 +58,8 @@ class BehavioralBaseline:
                         config[key.strip()] = value.strip().strip('"')
 
             # Create database connection
-            connection_string = f"mysql+pymysql://{config.get('user', 'spacy_user')}:{config.get('password', '')}@localhost/spacy_email_db"
+            db_name = config.get('database', os.getenv('DB_NAME', 'spacy_email_db'))
+            connection_string = f"mysql+pymysql://{config.get('user', 'spacy_user')}:{config.get('password', '')}@localhost/{db_name}"
             self.engine = create_engine(
                 connection_string,
                 pool_size=5,

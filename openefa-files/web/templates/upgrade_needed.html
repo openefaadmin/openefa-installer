@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upgrade Required - SpaCy Email Filter</title>
-    <style>
+    <style nonce="{{ csp_nonce }}">
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -174,16 +174,13 @@
         </div>
         
         <div class="btn-container">
-            <a href="mailto:sales@spacy.covereddata.com?subject=Upgrade%20Request%20for%20{{ module }}&body=Domain:%20{{ domain }}" class="btn btn-primary">
-                Contact Sales
-            </a>
             <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
                 Back to Dashboard
             </a>
         </div>
-        
+
         <div class="contact-info">
-            For immediate assistance, contact your account manager or email sales@spacy.covereddata.com
+            For assistance, contact your system administrator.
         </div>
     </div>
 </body>

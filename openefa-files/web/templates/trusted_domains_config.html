@@ -3,20 +3,20 @@
 {% block title %}Trusted Domains - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
-    .trusted-header {
-        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .domain-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .domain-item {
@@ -52,29 +52,29 @@
 {% endblock %}
 
 {% block content %}
-<!-- Trusted Domains Header -->
-<div class="trusted-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-shield-alt"></i> Trusted Domains</h1>
-                <p class="mb-0">Manage fast-track domains with minimal security analysis</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-shield-alt me-2"></i>Trusted Domains</h4>
+                <p class="mb-0 small">Manage fast-track domains with minimal security analysis</p>
             </div>
-            <div class="col-md-4 text-md-end">
-                <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
+                <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addDomainModal">
                     <i class="fas fa-plus"></i> Add Trusted Domain
                 </button>
             </div>
         </div>
     </div>
-</div>
-
-<div class="container">
     <!-- Alert messages -->
     <div id="alert-container"></div>
 
     <!-- Configuration Summary -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-md-3">
             <div class="card border-info">
                 <div class="card-body text-center">
@@ -160,13 +160,14 @@
                                 {% endif %}
                             </div>
                             <div>
-                                <button class="btn btn-sm btn-outline-primary me-1"
-                                        onclick="editNote('{{ item.domain }}', '{{ item.note|replace("'", "\\'") }}')"
+                                <button class="btn btn-sm btn-outline-primary me-1 btn-edit-note"
+                                        data-domain="{{ item.domain }}"
+                                        data-note="{{ item.note }}"
                                         title="Edit Note">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-danger"
-                                        onclick="removeDomain('{{ item.domain }}')"
+                                <button class="btn btn-sm btn-danger btn-remove-domain"
+                                        data-domain="{{ item.domain }}"
                                         title="Remove">
                                     <i class="fas fa-trash"></i>
                                 </button>
@@ -254,7 +255,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="addDomain()">
+                <button type="button" class="btn btn-primary" id="btn-add-domain">
                     <i class="fas fa-plus"></i> Add Domain
                 </button>
             </div>
@@ -285,7 +286,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="updateNote()">
+                <button type="button" class="btn btn-primary" id="btn-update-note">
                     <i class="fas fa-save"></i> Save Note
                 </button>
             </div>
@@ -296,7 +297,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Store original domain data for filtering/sorting
 let allDomains = [];
 
@@ -315,9 +316,38 @@ window.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add event listeners
+    // Add event listeners for search and sort
     document.getElementById('search-box').addEventListener('input', filterAndSort);
     document.getElementById('sort-select').addEventListener('change', filterAndSort);
+
+    // Add event listener for Add Domain button
+    const btnAddDomain = document.getElementById('btn-add-domain');
+    if (btnAddDomain) {
+        btnAddDomain.addEventListener('click', addDomain);
+    }
+
+    // Add event listener for Update Note button
+    const btnUpdateNote = document.getElementById('btn-update-note');
+    if (btnUpdateNote) {
+        btnUpdateNote.addEventListener('click', updateNote);
+    }
+
+    // Add event listeners for Edit Note buttons
+    document.querySelectorAll('.btn-edit-note').forEach(button => {
+        button.addEventListener('click', function() {
+            const domain = this.getAttribute('data-domain');
+            const note = this.getAttribute('data-note');
+            editNote(domain, note);
+        });
+    });
+
+    // Add event listeners for Remove Domain buttons
+    document.querySelectorAll('.btn-remove-domain').forEach(button => {
+        button.addEventListener('click', function() {
+            const domain = this.getAttribute('data-domain');
+            removeDomain(domain);
+        });
+    });
 });
 
 function filterAndSort() {
@@ -397,10 +427,12 @@ function addDomain() {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/trusted-domains/add', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         },
         body: JSON.stringify({ domain: domain, note: note })
     })
@@ -425,10 +457,12 @@ function removeDomain(domain) {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/trusted-domains/remove', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         },
         body: JSON.stringify({ domain: domain })
     })
@@ -459,10 +493,12 @@ function updateNote() {
     const domain = document.getElementById('edit_domain').value;
     const note = document.getElementById('edit_note').value.trim();
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/trusted-domains/update-note', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         },
         body: JSON.stringify({ domain: domain, note: note })
     })

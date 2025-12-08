@@ -3,8 +3,13 @@
 Quick Admin User Setup for GuardianMail
 """
 
+import os
 import mysql.connector
 import bcrypt
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 def create_admin_user():
     print("🔐 Creating Admin User for GuardianMail")
@@ -21,13 +26,15 @@ def create_admin_user():
     domain = admin_email.split('@')[1] if '@' in admin_email else 'admin.local'
     
     try:
-        # Connect to database using spacy_user and config
-        print("Connecting to MySQL with spacy_user...")
+        # Connect to database using configured user
+        db_user = os.getenv('DB_USER', 'spacy_user')
+        db_name = os.getenv('DB_NAME', 'spacy_email_db')
+        print(f"Connecting to MySQL with {db_user}...")
         conn = mysql.connector.connect(
-            option_files='/opt/spacyserver/config/.my.cnf',
+            option_files='/etc/spacy-server/.my.cnf',
             option_groups=['client'],
-            user='spacy_user',
-            database='spacy_email_db'
+            user=db_user,
+            database=db_name
         )
         
         cursor = conn.cursor()

@@ -1,587 +1,448 @@
 {% extends "base.html" %}
 
-{% block title %}Emails - OpenEFA - Email Sentiment Analyzer{% endblock %}
+{% block title %}Email List Preview - Customer Requested Layout{% endblock %}
 
-{% block content %}
-<div class="row">
-    <!-- Filter Panel -->
-    <div class="col-md-3">
-        <div class="card filter-card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-filter"></i> Filters</h5>
-            </div>
-            <div class="card-body">
-                <form action="/emails" method="get" id="filter-form">
-                    <!-- Search -->
-                    <div class="mb-3">
-                        <label for="search" class="form-label">Search</label>
-                        <input type="text" class="form-control" id="search" name="search" 
-                            value="{{ filters.search|default('') }}" 
-                            placeholder="Search in subject, sender...">
-                    </div>
-                    
-                    <!-- Receiving Domain Filter -->
-                    <div class="mb-3">
-                        <label for="receiving_domain" class="form-label">Receiving Domain</label>
-                        <select class="form-select" id="receiving_domain" name="receiving_domain">
-                            <option value="">All Domains</option>
-                            {% for domain in available_domains %}
-                            <option value="{{ domain }}" {% if filters.receiving_domain == domain %}selected{% endif %}>{{ domain }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    
-                    <!-- Sentiment Category Filter -->
-                    <div class="mb-3">
-                        <label for="sentiment_category" class="form-label">Sentiment Category</label>
-                        <select class="form-select" id="sentiment_category" name="sentiment_category">
-                            <option value="">All Sentiments</option>
-                            <option value="positive" {% if filters.sentiment_category == 'positive' %}selected{% endif %}>Positive</option>
-                            <option value="neutral" {% if filters.sentiment_category == 'neutral' %}selected{% endif %}>Neutral</option>
-                            <option value="negative" {% if filters.sentiment_category == 'negative' %}selected{% endif %}>Negative</option>
-                        </select>
-                    </div>
-                    
-                    <!-- Language Filter -->
-                    {% if schema_info.has_lang_col %}
-                    <div class="mb-3">
-                        <label for="language" class="form-label">Language</label>
-                        <select class="form-select" id="language" name="language">
-                            <option value="">All Languages</option>
-                            <option value="en" {% if filters.language == 'en' %}selected{% endif %}>English</option>
-                            <option value="fr" {% if filters.language == 'fr' %}selected{% endif %}>French</option>
-                            <option value="es" {% if filters.language == 'es' %}selected{% endif %}>Spanish</option>
-                            <option value="de" {% if filters.language == 'de' %}selected{% endif %}>German</option>
-                            <option value="it" {% if filters.language == 'it' %}selected{% endif %}>Italian</option>
-                            <option value="ru" {% if filters.language == 'ru' %}selected{% endif %}>Russian</option>
-                            <option value="zh" {% if filters.language == 'zh' %}selected{% endif %}>Chinese</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Category Filter -->
-                    {% if schema_info.has_category %}
-                    <div class="mb-3">
-                        <label for="category" class="form-label">Category</label>
-                        <select class="form-select" id="category" name="category">
-                            <option value="">All Categories</option>
-                            <option value="spam" {% if filters.category == 'spam' %}selected{% endif %}>Spam</option>
-                            <option value="phishing" {% if filters.category == 'phishing' %}selected{% endif %}>Phishing</option>
-                            <option value="marketing" {% if filters.category == 'marketing' %}selected{% endif %}>Marketing</option>
-                            <option value="transactional" {% if filters.category == 'transactional' %}selected{% endif %}>Transactional</option>
-                            <option value="notification" {% if filters.category == 'notification' %}selected{% endif %}>Notification</option>
-                            <option value="personal" {% if filters.category == 'personal' %}selected{% endif %}>Personal</option>
-                            <option value="business" {% if filters.category == 'business' %}selected{% endif %}>Business</option>
-                            <option value="general" {% if filters.category == 'general' %}selected{% endif %}>General</option>
-                            <option value="system_notification" {% if filters.category == 'system_notification' %}selected{% endif %}>System Notification</option>
-                            <option value="technical" {% if filters.category == 'technical' %}selected{% endif %}>Technical</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Sentiment Range -->
-                    {% if schema_info.has_enhanced_sentiment %}
-                    <div class="mb-3">
-                        <label class="form-label">Sentiment Range</label>
-                        <div class="row">
-                            <div class="col-6">
-                                <input type="number" class="form-control" id="min_sentiment" name="min_sentiment" 
-                                    placeholder="Min (-1)" min="-1" max="1" step="0.1"
-                                    value="{{ filters.min_sentiment|default('') }}">
-                            </div>
-                            <div class="col-6">
-                                <input type="number" class="form-control" id="max_sentiment" name="max_sentiment" 
-                                    placeholder="Max (1)" min="-1" max="1" step="0.1"
-                                    value="{{ filters.max_sentiment|default('') }}">
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Min Manipulation Score -->
-                    {% if schema_info.has_manipulation %}
-                    <div class="mb-3">
-                        <label for="min_manipulation" class="form-label">Min Manipulation Score</label>
-                        <select class="form-select" id="min_manipulation" name="min_manipulation">
-                            <option value="">Any</option>
-                            <option value="7" {% if filters.min_manipulation == '7' %}selected{% endif %}>High (7+)</option>
-                            <option value="4" {% if filters.min_manipulation == '4' %}selected{% endif %}>Medium (4+)</option>
-                            <option value="1" {% if filters.min_manipulation == '1' %}selected{% endif %}>Low (1+)</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Min Extremity Score -->
-                    {% if schema_info.has_enhanced_sentiment %}
-                    <div class="mb-3">
-                        <label for="min_extremity" class="form-label">Min Extremity Score</label>
-                        <select class="form-select" id="min_extremity" name="min_extremity">
-                            <option value="">Any</option>
-                            <option value="7" {% if filters.min_extremity == '7' %}selected{% endif %}>High (7+)</option>
-                            <option value="4" {% if filters.min_extremity == '4' %}selected{% endif %}>Medium (4+)</option>
-                            <option value="1" {% if filters.min_extremity == '1' %}selected{% endif %}>Low (1+)</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Date Range -->
-                    <div class="mb-3">
-                        <label for="date_from" class="form-label">Date From</label>
-                        <input type="date" class="form-control" id="date_from" name="date_from" 
-                            value="{{ filters.date_from|default('') }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="date_to" class="form-label">Date To</label>
-                        <input type="date" class="form-control" id="date_to" name="date_to" 
-                            value="{{ filters.date_to|default('') }}">
-                    </div>
-                    
-                    <!-- Submit Button -->
-                    <div class="mb-3">
-                        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Apply Filters</button>
-                    </div>
-                    
-                    <!-- Reset Button -->
-                    <div class="mb-3">
-                        <a href="/emails" class="btn btn-secondary w-100"><i class="fas fa-times"></i> Reset Filters</a>
-                    </div>
-                </form>
-            </div>
-        </div>
-        
-        <!-- Export Options -->
-        <div class="card filter-card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-file-export"></i> Export</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <a href="#" class="btn btn-dark w-100" id="export-json-btn">
-                        <i class="fas fa-file-code"></i> Export as JSON
-                    </a>
-                </div>
-                <div class="mb-3">
-                    <a href="#" class="btn btn-dark w-100" id="export-csv-btn">
-                        <i class="fas fa-file-csv"></i> Export as CSV
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Email List -->
-    <div class="col-md-9">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-envelope"></i> Emails ({{ total_count }} total)</h5>
-                    <div>
-                        <span class="badge bg-light text-dark">Page {{ page }} of {{ total_pages }}</span>
-                    </div>
-                </div>
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    /* High spam filter */
+    .spam-filter-hidden {
+        display: none !important;
+    }
 
-                <!-- Bulk Actions Toolbar (Admin Only) -->
-                {% if current_user.is_admin() %}
-                <div class="mt-3 p-2 bg-white text-dark rounded" id="bulk-actions-toolbar">
-                    <div class="row align-items-center">
-                        <div class="col-md-4">
-                            <small><span id="selected-count">0</span> email(s) selected</small>
-                        </div>
-                        <div class="col-md-8 text-end">
-                            <button class="btn btn-sm btn-info" onclick="bulkMarkNotSpam()" disabled id="bulk-not-spam-btn">
-                                <i class="fas fa-thumbs-up"></i> Not Spam
-                            </button>
-                            <button class="btn btn-sm btn-success" onclick="bulkWhitelist()" disabled id="bulk-whitelist-btn">
-                                <i class="fas fa-check-circle"></i> Whitelist Sender
-                            </button>
-                            <button class="btn btn-sm btn-warning" onclick="bulkMarkSpam()" disabled id="bulk-spam-btn">
-                                <i class="fas fa-ban"></i> Mark as Spam
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="bulkDelete()" disabled id="bulk-delete-btn">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                            <button class="btn btn-sm btn-secondary" onclick="clearSelection()">
-                                <i class="fas fa-times"></i> Clear Selection
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0" style="font-size: 0.9rem;">
-                        <thead class="table-light">
-                            <tr>
-                                {% if current_user.is_admin() %}
-                                <th style="width: 30px;">
-                                    <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)">
-                                </th>
-                                {% endif %}
-                                <th style="width: 60px;">ID</th>
-                                <th style="width: 80px;">Date</th>
-                                <th style="width: 120px;">Sender</th>
-                                <th style="width: 120px;">Domain</th>
-                                <th style="width: 200px;">Subject</th>
-                                {% if schema_info.has_lang_col %}
-                                <th style="width: 50px;">Lang</th>
-                                {% endif %}
-                                {% if schema_info.has_category %}
-                                <th style="width: 100px;">Category</th>
-                                {% endif %}
-                                {% if schema_info.has_enhanced_sentiment %}
-                                <th style="width: 80px;">Sentiment</th>
-                                {% endif %}
-                                {% if schema_info.has_manipulation %}
-                                <th style="width: 60px;">Manip.</th>
-                                {% endif %}
-                                <th style="width: 80px;">Spam Score</th>
-                                <th style="width: 100px;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if emails %}
-                                {% for email in emails %}
-                                <tr>
-                                    {% if current_user.is_admin() %}
-                                    <td>
-                                        <input type="checkbox" class="email-checkbox" value="{{ email.id }}"
-                                               data-sender="{{ email.sender }}" onclick="updateSelectedCount()">
-                                    </td>
-                                    {% endif %}
-                                    <td>{{ email.id }}</td>
-                                    <td>{{ email.timestamp.strftime('%m-%d %H:%M') if email.timestamp else 'N/A' }}</td>
-                                    <td title="{{ email.sender }}">{{ email.sender|truncate(20, true) if email.sender else 'N/A' }}</td>
-                                    <td>
-                                        <span class="badge bg-info text-dark" style="font-size: 0.75rem;">{{ email.primary_receiving_domain }}</span>
-                                        {% if email.all_receiving_domains|length > 1 %}
-                                        <small class="text-muted">(+{{ email.all_receiving_domains|length - 1 }})</small>
-                                        {% endif %}
-                                    </td>
-                                    <td title="{{ email.subject }}">{{ email.subject|truncate(25, true) if email.subject else 'No Subject' }}</td>
-                                    
-                                    {% if schema_info.has_lang_col %}
-                                    <td>{{ email.detected_language if email.detected_language else 'N/A' }}</td>
-                                    {% endif %}
-                                    
-                                    {% if schema_info.has_category %}
-                                    <td>
-                                        {% if email.email_category in ['spam', 'phishing'] %}
-                                        <span class="category-{{ email.email_category }}" style="font-size: 0.8rem;">{{ email.email_category }}</span>
-                                        {% else %}
-                                        <span style="font-size: 0.8rem;">{{ email.email_category if email.email_category else 'N/A' }}</span>
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
-                                    
-                                    {% if schema_info.has_enhanced_sentiment %}
-                                    <td>
-                                        {% if email.sentiment_polarity is not none %}
-                                            {% if email.sentiment_polarity > 0.1 %}
-                                            <span class="sentiment-positive">+{{ "%.2f"|format(email.sentiment_polarity) }}</span>
-                                            {% elif email.sentiment_polarity < -0.1 %}
-                                            <span class="sentiment-negative">{{ "%.2f"|format(email.sentiment_polarity) }}</span>
-                                            {% else %}
-                                            <span class="sentiment-neutral">{{ "%.2f"|format(email.sentiment_polarity) }}</span>
-                                            {% endif %}
-                                        {% else %}
-                                        N/A
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
-                                    
-                                    {% if schema_info.has_manipulation %}
-                                    <td>
-                                        {% if email.sentiment_manipulation is not none %}
-                                            {% if email.sentiment_manipulation >= 7 %}
-                                            <span class="manipulation-high">{{ "%.1f"|format(email.sentiment_manipulation) }}</span>
-                                            {% elif email.sentiment_manipulation >= 4 %}
-                                            <span class="manipulation-medium">{{ "%.1f"|format(email.sentiment_manipulation) }}</span>
-                                            {% else %}
-                                            <span class="manipulation-low">{{ "%.1f"|format(email.sentiment_manipulation) }}</span>
-                                            {% endif %}
-                                        {% else %}
-                                        N/A
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
 
-                                    <td>
-                                        {% if email.spam_score is not none %}
-                                            {% if email.spam_score >= 5.0 %}
-                                            <span class="badge bg-danger">{{ "%.1f"|format(email.spam_score) }}</span>
-                                            {% elif email.spam_score >= 3.0 %}
-                                            <span class="badge bg-warning text-dark">{{ "%.1f"|format(email.spam_score) }}</span>
-                                            {% else %}
-                                            <span class="badge bg-success">{{ "%.1f"|format(email.spam_score) }}</span>
-                                            {% endif %}
-                                        {% else %}
-                                        N/A
-                                        {% endif %}
-                                    </td>
+    .table-responsive {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
 
-                                    <td>
-                                        <a href="/email/{{ email.id }}" class="btn btn-sm btn-primary" title="View Details">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                        {% if current_user.is_admin() %}
-                                        <div class="btn-group">
-                                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                                <i class="fas fa-cog"></i>
-                                            </button>
-                                            <ul class="dropdown-menu dropdown-menu-end">
-                                                <li><button class="dropdown-item" type="button" onclick="markAsSpam({{ email.id }})">
-                                                    <i class="fas fa-ban text-warning"></i> Mark as Spam
-                                                </button></li>
-                                                <li><button class="dropdown-item" type="button" onclick="whitelistSender('{{ email.sender }}')">
-                                                    <i class="fas fa-check-circle text-success"></i> Whitelist Sender
-                                                </button></li>
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li><button class="dropdown-item text-danger" type="button" onclick="deleteEmail({{ email.id }})">
-                                                    <i class="fas fa-trash"></i> Delete Email
-                                                </button></li>
-                                            </ul>
-                                        </div>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="10" class="text-center py-3">
-                                        <div class="alert alert-warning mb-0">No emails found matching the criteria</div>
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% if total_pages > 1 %}
-            <div class="card-footer">
-                <nav aria-label="Page navigation">
-                    <ul class="pagination justify-content-center mb-0">
-                        <!-- First Page -->
-                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                            <a class="page-link" href="{{ request.path }}?page=1{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="First">
-                                <span aria-hidden="true">&laquo;&laquo;</span>
-                            </a>
-                        </li>
-                        
-                        <!-- Previous Page -->
-                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                            <a class="page-link" href="{{ request.path }}?page={{ page - 1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Previous">
-                                <span aria-hidden="true">&laquo;</span>
-                            </a>
-                        </li>
-                        
-                        <!-- Page Numbers -->
-                        {% set start_page = [page - 2, 1]|max %}
-                        {% set end_page = [start_page + 4, total_pages]|min %}
-                        {% set start_page = [end_page - 4, 1]|max %}
-                        
-                        {% for p in range(start_page, end_page + 1) %}
-                            <li class="page-item {% if p == page %}active{% endif %}">
-                                <a class="page-link" href="{{ request.path }}?page={{ p }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ p }}</a>
-                            </li>
-                        {% endfor %}
-                        
-                        <!-- Next Page -->
-                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                            <a class="page-link" href="{{ request.path }}?page={{ page + 1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Next">
-                                <span aria-hidden="true">&raquo;</span>
-                            </a>
-                        </li>
-                        
-                        <!-- Last Page -->
-                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                            <a class="page-link" href="{{ request.path }}?page={{ total_pages }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Last">
-                                <span aria-hidden="true">&raquo;&raquo;</span>
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-</div>
+    .email-table {
+        margin-bottom: 0;
+    }
+
+    .email-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .email-table tbody tr {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .email-table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+
+    .delivery-badge {
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        min-width: 30px;
+        text-align: center;
+        display: inline-block;
+    }
+
+    /* Ensure Bootstrap background colors work */
+    .delivery-badge.bg-success {
+        background-color: #198754 !important;
+        color: white !important;
+    }
+
+    .delivery-badge.bg-info {
+        background-color: #0dcaf0 !important;
+        color: black !important;
+    }
+
+    .delivery-badge.bg-warning {
+        background-color: #ffc107 !important;
+        color: black !important;
+    }
+
+    .delivery-badge.bg-secondary {
+        background-color: #6c757d !important;
+        color: white !important;
+    }
+
+    .spam-score {
+        font-weight: 600;
+        font-family: 'Courier New', monospace;
+    }
+
+    .spam-high { color: #dc3545; }
+    .spam-medium { color: #ffc107; }
+    .spam-low { color: #28a745; }
+
+    .subject-cell {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sender-cell {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .recipient-cell {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .category-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .search-box {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        width: 100%;
+    }
+
+    .sort-link {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .sort-link:hover {
+        color: #0d6efd;
+    }
+
+    .sort-indicator {
+        font-size: 0.75rem;
+        margin-left: 0.25rem;
+    }
+
+    .checkbox-cell {
+        width: 40px;
+        text-align: center;
+    }
+
+    .email-checkbox {
+        cursor: pointer;
+    }
+
+    .nav-pills .nav-link {
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        margin-right: 0.25rem;
+        transition: all 0.2s;
+    }
+
+    .nav-pills .nav-link:hover {
+        background-color: #e9ecef;
+    }
+
+    .nav-pills .nav-link.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+
+    .legend-icon {
+        cursor: pointer;
+        font-size: 1.2rem;
+        color: #0d6efd;
+        margin-left: 0.5rem;
+    }
+
+    .legend-icon:hover {
+        color: #0a58ca;
+    }
+
+    .legend-badge {
+        font-weight: bold;
+        font-size: 0.85em;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .stat-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 120px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-bottom: 0.25rem;
+        font-weight: 500;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .bulk-action-bar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .bulk-action-bar .btn-outline-light:hover {
+        background-color: rgba(255,255,255,0.2);
+    }
+
+    .sticky-actions {
+        position: sticky;
+        top: 70px;
+        z-index: 100;
+        animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    #bulk-action-bar {
+        display: none;
+    }
+
+    .toast-notification {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        color: white;
+        padding: 15px 25px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 9999;
+        animation: slideInRight 0.3s ease, fadeOut 0.3s ease 3.7s;
+        opacity: 1;
+        font-weight: 500;
+        min-width: 250px;
+    }
+
+    @keyframes slideInRight {
+        from {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
+        }
+    }
+
+    /* Back to Top Button */
+    #backToTopBtn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        z-index: 99;
+        border: none;
+        outline: none;
+        background-color: #667eea;
+        color: white;
+        cursor: pointer;
+        padding: 15px;
+        border-radius: 50%;
+        font-size: 18px;
+        width: 50px;
+        height: 50px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+        opacity: 0;
+        visibility: hidden;
+    }
+
+    #backToTopBtn.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    #backToTopBtn:hover {
+        background-color: #764ba2;
+        transform: translateY(-3px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+
+    #backToTopBtn:active {
+        transform: translateY(-1px);
+    }
+</style>
 {% endblock %}
 
 {% block extra_js %}
-<script>
-    $(document).ready(function() {
-        // Handle export button clicks
-        $('#export-json-btn').click(function(e) {
-            e.preventDefault();
-            
-            // Get all filter form inputs
-            var filterParams = $('#filter-form').serialize();
-            
-            // Redirect to export URL with filters
-            window.location.href = '/export/json?' + filterParams;
+<script nonce="{{ csp_nonce }}">
+    // Initialize Bootstrap popovers
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize all popovers
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+        var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl);
         });
-        
-        $('#export-csv-btn').click(function(e) {
-            e.preventDefault();
 
-            // Get all filter form inputs
-            var filterParams = $('#filter-form').serialize();
-
-            // Redirect to export URL with filters
-            window.location.href = '/export/csv?' + filterParams;
+        // Close popover when clicking elsewhere
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('[data-bs-toggle="popover"]')) {
+                popoverList.forEach(function(popover) {
+                    popover.hide();
+                });
+            }
         });
     });
 
-    // Email Management Functions
-    function toggleSelectAll(checkbox) {
-        console.log('toggleSelectAll called, checkbox checked:', checkbox.checked);
-        const checkboxes = document.querySelectorAll('.email-checkbox');
-        console.log('Found', checkboxes.length, 'email checkboxes');
+    // Select all checkbox functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAllCheckbox = document.getElementById('select-all');
+        const emailCheckboxes = document.querySelectorAll('.email-checkbox');
 
-        checkboxes.forEach(cb => {
-            cb.checked = checkbox.checked;
-        });
-
-        updateSelectedCount();
-    }
-
-    function updateSelectedCount() {
-        const selected = document.querySelectorAll('.email-checkbox:checked');
-        document.getElementById('selected-count').textContent = selected.length;
-
-        // Enable/disable bulk action buttons
-        const disabled = selected.length === 0;
-        document.getElementById('bulk-spam-btn').disabled = disabled;
-        document.getElementById('bulk-not-spam-btn').disabled = disabled;
-        document.getElementById('bulk-whitelist-btn').disabled = disabled;
-        document.getElementById('bulk-delete-btn').disabled = disabled;
-    }
-
-    function getSelectedEmails() {
-        const selected = document.querySelectorAll('.email-checkbox:checked');
-        return Array.from(selected).map(cb => ({
-            id: parseInt(cb.value),
-            sender: cb.dataset.sender
-        }));
-    }
-
-    function clearSelection() {
-        document.querySelectorAll('.email-checkbox').forEach(cb => cb.checked = false);
-        document.getElementById('select-all').checked = false;
-        updateSelectedCount();
-    }
-
-    // Individual Actions
-    function markAsSpam(emailId) {
-        if (!confirm('Mark this email as spam and increase its spam score?')) return;
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch(`/api/emails/${emailId}/mark-spam`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Email marked as spam');
-                location.reload();
-            } else {
-                alert('Error: ' + data.error);
-            }
-        });
-    }
-
-    function whitelistSender(sender) {
-        if (!confirm(`Add "${sender}" to whitelist?`)) return;
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch('/api/emails/whitelist-sender', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({sender: sender})
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Sender "${sender}" added to whitelist`);
-            } else {
-                alert('Error: ' + data.error);
-            }
-        });
-    }
-
-    function deleteEmail(emailId) {
-        console.log('Delete function called for email ID:', emailId);
-
-        if (!confirm('Delete this email permanently?')) {
-            console.log('User cancelled delete');
-            return;
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                emailCheckboxes.forEach(checkbox => {
+                    checkbox.checked = selectAllCheckbox.checked;
+                });
+                updateSelectedCount();
+            });
         }
 
-        console.log('Sending DELETE request to:', `/api/emails/${emailId}/delete`);
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch(`/api/emails/${emailId}/delete`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            }
-        })
-        .then(response => {
-            console.log('Response status:', response.status);
-            return response.json();
-        })
-        .then(data => {
-            console.log('Response data:', data);
-            if (data.success) {
-                alert('Email deleted');
-                location.reload();
-            } else {
-                alert('Error: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error during delete:', error);
-            alert('Failed to delete email: ' + error);
+        emailCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                updateSelectAllState();
+                updateSelectedCount();
+            });
         });
+
+        function updateSelectAllState() {
+            const allChecked = Array.from(emailCheckboxes).every(cb => cb.checked);
+            const someChecked = Array.from(emailCheckboxes).some(cb => cb.checked);
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = allChecked;
+                selectAllCheckbox.indeterminate = someChecked && !allChecked;
+            }
+        }
+
+        function updateSelectedCount() {
+            const selectedCount = Array.from(emailCheckboxes).filter(cb => cb.checked).length;
+            const selectedCountElement = document.getElementById('selected-count');
+            if (selectedCountElement) {
+                selectedCountElement.textContent = selectedCount;
+            }
+
+            // Show/hide bulk action bar
+            const bulkActionBar = document.getElementById('bulk-action-bar');
+            if (bulkActionBar) {
+                bulkActionBar.style.display = selectedCount > 0 ? 'block' : 'none';
+            }
+        }
+
+        // Bulk action button handlers
+        const btnRelease = document.getElementById('btn-release');
+        const btnMarkSafe = document.getElementById('btn-mark-safe');
+        const btnMarkSpam = document.getElementById('btn-mark-spam');
+        const btnDelete = document.getElementById('btn-delete');
+        const btnClear = document.getElementById('btn-clear');
+
+        if (btnRelease) btnRelease.addEventListener('click', bulkRelease);
+        if (btnMarkSafe) btnMarkSafe.addEventListener('click', bulkMarkNotSpam);
+        if (btnMarkSpam) btnMarkSpam.addEventListener('click', bulkMarkSpam);
+        if (btnDelete) btnDelete.addEventListener('click', bulkDelete);
+        if (btnClear) btnClear.addEventListener('click', clearSelection);
+    });
+
+    // Prevent row click when clicking checkbox
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('email-checkbox')) {
+            e.stopPropagation();
+        }
+    });
+
+    // Add click handlers to email rows for navigation to detail page
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.email-table tbody tr').forEach(row => {
+            row.addEventListener('click', function(e) {
+                // Don't navigate if clicking on checkbox cell
+                if (e.target.closest('.checkbox-cell') || e.target.classList.contains('email-checkbox')) {
+                    return;
+                }
+                const emailId = this.getAttribute('data-email-id');
+                if (emailId) {
+                    // Store current filter state in sessionStorage before navigating
+                    sessionStorage.setItem('emailListFilters', window.location.search);
+                    window.location = '/email/' + emailId;
+                }
+            });
+        });
+    });
+
+    // Helper function to get selected email IDs
+    function getSelectedEmails() {
+        const checkboxes = document.querySelectorAll('.email-checkbox:checked');
+        return Array.from(checkboxes).map(cb => ({id: parseInt(cb.value)}));
+    }
+
+    // Clear selection
+    function clearSelection() {
+        document.querySelectorAll('.email-checkbox').forEach(cb => cb.checked = false);
+        const selectAll = document.getElementById('select-all');
+        if (selectAll) selectAll.checked = false;
+        const bulkActionBar = document.getElementById('bulk-action-bar');
+        if (bulkActionBar) bulkActionBar.style.display = 'none';
+        const selectedCount = document.getElementById('selected-count');
+        if (selectedCount) selectedCount.textContent = '0';
+    }
+
+    // Toast notification function
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type === 'error' ? 'bg-danger' : 'bg-success'}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 4000);
     }
 
     // Bulk Actions
-    function bulkMarkSpam() {
-        const emails = getSelectedEmails();
-        if (emails.length === 0) return;
-
-        if (!confirm(`Mark ${emails.length} email(s) as spam?`)) return;
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch('/api/emails/bulk-mark-spam', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({email_ids: emails.map(e => e.id)})
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Marked ${data.count} email(s) as spam`);
-                location.reload();
-            } else {
-                alert('Error: ' + data.error);
-            }
-        });
-    }
-
     function bulkMarkNotSpam() {
         const emails = getSelectedEmails();
         if (emails.length === 0) return;
@@ -600,38 +461,43 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(`Marked ${data.count} email(s) as not spam`);
-                location.reload();
+                showToast(`✓ Marked ${data.count} email(s) as not spam`);
+                setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + data.error, 'error');
             }
+        })
+        .catch(error => {
+            showToast('Failed to mark emails: ' + error, 'error');
         });
     }
 
-    function bulkWhitelist() {
+    function bulkMarkSpam() {
         const emails = getSelectedEmails();
         if (emails.length === 0) return;
 
-        const uniqueSenders = [...new Set(emails.map(e => e.sender))];
-        if (!confirm(`Add ${uniqueSenders.length} unique sender(s) to whitelist?`)) return;
+        if (!confirm(`Mark ${emails.length} email(s) as spam?`)) return;
 
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch('/api/emails/bulk-whitelist', {
+        fetch('/api/emails/bulk-mark-spam', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken
             },
-            body: JSON.stringify({senders: uniqueSenders})
+            body: JSON.stringify({email_ids: emails.map(e => e.id)})
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(`Added ${data.count} sender(s) to whitelist`);
-                clearSelection();
+                showToast(`✓ Marked ${data.count} email(s) as spam`);
+                setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + data.error, 'error');
             }
+        })
+        .catch(error => {
+            showToast('Failed to mark emails: ' + error, 'error');
         });
     }
 
@@ -653,12 +519,453 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(`Deleted ${data.success_count} email(s)`);
-                location.reload();
+                showToast(`✓ Deleted ${data.success_count} email(s)`);
+                setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + data.error, 'error');
             }
+        })
+        .catch(error => {
+            showToast('Failed to delete emails: ' + error, 'error');
+        });
+    }
+
+    function bulkRelease() {
+        const emails = getSelectedEmails();
+        if (emails.length === 0) return;
+
+        if (!confirm(`Release ${emails.length} email(s) to recipients? This will deliver the emails and mark them as safe.`)) return;
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        fetch('/api/emails/bulk-release', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({email_ids: emails.map(e => e.id)})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`✓ Released ${data.success_count} email(s)`);
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast('Error: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to release emails: ' + error, 'error');
         });
     }
 </script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Preview Banner -->
+    <div class="preview-banner mb-2">
+        <div>
+            <h4 class="mb-1"><i class="fas fa-list-check me-2"></i>Email List Bulk Operations</h4>
+            <p class="mb-0 small">Select multiple emails for bulk release, quarantine, or deletion operations</p>
+        </div>
+    </div>
+
+    <!-- Statistics Summary -->
+    <div class="mb-2 d-flex gap-3 flex-wrap">
+
+    <!-- Search and Filters Box -->
+    <div class="search-box">
+        <form method="get" action="/emails" id="filter-form">
+            <div class="row align-items-end g-3 mb-3">
+                <div class="col-md-4">
+                    <label for="search" class="form-label small fw-bold">
+                        <i class="fas fa-search"></i> Search
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="search"
+                           name="search"
+                           value="{{ search }}"
+                           placeholder="Search by ID, subject, sender, domain, or message-id">
+                </div>
+                <div class="col-md-3">
+                    <label for="receiving_domain" class="form-label small fw-bold">
+                        <i class="fas fa-globe"></i> Domain
+                    </label>
+                    <select class="form-select" id="receiving_domain" name="receiving_domain">
+                        <option value="">All Domains</option>
+                        {% for domain in available_domains %}
+                        <option value="{{ domain }}" {% if receiving_domain == domain %}selected{% endif %}>
+                            {{ domain }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="mail_direction" class="form-label small fw-bold">
+                        <i class="fas fa-exchange-alt"></i> Mail Direction
+                    </label>
+                    <select class="form-select" id="mail_direction" name="mail_direction">
+                        <option value="inbound" {% if mail_direction == 'inbound' %}selected{% endif %}>📥 Inbound</option>
+                        <option value="outbound" {% if mail_direction == 'outbound' %}selected{% endif %}>📤 Outbound</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-filter"></i> Apply
+                    </button>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small fw-bold">&nbsp;</label>
+                    <a href="/emails" class="btn btn-outline-secondary w-100">
+                        <i class="fas fa-redo"></i> Reset
+                    </a>
+                </div>
+            </div>
+
+            <!-- Content Search Option -->
+            <div class="row mt-2">
+                <div class="col-md-12">
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               id="search_content"
+                               name="search_content"
+                               value="1"
+                               {% if search_content == '1' %}checked{% endif %}>
+                        <label class="form-check-label small text-muted" for="search_content">
+                            <i class="fas fa-file-alt"></i> Include email content in search (slower)
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <!-- High Spam Filter Option -->
+            <div class="row mt-2">
+                <div class="col-md-12">
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               id="hide_high_spam"
+                               >
+                        <label class="form-check-label small text-muted" for="hide_high_spam">
+                            <i class="fas fa-eye-slash"></i> Hide high spam (score &ge; 40)
+                        </label>
+                        <span id="hidden_spam_count" class="badge bg-secondary ms-2 d-none"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs with Legend -->
+            <div class="mt-3 d-flex justify-content-between align-items-center">
+                <ul class="nav nav-pills mb-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% if (tab == 'all' or not tab) and show_deleted != '1' %}active{% endif %}"
+                           href="?tab=all{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-list"></i> All
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab == 'clean' and show_deleted != '1' %}active{% endif %}"
+                           href="?tab=clean{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-check-circle"></i> Clean
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab == 'suspicious' and show_deleted != '1' %}active{% endif %}"
+                           href="?tab=suspicious{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-question-circle"></i> Suspicious
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab == 'quarantined' and show_deleted != '1' %}active{% endif %}"
+                           href="?tab=quarantined{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-pause-circle"></i> Quarantined
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab == 'spam' and show_deleted != '1' %}active{% endif %}"
+                           href="?tab=spam{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-exclamation-triangle"></i> Spam
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        {% if show_deleted == '1' %}
+                        <a class="nav-link btn btn-outline-danger active" href="?tab={{ tab }}{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}">
+                            <i class="fas fa-eye-slash"></i> Hide Deleted
+                        </a>
+                        {% else %}
+                        <a class="nav-link btn btn-outline-secondary" href="?tab={{ tab }}{% if search %}&search={{ search }}{% endif %}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}&show_deleted=1">
+                            <i class="fas fa-trash"></i> Show Deleted
+                        </a>
+                        {% endif %}
+                    </li>
+                </ul>
+                <div>
+                    {% if search or receiving_domain or language or sentiment_category or tab != 'all' or show_deleted == '1' %}
+                    <a class="btn btn-outline-primary btn-sm me-2" href="/emails" title="Clear all filters">
+                        <i class="fas fa-undo"></i> Clear Filters
+                    </a>
+                    {% endif %}
+                    <span class="legend-icon"
+                          data-bs-toggle="popover"
+                          data-bs-placement="bottom"
+                          data-bs-html="true"
+                          data-bs-trigger="click"
+                          data-bs-content="<div class='text-start'><strong>Delivery Status Legend:</strong><br><span class='delivery-badge bg-success'>D</span> Delivered<br><span class='delivery-badge bg-warning'>Q</span> Quarantined</div>"
+                          title="Status Legend">
+                        ℹ️ Legend
+                    </span>
+                </div>
+            </div>
+
+            <!-- Hidden field to preserve sort state -->
+            <input type="hidden" name="sort" value="{{ sort_by }}">
+            <input type="hidden" name="order" value="{{ order }}">
+        </form>
+    </div>
+
+    <!-- Bulk Action Bar (appears when emails are selected) -->
+    {% if current_user.is_admin() or current_user.is_domain_admin() or (current_user.authorized_domains and current_user.authorized_domains.strip()) %}
+    <div class="sticky-actions mb-3" id="bulk-action-bar">
+        <div class="bulk-action-bar p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong><span id="selected-count">0</span> selected</strong>
+                </div>
+                <div>
+                    <button class="btn btn-outline-light btn-sm me-2" id="btn-release">
+                        <i class="fas fa-paper-plane"></i> Release
+                    </button>
+                    <button class="btn btn-outline-light btn-sm me-2" id="btn-mark-safe">
+                        <i class="fas fa-check-circle"></i> Mark Safe
+                    </button>
+                    <button class="btn btn-outline-light btn-sm me-2" id="btn-mark-spam">
+                        <i class="fas fa-ban"></i> Mark Spam
+                    </button>
+                    <button class="btn btn-outline-light btn-sm me-2" id="btn-delete">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="btn btn-light btn-sm" id="btn-clear">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Results Summary -->
+    <div class="mb-3">
+        <span class="badge bg-secondary">Total: {{ total_count }}</span>
+        <span class="badge bg-info">Page {{ page }} of {{ total_pages }}</span>
+    </div>
+
+    <!-- Email Table -->
+    <div class="table-responsive">
+        <table class="table table-hover table-sm email-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" id="select-all" class="form-check-input" title="Select all">
+                    </th>
+                    <th>
+                        <a href="?sort=id&order={% if sort_by == 'id' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            ID
+                            {% if sort_by == 'id' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Status</th>
+                    <th>
+                        <a href="?sort=recipients&order={% if sort_by == 'recipients' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            Recipient
+                            {% if sort_by == 'recipients' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Domain</th>
+                    <th title="Source Country">
+                        <a href="?sort=country&order={% if sort_by == 'country' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            CC
+                            {% if sort_by == 'country' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?sort=sender&order={% if sort_by == 'sender' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            Sender
+                            {% if sort_by == 'sender' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?sort=subject&order={% if sort_by == 'subject' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            Subject
+                            {% if sort_by == 'subject' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?sort=spam_score&order={% if sort_by == 'spam_score' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            Spam
+                            {% if sort_by == 'spam_score' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?sort=timestamp&order={% if sort_by == 'timestamp' and order == 'asc' %}desc{% else %}asc{% endif %}&search={{ search }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}" class="sort-link">
+                            Date
+                            {% if sort_by == 'timestamp' %}
+                                <span class="sort-indicator">{% if order == 'asc' %}▲{% else %}▼{% endif %}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in emails %}
+                <tr data-email-id="{{ email.id }}">
+                    <td class="checkbox-cell">
+                        <input type="checkbox" class="form-check-input email-checkbox" value="{{ email.id }}">
+                    </td>
+                    <td class="text-muted small">{{ email.id }}</td>
+                    <td>
+                        <span class="delivery-badge bg-{{ email.delivery_state_class }}"
+                              title="{{ email.delivery_state_full }}">
+                            {{ email.delivery_state }}
+                        </span>
+                    </td>
+                    <td class="recipient-cell" title="{{ email.recipient_email }}">
+                        {{ email.recipient_email }}
+                    </td>
+                    <td class="text-muted small">{{ email.recipient_domain }}</td>
+                    <td class="text-center">
+                        {% if email.source_country_code %}
+                            <span class="badge bg-info" title="{{ email.source_country }}">{{ email.source_country_code }}</span>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="sender-cell" title="{{ email.sender }}">
+                        {{ email.sender }}
+                    </td>
+                    <td class="subject-cell" title="{{ email.subject }}">
+                        {% if email.quarantine_reason == 'dangerous_attachment' %}
+                        <span class="badge bg-danger me-1" style="font-size: 0.7rem; vertical-align: middle;" title="Malware detected in attachment">
+                            <i class="fas fa-exclamation-triangle"></i> MALWARE
+                        </span>
+                        {% endif %}
+                        {{ email.subject }}
+                    </td>
+                    <td>
+                        <span class="spam-score {% if email.spam_score >= 10 %}spam-high{% elif email.spam_score >= 5 %}spam-medium{% else %}spam-low{% endif %}">
+                            {{ "%.1f"|format(email.spam_score) }}
+                        </span>
+                    </td>
+                    <td class="text-muted small" title="{{ email.timestamp }}">
+                        {{ email.timestamp|userdate('long') if email.timestamp else '-' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-4">
+                        <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                        No emails found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav aria-label="Email pagination" class="mt-3">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link" href="?page=1&search={{ search }}&sort={{ sort_by }}&order={{ order }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}">First</a>
+            </li>
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link" href="?page={{ page - 1 }}&search={{ search }}&sort={{ sort_by }}&order={{ order }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}">Previous</a>
+            </li>
+
+            {% set start_page = page - 2 if page - 2 > 1 else 1 %}
+            {% set end_page = page + 2 if page + 2 < total_pages else total_pages %}
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}&sort={{ sort_by }}&order={{ order }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                <a class="page-link" href="?page={{ page + 1 }}&search={{ search }}&sort={{ sort_by }}&order={{ order }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}">Next</a>
+            </li>
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                <a class="page-link" href="?page={{ total_pages }}&search={{ search }}&sort={{ sort_by }}&order={{ order }}{% if receiving_domain %}&receiving_domain={{ receiving_domain }}{% endif %}{% if language %}{% endif %}{% if sentiment_category %}{% endif %}{% if tab %}&tab={{ tab }}{% endif %}{% if show_deleted %}&show_deleted={{ show_deleted }}{% endif %}">Last</a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<script nonce="{{ csp_nonce }}">
+// Auto-focus search box when content search checkbox is clicked
+document.addEventListener('DOMContentLoaded', function() {
+    const searchContentCheckbox = document.getElementById('search_content');
+    const searchInput = document.getElementById('search');
+
+    if (searchContentCheckbox && searchInput) {
+        searchContentCheckbox.addEventListener('change', function() {
+            // Focus the search box when checkbox is toggled
+            searchInput.focus();
+            // Select all text if there's any in the search box
+            if (searchInput.value) {
+                searchInput.select();
+            }
+        });
+    }
+});
+
+// Back to Top Button Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const backToTopBtn = document.getElementById('backToTopBtn');
+
+    if (backToTopBtn) {
+        // Show button when user scrolls down 300px
+        window.addEventListener('scroll', function() {
+            if (window.pageYOffset > 300) {
+                backToTopBtn.classList.add('show');
+            } else {
+                backToTopBtn.classList.remove('show');
+            }
+        });
+
+        // Smooth scroll to top when button is clicked
+        backToTopBtn.addEventListener('click', function() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+    }
+});
+</script>
+
+<!-- Back to Top Button -->
+<button id="backToTopBtn" title="Back to top">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<!-- High Spam Filter Script -->
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='high-spam-filter.js') }}"></script>
+
 {% endblock %}

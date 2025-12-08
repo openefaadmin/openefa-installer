@@ -3,12 +3,9 @@
 -- ============================================================================
 -- Version: 1.0
 -- Date: 2025-10-13
--- Database: spacy_email_db
 --
--- DEPLOYMENT: Run on .58 test server first, then .89 production when ready
+-- Note: Database name is specified at import time via mysql -u root "${DB_NAME}"
 -- ============================================================================
-
-USE spacy_email_db;
 
 -- ============================================================================
 -- TABLE: email_quarantine

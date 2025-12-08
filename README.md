@@ -75,9 +75,8 @@ The installer will prompt for:
 1. **Primary Domain**: Initial domain to protect (e.g., `example.com`)
 2. **Admin Account**: Email and password for SpacyWeb dashboard
 3. **Relay Server**: Destination mail server IP and port (e.g., `192.168.1.100:25`)
-4. **DNS Server**: Internal DNS resolver IP (e.g., `192.168.1.1`)
-5. **Module Tier**: Security feature level (1=Core, 2=Standard, 3=Advanced+AI)
-6. **Debug Mode**: Enable verbose logging (recommended during setup)
+4. **Module Tier**: Security feature level (1=Core, 2=Standard, 3=Advanced+AI)
+5. **Debug Mode**: Enable verbose logging (recommended during setup)
 
 ### Non-Interactive Installation
 Set environment variables before running:

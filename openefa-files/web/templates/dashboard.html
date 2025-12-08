@@ -2,12 +2,25 @@
 
 {% block title %}Dashboard - OpenEFA - Email Sentiment Analyzer{% endblock %}
 
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
+<div class="container-fluid px-4 py-2">
+<div class="row mb-3">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0"><i class="fas fa-tachometer-alt"></i> Dashboard</h4>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header dashboard-header border-0">
+                <h3 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h3>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -94,9 +107,9 @@
 <!-- Sentiment Distribution Chart -->
 <div class="row">
     <div class="col-md-8">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Sentiment Distribution</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Sentiment Distribution</h6>
             </div>
             <div class="card-body text-center">
                 {% if sentiment_chart %}
@@ -109,9 +122,9 @@
     </div>
 
     <div class="col-md-4">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-percentage"></i> Sentiment Breakdown</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-percentage"></i> Sentiment Breakdown</h6>
             </div>
             <div class="card-body">
                 {% if stats.sentiment_distribution %}
@@ -158,9 +171,9 @@
 <div class="row mt-4">
     <div class="col-md-6">
         <!-- Language Distribution -->
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-language"></i> Language Distribution</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-language"></i> Language Distribution</h6>
             </div>
             <div class="card-body">
                 {% if stats.languages %}
@@ -195,9 +208,9 @@
 
     <div class="col-md-6">
         <!-- Email Categories -->
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-tags"></i> Email Categories</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-tags"></i> Email Categories</h6>
             </div>
             <div class="card-body">
                 {% if stats.categories %}
@@ -238,9 +251,9 @@
 <!-- Receiving Domain Distribution -->
 <div class="row mt-4">
     <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-globe"></i> Receiving Domain Distribution</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-globe"></i> Receiving Domain Distribution</h6>
             </div>
             <div class="card-body">
                 {% if stats.receiving_domains %}
@@ -378,9 +391,9 @@
 <!-- Manipulation Indicators -->
 <div class="row mt-4 mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Manipulation Indicators</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Manipulation Indicators</h6>
             </div>
             <div class="card-body">
                 {% if stats.manipulation_indicators %}
@@ -405,9 +418,9 @@
 <!-- Quick Links -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-search"></i> Quick Filters</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-search"></i> Quick Filters</h6>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -452,9 +465,9 @@
 <!-- Export Options -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-file-export"></i> Export Data</h5>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="fas fa-file-export"></i> Export Data</h6>
             </div>
             <div class="card-body">
                 <div class="row">

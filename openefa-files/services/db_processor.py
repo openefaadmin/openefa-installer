@@ -4,6 +4,7 @@ Production SpaCy Database Processor - FIXED SENDER EXTRACTION
 Processes Redis queue messages from the production email filter and stores them in spacy_analysis table
 """
 
+import os
 import json
 import time
 import logging
@@ -12,6 +13,10 @@ import pymysql
 import traceback
 import re
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 from typing import Dict, Any, Optional
 from email.parser import BytesParser
 from email.policy import default
@@ -46,7 +51,7 @@ class ProductionSpaCyDatabaseProcessor:
             # Connect to MySQL using config file with auto-reconnect
             self.db_connection = pymysql.connect(
                 read_default_file='/etc/spacy-server/.my.cnf',
-                database='spacy_email_db',
+                database=os.getenv('DB_NAME', 'spacy_email_db'),
                 charset='utf8mb4',
                 autocommit=False,
                 connect_timeout=10,
@@ -77,7 +82,7 @@ class ProductionSpaCyDatabaseProcessor:
             if not self.db_connection:
                 self.db_connection = pymysql.connect(
                     read_default_file='/etc/spacy-server/.my.cnf',
-                    database='spacy_email_db',
+                    database=os.getenv('DB_NAME', 'spacy_email_db'),
                     charset='utf8mb4',
                     autocommit=False,
                     connect_timeout=10,
@@ -100,7 +105,7 @@ class ProductionSpaCyDatabaseProcessor:
                 
                 self.db_connection = pymysql.connect(
                     read_default_file='/etc/spacy-server/.my.cnf',
-                    database='spacy_email_db',
+                    database=os.getenv('DB_NAME', 'spacy_email_db'),
                     charset='utf8mb4',
                     autocommit=False,
                     connect_timeout=10,
@@ -196,10 +201,13 @@ class ProductionSpaCyDatabaseProcessor:
                 # Extract core email information
                 timestamp = datetime.now()
                 message_id = email_data.get('message_id', parsed_email.get('message_id', ''))
-                if not message_id:
-                    # Generate a message ID if none exists
-                    timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S')
-                    message_id = f"<spacy-production-{timestamp_str}@example.com>"
+                if not message_id or message_id.strip() == '':
+                    # Generate a unique message ID if none exists
+                    import hashlib
+                    timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S%f')
+                    message_str = email_data.get('message', '')
+                    unique_part = hashlib.md5(f"{timestamp_str}{message_str[:1000]}".encode()).hexdigest()[:12]
+                    message_id = f"<spacy-production-{timestamp_str}-{unique_part}@openspacy.local>"
                 
                 # FIXED: Better sender extraction logic
                 sender = ''
@@ -351,8 +359,13 @@ class ProductionSpaCyDatabaseProcessor:
                     except Exception as e:
                         logger.warning(f"Could not extract auth headers: {e}")
 
+                # Check if this is a foreign language email that should be auto-deleted
+                headers_to_add = analysis_results.get('headers_to_add', {})
+                is_foreign_language = 'X-Language-Block-Reason' in headers_to_add
+                is_deleted = 1 if is_foreign_language else 0
+
                 # Log what we're about to insert
-                logger.info(f"📝 Inserting: sender='{sender}', subject='{subject}', category='{email_category}'")
+                logger.info(f"📝 Inserting: sender='{sender}', subject='{subject}', category='{email_category}', is_deleted={is_deleted}")
 
                 # Insert into database with comprehensive schema
                 insert_sql = """
@@ -364,11 +377,11 @@ class ProductionSpaCyDatabaseProcessor:
                     sentiment_subjectivity, sentiment_extremity, sentiment_manipulation,
                     manipulation_indicators, category_confidence, secondary_categories,
                     classification_scores, has_attachments, training_data_saved, raw_email,
-                    original_spf, original_dkim, original_dmarc
+                    original_spf, original_dkim, original_dmarc, is_deleted
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s, %s
                 )
                 """
 
@@ -381,7 +394,7 @@ class ProductionSpaCyDatabaseProcessor:
                     sentiment_subjectivity, sentiment_extremity, sentiment_manipulation,
                     manipulation_indicators, category_confidence, secondary_categories,
                     classification_scores, has_attachments, training_data_saved, message_str,
-                    original_spf, original_dkim, original_dmarc
+                    original_spf, original_dkim, original_dmarc, is_deleted
                 ))
                 
                 self.db_connection.commit()

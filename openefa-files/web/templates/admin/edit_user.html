@@ -86,13 +86,13 @@
                                     </div>
                                     
                                     <div class="mt-3 border-top pt-2">
-                                        <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="selectAllDomains()">
+                                        <button type="button" class="btn btn-sm btn-outline-primary me-2" id="selectAllDomainsBtn">
                                             <i class="fas fa-check-double"></i> Select All
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="clearAllDomains()">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="clearAllDomainsBtn">
                                             <i class="fas fa-times"></i> Clear All
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="selectPrimaryOnly()">
+                                        <button type="button" class="btn btn-sm btn-outline-info" id="selectPrimaryOnlyBtn">
                                             <i class="fas fa-star"></i> Primary Only
                                         </button>
                                     </div>
@@ -125,7 +125,8 @@
                                 <select class="form-select" id="role" name="role">
                                     <option value="client" {% if user.role == 'client' %}selected{% endif %}>User</option>
                                     <option value="domain_admin" {% if user.role == 'domain_admin' %}selected{% endif %}>Domain Admin</option>
-                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>SuperAdmin</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                    <option value="superadmin" {% if user.role == 'superadmin' %}selected{% endif %}>SuperAdmin</option>
                                 </select>
                             </div>
                         </div>
@@ -146,7 +147,7 @@
                                     <div id="aliases-list" class="mb-3">
                                         <div class="d-flex justify-content-between align-items-center mb-2">
                                             <h6 class="mb-0">Current Aliases</h6>
-                                            <button type="button" class="btn btn-sm btn-success" onclick="showAddAliasForm()">
+                                            <button type="button" class="btn btn-sm btn-success" id="showAddAliasBtn">
                                                 <i class="fas fa-plus"></i> Add Alias
                                             </button>
                                         </div>
@@ -183,10 +184,10 @@
                                             </div>
                                         </div>
                                         <div class="d-flex gap-2">
-                                            <button type="button" class="btn btn-primary" onclick="addAlias()">
+                                            <button type="button" class="btn btn-primary" id="saveAliasBtn">
                                                 <i class="fas fa-save"></i> Save Alias
                                             </button>
-                                            <button type="button" class="btn btn-secondary" onclick="cancelAddAlias()">
+                                            <button type="button" class="btn btn-secondary" id="cancelAliasBtn">
                                                 <i class="fas fa-times"></i> Cancel
                                             </button>
                                         </div>
@@ -225,14 +226,14 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Auto-populate domain based on email
 document.getElementById('email').addEventListener('change', function() {
     const email = this.value;
     if (email.includes('@')) {
         const domain = email.split('@')[1];
         const domainSelect = document.getElementById('domain');
-        
+
         // Check if domain exists in options
         for (let option of domainSelect.options) {
             if (option.value === domain) {
@@ -242,6 +243,14 @@ document.getElementById('email').addEventListener('change', function() {
         }
     }
 });
+
+// Attach event listeners to buttons
+document.getElementById('selectAllDomainsBtn').addEventListener('click', selectAllDomains);
+document.getElementById('clearAllDomainsBtn').addEventListener('click', clearAllDomains);
+document.getElementById('selectPrimaryOnlyBtn').addEventListener('click', selectPrimaryOnly);
+document.getElementById('showAddAliasBtn').addEventListener('click', showAddAliasForm);
+document.getElementById('saveAliasBtn').addEventListener('click', addAlias);
+document.getElementById('cancelAliasBtn').addEventListener('click', cancelAddAlias);
 
 // Domain management functions
 function selectAllDomains() {
@@ -336,8 +345,9 @@ function displayAliases(aliases) {
                 <td>${label}</td>
                 <td><small class="text-muted">${createdDate}</small></td>
                 <td class="text-end">
-                    <button type="button" class="btn btn-sm btn-danger"
-                            onclick="deleteAlias(${alias.id}, '${alias.managed_email}')"
+                    <button type="button" class="btn btn-sm btn-danger delete-alias-btn"
+                            data-alias-id="${alias.id}"
+                            data-alias-email="${alias.managed_email}"
                             title="Remove alias">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -352,6 +362,15 @@ function displayAliases(aliases) {
     `;
 
     container.innerHTML = html;
+
+    // Attach event listeners to delete buttons
+    container.querySelectorAll('.delete-alias-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const aliasId = this.getAttribute('data-alias-id');
+            const aliasEmail = this.getAttribute('data-alias-email');
+            deleteAlias(aliasId, aliasEmail);
+        });
+    });
 }
 
 // Show add alias form

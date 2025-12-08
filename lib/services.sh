@@ -86,6 +86,12 @@ setup_db_processor_service() {
 setup_spacyweb_service() {
     section "Setting Up SpacyWeb Service"
 
+    # Create log directory for SpacyWeb
+    info "Creating SpacyWeb log directory..."
+    mkdir -p /var/log/spacyweb
+    chown spacy-filter:spacy-filter /var/log/spacyweb
+    chmod 755 /var/log/spacyweb
+
     install_service_file "spacyweb" || return 1
     systemctl daemon-reload
 
@@ -99,27 +105,10 @@ setup_spacyweb_service() {
 
 #
 # Install and start API services
+# Legacy EFA v5 API services - no longer needed
 #
 setup_api_services() {
-    section "Setting Up API Services"
-
-    local api_services=(
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
-    )
-
-    for service in "${api_services[@]}"; do
-        install_service_file "${service}" || return 1
-    done
-
-    systemctl daemon-reload
-    sleep 2
-
-    for service in "${api_services[@]}"; do
-        enable_and_start_service "${service}" || return 1
-    done
-
+    info "API services setup skipped (legacy services removed)"
     save_state "api_services_configured"
     return 0
 }

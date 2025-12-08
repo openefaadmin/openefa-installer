@@ -3,20 +3,20 @@
 {% block title %}Report Configuration - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
-    .report-header {
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .report-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .report-item {
@@ -45,18 +45,21 @@
 {% endblock %}
 
 {% block content %}
-<!-- Report Header -->
-<div class="report-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-file-pdf"></i> Report Configuration</h1>
-                <p class="mb-0">Generate comprehensive email security reports</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-file-pdf me-2"></i>Report Configuration</h4>
+                <p class="mb-0 small">Generate comprehensive email security reports</p>
             </div>
-            <div class="col-md-4 text-md-end">
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
                 {% if user_domains|length > 1 %}
-                <div class="dropdown">
-                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <div class="dropdown d-inline-block">
+                    <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                         <i class="fas fa-globe"></i> {{ selected_domain }}
                     </button>
                     <ul class="dropdown-menu">
@@ -66,16 +69,13 @@
                     </ul>
                 </div>
                 {% else %}
-                <span class="badge bg-light text-dark fs-6">
+                <span class="badge bg-light text-dark">
                     <i class="fas fa-globe"></i> {{ selected_domain }}
                 </span>
                 {% endif %}
             </div>
         </div>
     </div>
-</div>
-
-<div class="container">
     <!-- Progress indicator -->
     <div id="report-progress" class="alert alert-info">
         <div class="d-flex align-items-center">
@@ -90,7 +90,7 @@
     <div id="alert-container"></div>
 
     <!-- Report Generator Card -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-md-12">
             <div class="card report-card">
                 <div class="card-header bg-white">
@@ -98,6 +98,22 @@
                 </div>
                 <div class="card-body">
                     <form id="reportForm">
+                        {% if current_user.is_admin() or current_user.is_superadmin() %}
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <div class="mb-3">
+                                    <label for="report_type" class="form-label">Report Type</label>
+                                    <select class="form-select" id="report_type" name="report_type" required>
+                                        <option value="email">Email Security Report (Domain-Specific)</option>
+                                        <option value="comprehensive">Comprehensive Security Report (All Organizations)</option>
+                                        {% if current_user.is_superadmin() %}
+                                        <option value="activity">Server Activity Report (All Users)</option>
+                                        {% endif %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="mb-3">
@@ -126,19 +142,19 @@
                             <div class="col-md-12">
                                 <label class="form-label">Quick Date Presets:</label>
                                 <div>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(7)">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" data-days="7">
                                         Last 7 Days
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(30)">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" data-days="30">
                                         Last 30 Days
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setDateRange(90)">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" data-days="90">
                                         Last 90 Days
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setThisMonth()">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" data-preset="this-month">
                                         This Month
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" onclick="setLastMonth()">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary date-preset-btn" data-preset="last-month">
                                         Last Month
                                     </button>
                                 </div>
@@ -148,8 +164,8 @@
 
                     <hr>
 
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> <strong>What's included in the report:</strong>
+                    <div class="alert alert-info" id="email-report-info">
+                        <i class="fas fa-info-circle"></i> <strong>What's included in the Email Security Report:</strong>
                         <ul class="mb-0 mt-2">
                             <li>30-day email volume trends and comparisons</li>
                             <li>Security threat analysis by category</li>
@@ -159,6 +175,34 @@
                             <li>Executive summary with key metrics</li>
                         </ul>
                     </div>
+
+                    <div class="alert alert-primary" id="comprehensive-report-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i> <strong>What's included in the Comprehensive Security Report:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>Multi-organization breakdown (Law Firms, Defense/Publications, Insurance, Tech/Security, Individual)</li>
+                            <li>Organization-specific quarantine rates and spam scores</li>
+                            <li>Module effectiveness tracking (Header Forgery, Attachment Inspector, Authentication)</li>
+                            <li>False positive rate analysis and recommendations</li>
+                            <li>Top quarantine reasons across all organizations</li>
+                            <li>Top 10 security threats with detailed analysis</li>
+                            <li>Automated recommendations for per-org tuning</li>
+                        </ul>
+                    </div>
+
+                    {% if current_user.is_superadmin() %}
+                    <div class="alert alert-warning" id="activity-report-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i> <strong>What's included in the Server Activity Report:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>Successful login tracking (user, role, IP, timestamp)</li>
+                            <li>Failed login attempts and security events</li>
+                            <li>User activity breakdown by action type</li>
+                            <li>Administrative actions (user management, password resets)</li>
+                            <li>System operations (backups, cleanup tasks, reports)</li>
+                            <li>Configuration changes and audit trail</li>
+                            <li>Active users statistics and daily trends</li>
+                        </ul>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -178,7 +222,13 @@
                         <div class="report-item d-flex align-items-center justify-content-between">
                             <div class="flex-grow-1">
                                 <div class="d-flex align-items-center">
+                                    {% if report.filename.endswith('.pdf') %}
                                     <i class="fas fa-file-pdf me-2 text-danger"></i>
+                                    {% elif report.filename.endswith('.txt') %}
+                                    <i class="fas fa-file-alt me-2 text-primary"></i>
+                                    {% else %}
+                                    <i class="fas fa-file me-2 text-secondary"></i>
+                                    {% endif %}
                                     <div>
                                         <strong>{{ report.filename }}</strong>
                                         <br>
@@ -190,11 +240,11 @@
                                 </div>
                             </div>
                             <div>
-                                <button class="btn btn-sm btn-success me-1" onclick="downloadReport('{{ report.filename }}')" title="Download">
+                                <button class="btn btn-sm btn-success me-1 download-btn" data-filename="{{ report.filename }}" title="Download">
                                     <i class="fas fa-download"></i>
                                 </button>
                                 {% if current_user.is_admin() %}
-                                <button class="btn btn-sm btn-danger" onclick="deleteReport('{{ report.filename }}')" title="Delete">
+                                <button class="btn btn-sm btn-danger delete-btn" data-filename="{{ report.filename }}" title="Delete">
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 {% endif %}
@@ -252,10 +302,61 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Set default dates to last 30 days on page load
 window.addEventListener('DOMContentLoaded', function() {
     setDateRange(30);
+
+    // Add event listeners for date preset buttons
+    document.querySelectorAll('.date-preset-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.dataset.days) {
+                setDateRange(parseInt(this.dataset.days));
+            } else if (this.dataset.preset === 'this-month') {
+                setThisMonth();
+            } else if (this.dataset.preset === 'last-month') {
+                setLastMonth();
+            }
+        });
+    });
+
+    // Add event listeners for download buttons
+    document.querySelectorAll('.download-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            downloadReport(this.dataset.filename);
+        });
+    });
+
+    // Add event listeners for delete buttons
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            deleteReport(this.dataset.filename);
+        });
+    });
+
+    // Add event listener for report type selector
+    const reportTypeSelect = document.getElementById('report_type');
+    if (reportTypeSelect) {
+        reportTypeSelect.addEventListener('change', function() {
+            const emailInfo = document.getElementById('email-report-info');
+            const comprehensiveInfo = document.getElementById('comprehensive-report-info');
+            const activityInfo = document.getElementById('activity-report-info');
+
+            // Hide all info boxes
+            emailInfo.style.display = 'none';
+            comprehensiveInfo.style.display = 'none';
+            if (activityInfo) activityInfo.style.display = 'none';
+
+            // Show the appropriate info box
+            if (this.value === 'comprehensive') {
+                comprehensiveInfo.style.display = 'block';
+            } else if (this.value === 'activity') {
+                if (activityInfo) activityInfo.style.display = 'block';
+            } else {
+                emailInfo.style.display = 'block';
+            }
+        });
+    }
 });
 
 function showAlert(message, type = 'success') {
@@ -309,38 +410,81 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     const dateFrom = document.getElementById('date_from').value;
     const dateTo = document.getElementById('date_to').value;
     const domain = '{{ selected_domain }}';
+    const reportTypeEl = document.getElementById('report_type');
+    const reportType = reportTypeEl ? reportTypeEl.value : 'email';
 
-    // Show progress
-    progressDiv.style.display = 'block';
-    progressText.textContent = 'Generating report... This may take a few minutes depending on email volume.';
+    // For comprehensive reports, use different endpoint
+    if (reportType === 'comprehensive') {
+        // Calculate days from date range
+        const startDate = new Date(dateFrom);
+        const endDate = new Date(dateTo);
+        const diffTime = Math.abs(endDate - startDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    fetch('/api/reports/generate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            domain: domain,
-            date_from: dateFrom,
-            date_to: dateTo
+        // Show progress
+        progressDiv.style.display = 'block';
+        progressText.textContent = `Generating comprehensive security report (${diffDays} days)... This may take a few seconds.`;
+
+        fetch('/api/reports/generate-comprehensive', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                days: diffDays
+            })
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        progressDiv.style.display = 'none';
+        .then(response => response.json())
+        .then(data => {
+            progressDiv.style.display = 'none';
 
-        if (data.success) {
-            showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
-            // Reload page after 2 seconds to show new report
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            showAlert(`<i class="fas fa-exclamation-circle"></i> Report generation failed: ${data.error}`, 'danger');
-        }
-    })
-    .catch(error => {
-        progressDiv.style.display = 'none';
-        showAlert(`<i class="fas fa-exclamation-circle"></i> Error generating report: ${error}`, 'danger');
-    });
+            if (data.success) {
+                showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
+                // Reload page after 2 seconds to show new report
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showAlert(`<i class="fas fa-exclamation-circle"></i> Report generation failed: ${data.error}`, 'danger');
+            }
+        })
+        .catch(error => {
+            progressDiv.style.display = 'none';
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error generating report: ${error}`, 'danger');
+        });
+    } else {
+        // Standard email or activity report
+        progressDiv.style.display = 'block';
+        const reportTypeName = reportType === 'activity' ? 'server activity report' : 'email report';
+        progressText.textContent = `Generating ${reportTypeName}... This may take a few minutes.`;
+
+        fetch('/api/reports/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                domain: domain,
+                date_from: dateFrom,
+                date_to: dateTo,
+                report_type: reportType
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressDiv.style.display = 'none';
+
+            if (data.success) {
+                showAlert(`<i class="fas fa-check-circle"></i> ${data.message} (Size: ${data.size})`, 'success');
+                // Reload page after 2 seconds to show new report
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showAlert(`<i class="fas fa-exclamation-circle"></i> Report generation failed: ${data.error}`, 'danger');
+            }
+        })
+        .catch(error => {
+            progressDiv.style.display = 'none';
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error generating report: ${error}`, 'danger');
+        });
+    }
 });
 
 function downloadReport(filename) {

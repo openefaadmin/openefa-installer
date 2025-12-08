@@ -33,7 +33,7 @@
                             <tr>
                                 <th>Role:</th>
                                 <td>
-                                    {% if current_user.role == 'admin' %}
+                                    {% if current_user.role == 'admin' or current_user.role == 'superadmin' %}
                                     <span class="badge bg-danger">
                                         <i class="fas fa-crown"></i> SuperAdmin
                                     </span>

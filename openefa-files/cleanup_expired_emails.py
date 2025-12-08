@@ -10,6 +10,10 @@ import sys
 import logging
 from datetime import datetime, timedelta
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Set up logging
 log_file = '/opt/spacyserver/logs/cleanup.log'
@@ -31,8 +35,8 @@ def get_db_connection():
         conn = mysql.connector.connect(
             option_files='/opt/spacyserver/config/.my.cnf',
             option_groups=['client'],
-            user='spacy_user',
-            database='spacy_email_db'
+            user=os.getenv('DB_USER', 'spacy_user'),
+            database=os.getenv('DB_NAME', 'spacy_email_db')
         )
         return conn
     except Exception as e:

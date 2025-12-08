@@ -81,17 +81,35 @@ fi
 #######################################
 log_info "Processing modules..."
 
+# Modules to exclude (premium/paid add-ons for future releases)
+EXCLUDED_MODULES=(
+    "compliance_extraction.py"
+    "vip_alerts.py"
+)
+
 if [[ -d "$PROD_DIR/modules" ]]; then
     for module in "$PROD_DIR/modules"/*.py; do
         if [[ -f "$module" ]]; then
             module_basename=$(basename "$module")
-            cp "$module" "$RELEASE_DIR/modules/$module_basename"
 
-            # No sanitization needed - modules read from configs
-            log_info "  Copied: $module_basename"
+            # Check if module should be excluded
+            skip=0
+            for excluded in "${EXCLUDED_MODULES[@]}"; do
+                if [[ "$module_basename" == "$excluded" ]]; then
+                    log_warning "  Excluded: $module_basename (premium module)"
+                    skip=1
+                    break
+                fi
+            done
+
+            if [[ $skip -eq 0 ]]; then
+                cp "$module" "$RELEASE_DIR/modules/$module_basename"
+                # No sanitization needed - modules read from configs
+                log_info "  Copied: $module_basename"
+            fi
         fi
     done
-    log_success "Modules copied"
+    log_success "Modules copied ($(ls -1 "$RELEASE_DIR/modules"/*.py 2>/dev/null | wc -l) modules)"
 else
     log_warning "modules directory not found"
 fi

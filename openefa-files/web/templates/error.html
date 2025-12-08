@@ -3,7 +3,7 @@
 {% block title %}{{ error or 'Error' }} - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .error-container {
         max-width: 600px;
         margin: 100px auto;

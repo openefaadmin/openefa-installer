@@ -58,7 +58,7 @@
                     <h5 class="mb-0">Recent Compliance Entities Detected</h5>
                 </div>
                 <div class="card-body">
-                    <style>
+                    <style nonce="{{ csp_nonce }}">
                         /* Fix text visibility for compliance table */
                         .compliance-table {
                             color: #212529 !important;
@@ -192,7 +192,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Auto-refresh every 30 seconds
 setTimeout(function(){
     location.reload();

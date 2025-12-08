@@ -16,6 +16,10 @@ import email.utils
 import configparser
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Database imports
 try:
@@ -116,7 +120,7 @@ class EmailDatabaseHandler:
                     'password': password,
                     'host': host,
                     'port': port,
-                    'database': 'spacy_email_db'
+                    'database': os.getenv('DB_NAME', 'spacy_email_db')
                 }
 
                 return db_config
@@ -133,11 +137,11 @@ class EmailDatabaseHandler:
     def _manual_parse_config(self):
         """Manually parse .my.cnf file as fallback"""
         db_config = {
-            'user': 'spacy_user',
+            'user': os.getenv('DB_USER', 'spacy_user'),
             'password': '',
-            'host': 'localhost',
+            'host': os.getenv('DB_HOST', 'localhost'),
             'port': 3306,
-            'database': 'spacy_email_db'
+            'database': os.getenv('DB_NAME', 'spacy_email_db')
         }
 
         with open(self.config_path, 'r') as f:

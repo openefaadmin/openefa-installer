@@ -3,20 +3,20 @@
 {% block title %}Domain Management - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
-    .domain-header {
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .domain-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .domain-item {
@@ -59,29 +59,29 @@
 {% endblock %}
 
 {% block content %}
-<!-- Domain Management Header -->
-<div class="domain-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1><i class="fas fa-globe"></i> Domain Management</h1>
-                <p class="mb-0">Manage client domains and email processing configuration</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-globe me-2"></i>Domain Management</h4>
+                <p class="mb-0 small">Manage client domains and email processing configuration</p>
             </div>
-            <div class="col-md-4 text-md-end">
-                <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
+                <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addDomainModal">
                     <i class="fas fa-plus"></i> Add Domain
                 </button>
             </div>
         </div>
     </div>
-</div>
-
-<div class="container">
     <!-- Alert messages -->
     <div id="alert-container"></div>
 
     <!-- Statistics -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-md-4">
             <div class="card border-primary">
                 <div class="card-body text-center">
@@ -114,7 +114,14 @@
             <div class="card domain-card">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-server"></i> Client Domains ({{ stats.total_domains }})</h5>
-                    <input type="text" id="search-box" class="form-control form-control-sm" placeholder="Search domains..." style="width: 250px;">
+                    <div class="d-flex gap-2">
+                        <select id="status-filter" class="form-select form-select-sm" style="width: 150px;">
+                            <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Domains</option>
+                            <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active Only</option>
+                            <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive Only</option>
+                        </select>
+                        <input type="text" id="search-box" class="form-control form-control-sm" placeholder="Search domains..." style="width: 250px;">
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     {% if domains %}
@@ -142,18 +149,21 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <button class="btn btn-sm btn-primary me-1"
-                                            onclick="editDomain({{ domain.id }}, '{{ domain.client_name or '' }}', '{{ domain.relay_host or '' }}')"
+                                    <button class="btn btn-sm btn-primary me-1 btn-edit-domain"
+                                            data-domain-id="{{ domain.id }}"
+                                            data-client-name="{{ domain.client_name or '' }}"
+                                            data-relay-host="{{ domain.relay_host or '' }}"
                                             title="Edit Domain">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <button class="btn btn-sm {% if domain.active %}btn-warning{% else %}btn-success{% endif %} me-1"
-                                            onclick="toggleDomain({{ domain.id }})"
+                                    <button class="btn btn-sm {% if domain.active %}btn-warning{% else %}btn-success{% endif %} me-1 btn-toggle-domain"
+                                            data-domain-id="{{ domain.id }}"
                                             title="{% if domain.active %}Deactivate{% else %}Activate{% endif %}">
                                         <i class="fas fa-{% if domain.active %}pause{% else %}play{% endif %}"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-danger"
-                                            onclick="deleteDomain({{ domain.id }}, '{{ domain.domain }}')"
+                                    <button class="btn btn-sm btn-danger btn-delete-domain"
+                                            data-domain-id="{{ domain.id }}"
+                                            data-domain-name="{{ domain.domain }}"
                                             title="Delete">
                                         <i class="fas fa-trash"></i>
                                     </button>
@@ -241,7 +251,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="addDomain()">
+                <button type="button" class="btn btn-primary" id="btn-add-domain">
                     <i class="fas fa-plus"></i> Add Domain
                 </button>
             </div>
@@ -274,7 +284,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitEditDomain()">
+                <button type="button" class="btn btn-primary" id="btn-submit-edit-domain">
                     <i class="fas fa-save"></i> Save Changes
                 </button>
             </div>
@@ -285,7 +295,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function showAlert(message, type = 'success') {
     const alertContainer = document.getElementById('alert-container');
     const alertDiv = document.createElement('div');
@@ -426,6 +436,56 @@ document.getElementById('search-box')?.addEventListener('input', function(e) {
         const text = item.textContent.toLowerCase();
         item.style.display = text.includes(search) ? '' : 'none';
     });
+});
+
+// Event listeners for domain action buttons
+document.addEventListener('DOMContentLoaded', function() {
+    // Add domain button
+    const btnAddDomain = document.getElementById('btn-add-domain');
+    if (btnAddDomain) {
+        btnAddDomain.addEventListener('click', addDomain);
+    }
+
+    // Submit edit domain button
+    const btnSubmitEdit = document.getElementById('btn-submit-edit-domain');
+    if (btnSubmitEdit) {
+        btnSubmitEdit.addEventListener('click', submitEditDomain);
+    }
+
+    // Edit domain buttons
+    document.querySelectorAll('.btn-edit-domain').forEach(button => {
+        button.addEventListener('click', function() {
+            const domainId = this.getAttribute('data-domain-id');
+            const clientName = this.getAttribute('data-client-name');
+            const relayHost = this.getAttribute('data-relay-host');
+            editDomain(domainId, clientName, relayHost);
+        });
+    });
+
+    // Toggle domain buttons
+    document.querySelectorAll('.btn-toggle-domain').forEach(button => {
+        button.addEventListener('click', function() {
+            const domainId = this.getAttribute('data-domain-id');
+            toggleDomain(domainId);
+        });
+    });
+
+    // Delete domain buttons
+    document.querySelectorAll('.btn-delete-domain').forEach(button => {
+        button.addEventListener('click', function() {
+            const domainId = this.getAttribute('data-domain-id');
+            const domainName = this.getAttribute('data-domain-name');
+            deleteDomain(domainId, domainName);
+        });
+    });
+
+    // Status filter dropdown
+    const statusFilter = document.getElementById('status-filter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            window.location.href = '?status=' + this.value;
+        });
+    }
 });
 </script>
 {% endblock %}

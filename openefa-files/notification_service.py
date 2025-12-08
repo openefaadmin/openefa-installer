@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import mysql.connector
 from mysql.connector import Error
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # ClickSend imports
 try:
@@ -61,29 +65,46 @@ class NotificationService:
             with open(self.config_path, 'r') as f:
                 return json.load(f)
         except FileNotFoundError:
-            logger.error(f"Configuration file not found: {self.config_path}")
-            raise
+            logger.warning(f"Configuration file not found: {self.config_path} - SMS notifications disabled")
+            # Return minimal default config with notifications disabled
+            return {
+                'clicksend': {'enabled': False},
+                'rate_limiting': {'max_notifications_per_hour': 5, 'cooldown_minutes': 60},
+                'notification_types': {'high_risk': False, 'system_alert': False, 'daily_summary': False}
+            }
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in configuration file: {e}")
             raise
 
     def _get_db_config(self) -> Dict:
-        """Get database configuration"""
+        """Get database configuration from environment variables"""
         return {
-            'host': 'localhost',
-            'user': 'spacy_user',
-            'password': 'AdrastosIhadn63r',
-            'database': 'spacy_email_db'
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'user': os.getenv('DB_USER', 'spacy_user'),
+            'password': os.getenv('DB_PASSWORD'),
+            'database': os.getenv('DB_NAME', 'spacy_email_db')
         }
 
     def _initialize_clicksend(self):
-        """Initialize ClickSend API client"""
+        """Initialize ClickSend API client using environment variables"""
         try:
-            username = self.config['clicksend']['username']
-            api_key = self.config['clicksend']['api_key']
+            # Read ClickSend credentials from environment variables
+            username = os.getenv('CLICKSEND_USERNAME')
+            api_key = os.getenv('CLICKSEND_API_KEY')
+            enabled = os.getenv('CLICKSEND_ENABLED', 'false').lower() == 'true'
 
-            if username == 'YOUR_CLICKSEND_USERNAME' or api_key == 'YOUR_CLICKSEND_API_KEY':
-                logger.warning("ClickSend credentials not configured. Please update notification_config.json")
+            # Check if ClickSend is enabled
+            if not enabled:
+                logger.info("ClickSend notifications disabled in configuration")
+                return
+
+            # Validate credentials are configured
+            if not username or username == 'YOUR_CLICKSEND_USERNAME':
+                logger.warning("ClickSend username not configured. Please update .env file")
+                return
+
+            if not api_key or api_key == 'YOUR_CLICKSEND_API_KEY':
+                logger.warning("ClickSend API key not configured. Please update .env file")
                 return
 
             # Configure ClickSend
@@ -226,9 +247,12 @@ class NotificationService:
             return False, "CLIENT_NOT_INITIALIZED", "ClickSend client not initialized"
 
         try:
+            # Get sender name from config (fallback to "OpenSpacy" if not configured)
+            sender_name = self.config.get('clicksend', {}).get('sender_name', 'OpenSpacy')
+
             # Create SMS message
             sms_message = clicksend_client.SmsMessage(
-                source="sdk",
+                source=sender_name,
                 body=message,
                 to=recipient
             )
@@ -314,9 +338,17 @@ class NotificationService:
         if not settings['enabled']:
             return {'status': 'disabled'}
 
+        # Check if specific trigger is enabled
+        trigger_reason = email_data.get('trigger_reason', 'high_spam_score')
+        triggers = settings.get('triggers', {})
+
+        # If trigger exists in config and is disabled, skip notification
+        if trigger_reason in triggers and not triggers[trigger_reason]:
+            logger.info(f"Skipping notification for disabled trigger: {trigger_reason}")
+            return {'status': 'disabled', 'reason': f'trigger_{trigger_reason}_disabled'}
+
         # Determine which template to use
         templates = self.config['message_templates']
-        trigger_reason = email_data.get('trigger_reason', 'high_spam_score')
 
         if trigger_reason == 'phishing_detected':
             message = templates['phishing_detected'].format(sender=email_data.get('sender', 'Unknown'))

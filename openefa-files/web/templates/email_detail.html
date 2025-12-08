@@ -2,8 +2,8 @@
 
 {% block title %}Email Details - SpacyEmail Analytics{% endblock %}
 
-{% block content %}
-<style>
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
 .entity {
     background-color: #f8f9fa;
     border: 1px solid #dee2e6;
@@ -25,31 +25,245 @@
 .entity-percent { background-color: #fff3e0; border-color: #ff9800; }
 .entity-ordinal { background-color: #e8eaf6; border-color: #3f51b5; }
 .entity-unknown { background-color: #fafafa; border-color: #9e9e9e; }
-</style>
 
-<div class="row">
+/* Email content display styles */
+.email-body-display {
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 0.9rem;
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.email-headers-display {
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 0.75rem;
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+/* Toast notification styles */
+.toast-notification {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 9999;
+    animation: slideInRight 0.3s ease, fadeOut 0.5s ease 4.5s forwards;
+    opacity: 1;
+    font-weight: 500;
+    min-width: 250px;
+}
+
+.toast-success {
+    background-color: #28a745 !important;
+}
+
+.toast-error {
+    background-color: #dc3545 !important;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <div class="row mb-2">
+        <div class="col">
+            <a href="/emails" class="btn btn-outline-secondary btn-sm" id="back-to-emails-btn">
+                <i class="fas fa-arrow-left"></i> Back to Emails
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
     <div class="col-12">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
-                <li class="breadcrumb-item"><a href="/emails">Emails</a></li>
+                <li class="breadcrumb-item"><a href="/emails" id="breadcrumb-emails-link">Emails</a></li>
                 <li class="breadcrumb-item active" aria-current="page">Email #{{ email.id }}</li>
             </ol>
         </nav>
 
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-white">
-                <h4 class="mb-0"><i class="fas fa-envelope-open-text"></i> Email Details #{{ email.id }}</h4>
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="fas fa-envelope-open-text"></i> Email Details #{{ email.id }}</h5>
             </div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-8">
+                        {% if email.quarantine_reason == 'dangerous_attachment' %}
+                        <div class="alert alert-danger" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i> <strong>MALWARE DETECTED</strong> - This email contains dangerous attachments
+                        </div>
+                        <h5 class="card-title" style="color: #dc3545; font-weight: 900;">⚠️ {{ email.subject }}</h5>
+                        {% else %}
                         <h5 class="card-title">{{ email.subject }}</h5>
+                        {% endif %}
                         <h6 class="card-subtitle mb-2 text-muted">From: {{ email.sender }}</h6>
+                        {% if email.source_ip %}
+                        <h6 class="card-subtitle mb-2 text-muted">Source IP: <span class="badge bg-secondary">{{ email.source_ip }}</span>{% if email.source_country %} <span class="badge bg-info">{{ email.source_country }}</span>{% endif %}</h6>
+                        {% endif %}
                         <h6 class="card-subtitle mb-3 text-muted">Date: {{ email.timestamp }}</h6>
+
+                        <!-- Delivery Status Badge -->
+                        <div class="mb-3">
+                            <strong>Delivery Status:</strong>
+                            {% if email.disposition == 'quarantined' or email.quarantine_status == 'held' %}
+                                {% if email.quarantine_reason == 'dangerous_attachment' %}
+                                    <span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Quarantined - MALWARE</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-pause-circle"></i> Quarantined</span>
+                                {% endif %}
+                                {% if email.quarantine_reason %}
+                                    <span class="text-muted small">({{ email.quarantine_reason }})</span>
+                                {% endif %}
+                            {% elif email.disposition == 'deleted' or email.quarantine_status == 'deleted' %}
+                                <span class="badge bg-danger"><i class="fas fa-trash"></i> Deleted</span>
+                            {% elif email.disposition == 'rejected' %}
+                                <span class="badge bg-danger"><i class="fas fa-times-circle"></i> Rejected</span>
+                            {% else %}
+                                {# Show Delivered for all delivered emails (including released) #}
+                                <span class="badge bg-success"><i class="fas fa-paper-plane"></i> Delivered</span>
+                                {% if email.disposition == 'released' or email.quarantine_status == 'released' %}
+                                    <span class="text-muted small">(manually approved)</span>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+
+                        <!-- Spam Score -->
+                        <div class="mb-3">
+                            <strong>Spam Score:</strong>
+                            {% set score = email.spam_score|default(0)|float %}
+                            {% if score >= 15 %}
+                                <span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> {{ "%.1f"|format(score) }}</span>
+                                <span class="text-muted small">(High Risk)</span>
+                            {% elif score >= 5 %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle"></i> {{ "%.1f"|format(score) }}</span>
+                                <span class="text-muted small">(Suspicious)</span>
+                            {% elif score >= 0 %}
+                                <span class="badge bg-success"><i class="fas fa-check-circle"></i> {{ "%.1f"|format(score) }}</span>
+                                <span class="text-muted small">(Legitimate)</span>
+                            {% else %}
+                                <span class="badge bg-info"><i class="fas fa-shield-alt"></i> {{ "%.1f"|format(score) }}</span>
+                                <span class="text-muted small">(Trusted)</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Training Status - Ham and Spam Training -->
+                        <div class="mb-3" id="training-count-display">
+                            <strong>Training Status:</strong>
+                            {% set ham_count = email.not_spam_train_count|default(0) %}
+                            {% set spam_count = email.spam_train_count|default(0) %}
+                            {% set max_train = 3 %}
+                            <div class="mt-1">
+                                {# Ham Training (Not Spam) #}
+                                {% if ham_count >= max_train %}
+                                    <span class="badge bg-success" title="Ham training complete - marked as legitimate {{ ham_count }} times">
+                                        <i class="fas fa-check-circle"></i> Ham {{ ham_count }}/{{ max_train }}
+                                    </span>
+                                {% elif ham_count > 0 %}
+                                    <span class="badge bg-info" title="Ham training in progress - click 'Not Spam' {{ max_train - ham_count }} more time(s)">
+                                        <i class="fas fa-thumbs-up"></i> Ham {{ ham_count }}/{{ max_train }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark" title="No ham training - click 'Not Spam' to train as legitimate email">
+                                        <i class="fas fa-thumbs-up"></i> Ham 0/{{ max_train }}
+                                    </span>
+                                {% endif %}
+
+                                {# Spam Training #}
+                                {% if spam_count >= max_train %}
+                                    <span class="badge bg-danger" title="Spam training complete - marked as spam {{ spam_count }} times">
+                                        <i class="fas fa-ban"></i> Spam {{ spam_count }}/{{ max_train }}
+                                    </span>
+                                {% elif spam_count > 0 %}
+                                    <span class="badge bg-warning text-dark" title="Spam training in progress - click 'Spam' {{ max_train - spam_count }} more time(s)">
+                                        <i class="fas fa-exclamation-triangle"></i> Spam {{ spam_count }}/{{ max_train }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark" title="No spam training - click 'Spam' to train as unwanted email">
+                                        <i class="fas fa-ban"></i> Spam 0/{{ max_train }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
 
                         {% if email.recipients %}
                         <p class="mb-2"><strong>To:</strong> {{ email.recipients }}</p>
+                        {% endif %}
+
+                        <!-- Display Name Spoofing Alert -->
+                        {% if email.raw_email %}
+                            {% set spoofing_detected = false %}
+                            {% set spoofing_types = [] %}
+                            {% for line in email.raw_email.split('\n') %}
+                                {% if line.startswith('X-Display-Name-Spoofing:') and 'true' in line.lower() %}
+                                    {% set spoofing_detected = true %}
+                                {% endif %}
+                                {% if line.startswith('X-Spoofing-Types:') %}
+                                    {% set types_value = line.split(':', 1)[1].strip() %}
+                                    {% set spoofing_types = types_value.split(',') %}
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if spoofing_detected %}
+                            <div class="alert alert-danger mb-3" role="alert">
+                                <h6 class="alert-heading"><i class="fas fa-user-secret"></i> Display Name Spoofing Detected!</h6>
+                                <p class="mb-2">This email's display name does not match the actual sender address. This is a common phishing/spam tactic.</p>
+                                {% if spoofing_types %}
+                                <p class="mb-0"><strong>Detected Types:</strong>
+                                    {% for stype in spoofing_types %}
+                                        {% set clean_type = stype.strip() %}
+                                        {% if 'recipient_domain_impersonation' in clean_type %}
+                                            <span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Impersonates Your Domain</span>
+                                        {% elif 'domain_mismatch' in clean_type %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-mask"></i> Domain Mismatch</span>
+                                        {% elif 'executive_impersonation' in clean_type %}
+                                            <span class="badge bg-danger"><i class="fas fa-user-tie"></i> Executive Impersonation</span>
+                                        {% elif 'brand_impersonation' in clean_type %}
+                                            <span class="badge bg-danger"><i class="fas fa-building"></i> Brand Impersonation</span>
+                                        {% elif 'unicode_tricks' in clean_type %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-font"></i> Unicode Tricks</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ clean_type }}</span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </p>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                         {% endif %}
 
                         {% if schema_info.has_lang_col and email.detected_language %}
@@ -60,7 +274,7 @@
                             {% elif email.detected_language == 'es' %}Spanish
                             {% elif email.detected_language == 'de' %}German
                             {% else %}{{ email.detected_language }}{% endif %}
-                            {% if email.language_confidence %}
+                            {% if email.language_confidence is not none %}
                                 ({{ "%.0f"|format(email.language_confidence * 100) }}% confidence)
                             {% endif %}
                         </p>
@@ -72,10 +286,33 @@
                             {% if email.email_category in ['spam', 'phishing'] %}
                             <span class="category-{{ email.email_category }}">{{ email.email_category }}</span>
                             {% else %}{{ email.email_category }}{% endif %}
-                            {% if email.category_confidence %}
+                            {% if email.category_confidence is not none %}
                                 ({{ "%.1f"|format(email.category_confidence) }}/10 confidence)
                             {% endif %}
                         </p>
+                        {% endif %}
+
+                        {% if email.original_spf or email.original_dkim or email.original_dmarc %}
+                        <div class="mb-3">
+                            <strong>Authentication:</strong>
+                            <div class="d-flex gap-2 mt-1">
+                                {% if email.original_spf %}
+                                <span class="badge {% if email.original_spf == 'pass' %}bg-success{% elif email.original_spf == 'fail' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    SPF: {{ email.original_spf|upper }}
+                                </span>
+                                {% endif %}
+                                {% if email.original_dkim %}
+                                <span class="badge {% if email.original_dkim == 'pass' %}bg-success{% elif email.original_dkim == 'fail' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    DKIM: {{ email.original_dkim|upper }}
+                                </span>
+                                {% endif %}
+                                {% if email.original_dmarc %}
+                                <span class="badge {% if email.original_dmarc == 'pass' %}bg-success{% elif email.original_dmarc == 'fail' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    DMARC: {{ email.original_dmarc|upper }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
                         {% endif %}
                     </div>
 
@@ -157,6 +394,9 @@
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="entities-tab" data-bs-toggle="tab" data-bs-target="#entities" type="button" role="tab" aria-controls="entities" aria-selected="false">Entities</button>
                             </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="delivery-tab" data-bs-toggle="tab" data-bs-target="#delivery" type="button" role="tab" aria-controls="delivery" aria-selected="false">Delivery Status</button>
+                            </li>
                         </ul>
                         <div class="tab-content" id="emailTabContent">
                             <div class="tab-pane fade show active" id="content" role="tabpanel" aria-labelledby="content-tab">
@@ -173,7 +413,8 @@
                                     <div class="collapse" id="emailBodyCollapse">
                                         <div class="card-body">
                                             {% if email.full_text_content %}
-                                            <div style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{ email.full_text_content }}</div>
+                                            {% set clean_body = email.full_text_content | striphtml %}
+                                            <div class="email-body-display" style="white-space: pre-wrap;">{{ clean_body }}</div>
                                             {% else %}
                                             <p class="text-muted">No email content available</p>
                                             {% endif %}
@@ -186,15 +427,20 @@
                                     <div class="card-header bg-light">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <h6 class="mb-0"><i class="fas fa-code"></i> Email Headers</h6>
-                                            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#emailHeadersCollapse" aria-expanded="false" aria-controls="emailHeadersCollapse">
-                                                <i class="fas fa-chevron-down"></i> Show/Hide
-                                            </button>
+                                            <div>
+                                                <button class="btn btn-sm btn-success me-2" id="copyHeadersBtn" style="display: none;">
+                                                    <i class="fas fa-copy"></i> Copy Headers
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#emailHeadersCollapse" aria-expanded="false" aria-controls="emailHeadersCollapse" id="headerToggleBtn">
+                                                    <i class="fas fa-chevron-down"></i> Show/Hide
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="collapse" id="emailHeadersCollapse">
                                         <div class="card-body">
                                             {% if email.headers %}
-                                            <div style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.75rem; background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{ email.headers }}</div>
+                                            <div class="email-headers-display" id="emailHeadersText">{{ email.headers }}</div>
                                             {% else %}
                                             <p class="text-muted">Email headers not available</p>
                                             {% endif %}
@@ -215,7 +461,8 @@
                                     <div class="collapse show" id="aiSummaryCollapse">
                                         <div class="card-body">
                                             {% if email.content_summary %}
-                                            <p class="card-text">{{ email.content_summary }}</p>
+                                            {% set clean_summary = email.content_summary | striphtml | truncate(500) %}
+                                            <p class="card-text">{{ clean_summary }}</p>
                                             {% else %}
                                             <p class="text-muted">No summary available</p>
                                             {% endif %}
@@ -223,31 +470,128 @@
                                     </div>
                                 </div>
 
+                                <!-- ATTACHMENTS SECTION -->
+                                {% if email.has_attachments and email.attachment_count and email.attachment_count > 0 %}
+                                <div class="card mt-3 border-info">
+                                    <div class="card-header bg-info text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-paperclip"></i> Attachments
+                                            <span class="badge bg-light text-dark float-end">{{ email.attachment_count }}</span>
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if email.attachment_list and email.attachment_list|length > 0 %}
+                                            <div class="list-group">
+                                                {% for attachment in email.attachment_list %}
+                                                    <div class="list-group-item">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <div>
+                                                                <i class="fas fa-file"></i>
+                                                                <span class="ms-2">{{ attachment }}</span>
+
+                                                                <!-- Warning badge for dangerous file types -->
+                                                                {% set file_ext = attachment.split('.')[-1].lower() if '.' in attachment else '' %}
+                                                                {% if file_ext in ['exe', 'dll', 'bat', 'cmd', 'vbs', 'js', 'jar', 'scr', 'pif', 'msi', 'app', 'deb', 'rpm', 'sh', 'com'] %}
+                                                                <span class="badge bg-danger ms-2" title="Potentially dangerous file type">
+                                                                    <i class="fas fa-exclamation-triangle"></i> Warning
+                                                                </span>
+                                                                {% endif %}
+                                                            </div>
+
+                                                            <!-- Download button for admin, superadmin and domain_admin ONLY -->
+                                                            {% if current_user.role in ['admin', 'superadmin', 'domain_admin'] %}
+                                                            <button class="btn btn-sm btn-outline-primary attachment-download-btn"
+                                                                    data-email-id="{{ email.id }}"
+                                                                    data-attachment-index="{{ loop.index0 }}"
+                                                                    data-filename="{{ attachment }}"
+                                                                    title="Download attachment">
+                                                                <i class="fas fa-download"></i> Download
+                                                            </button>
+                                                            {% endif %}
+                                                        </div>
+
+                                                        <!-- Virus scan status -->
+                                                        <div class="scan-status"
+                                                             data-email-id="{{ email.id }}"
+                                                             data-attachment-index="{{ loop.index0 }}">
+                                                            <small class="text-muted">
+                                                                <i class="fas fa-spinner fa-spin"></i> Scanning for viruses...
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <p class="text-muted mb-0">This email has attachments, but they could not be parsed.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
                                 <!-- Email Management Actions -->
                                 <div class="card mt-3 border-primary">
                                     <div class="card-header bg-primary text-white">
                                         <h6 class="mb-0"><i class="fas fa-cog"></i> Email Actions</h6>
                                     </div>
                                     <div class="card-body">
+                                        {% if email.is_deleted or email.disposition == 'deleted' %}
+                                        <!-- Deleted Email Actions -->
+                                        <div class="alert alert-warning mb-3">
+                                            <i class="fas fa-trash"></i> <strong>This email is deleted.</strong>
+                                            {% if email.is_deleted %}
+                                                {% if email.deleted_by %} Deleted by {{ email.deleted_by }}{% endif %}
+                                                {% if email.deleted_at %} on {{ email.deleted_at }}{% endif %}
+                                            {% else %}
+                                                Automatically deleted by spam filter (disposition={{ email.disposition }})
+                                            {% endif %}
+                                        </div>
                                         <div class="d-flex gap-2 flex-wrap">
-                                            <button class="btn btn-primary" onclick="releaseEmail({{ email.id }})">
+                                            {% if current_user.is_admin() %}
+                                            <button class="btn btn-info" id="btn-undelete" data-email-id="{{ email.id }}">
+                                                <i class="fas fa-undo"></i> Undelete / Restore
+                                            </button>
+                                            <button class="btn btn-primary" id="btn-release" data-email-id="{{ email.id }}">
                                                 <i class="fas fa-paper-plane"></i> Release (Mark as Safe)
                                             </button>
-                                            <button class="btn btn-success" onclick="whitelistSender({{ email.id }}, '{{ email.sender }}')">
+                                            {% endif %}
+                                        </div>
+                                        {% else %}
+                                        <!-- Normal Email Actions -->
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <button class="btn btn-primary" id="btn-release" data-email-id="{{ email.id }}">
+                                                <i class="fas fa-paper-plane"></i> Release (Mark as Safe)
+                                            </button>
+                                            {% set train_count = email.not_spam_train_count|default(0) %}
+                                            {% set max_count = 3 %}
+                                            <button class="btn {% if train_count >= max_count %}btn-secondary{% else %}btn-outline-success{% endif %}"
+                                                    id="btn-not-spam"
+                                                    data-email-id="{{ email.id }}"
+                                                    data-train-count="{{ train_count }}"
+                                                    data-max-count="{{ max_count }}"
+                                                    {% if train_count >= max_count %}disabled{% endif %}>
+                                                <i class="fas fa-check-circle"></i> Mark Not Spam
+                                                {% if train_count > 0 %}({{ train_count }}/{{ max_count }}){% endif %}
+                                            </button>
+                                            <button class="btn btn-success" id="btn-whitelist" data-email-id="{{ email.id }}" data-sender="{{ email.sender }}">
                                                 <i class="fas fa-check-circle"></i> Whitelist Sender
                                             </button>
-                                            <button class="btn btn-warning" onclick="markAsSpam({{ email.id }})">
+                                            <button class="btn btn-danger" id="btn-block-sender" data-email-id="{{ email.id }}" data-sender="{{ email.sender }}">
+                                                <i class="fas fa-ban"></i> Block Sender
+                                            </button>
+                                            <button class="btn btn-outline-danger" id="btn-mark-spam" data-email-id="{{ email.id }}">
                                                 <i class="fas fa-exclamation-triangle"></i> Mark as Spam
                                             </button>
-                                            <button class="btn btn-danger" onclick="deleteEmail({{ email.id }})">
+                                            <button class="btn btn-danger" id="btn-delete" data-email-id="{{ email.id }}">
                                                 <i class="fas fa-trash"></i> Delete Email
                                             </button>
                                         </div>
+                                        {% endif %}
                                         <div class="mt-2">
                                             <small class="text-muted">
                                                 <i class="fas fa-info-circle"></i>
                                                 <strong>Release:</strong> Mark email as safe and reduce spam score.
                                                 <strong>Whitelist:</strong> Trust all future emails from this sender.
+                                                <strong>Block Sender:</strong> Block all future emails from this sender (+50 spam points).
                                             </small>
                                         </div>
                                     </div>
@@ -264,7 +608,7 @@
                                                     <tr><td><strong>Message ID:</strong></td><td class="text-break small">{{ email.message_id }}</td></tr>
                                                     <tr><td><strong>Timestamp:</strong></td><td>{{ email.timestamp }}</td></tr>
                                                     <tr><td><strong>Raw Text Length:</strong></td><td>{{ email.raw_text_length }}</td></tr>
-                                                    <tr><td><strong>Spam Score:</strong></td><td>{{ email.spam_score }}</td></tr>
+                                                    <tr><td><strong>Spam Score:</strong></td><td>{{ "%.1f"|format(email.spam_score) }}</td></tr>
                                                     <tr><td><strong>Has Attachments:</strong></td><td>{{ email.has_attachments }}</td></tr>
                                                 </table>
                                                 
@@ -279,11 +623,11 @@
                                             <div class="col-md-6">
                                                 <h6>Analysis Scores</h6>
                                                 <table class="table table-sm">
-                                                    <tr><td><strong>Category Confidence:</strong></td><td>{{ "%.2f"|format(email.category_confidence) }}</td></tr>
-                                                    <tr><td><strong>Language Confidence:</strong></td><td>{{ "%.2f"|format(email.language_confidence) }}</td></tr>
-                                                    <tr><td><strong>Urgency Score:</strong></td><td>{{ email.urgency_score }}</td></tr>
-                                                    <tr><td><strong>Spoofing Score:</strong></td><td>{{ email.spoofing_score }}</td></tr>
-                                                    <tr><td><strong>Spoofing Risk:</strong></td><td>{{ email.spoofing_risk_level }}</td></tr>
+                                                    <tr><td><strong>Category Confidence:</strong></td><td>{% if email.category_confidence is not none %}{{ "%.2f"|format(email.category_confidence) }}{% else %}N/A{% endif %}</td></tr>
+                                                    <tr><td><strong>Language Confidence:</strong></td><td>{% if email.language_confidence is not none %}{{ "%.2f"|format(email.language_confidence) }}{% else %}N/A{% endif %}</td></tr>
+                                                    <tr><td><strong>Urgency Score:</strong></td><td>{% if email.urgency_score is not none %}{{ email.urgency_score }}{% else %}N/A{% endif %}</td></tr>
+                                                    <tr><td><strong>Spoofing Score:</strong></td><td>{% if email.spoofing_score is not none %}{{ email.spoofing_score }}{% else %}N/A{% endif %}</td></tr>
+                                                    <tr><td><strong>Spoofing Risk:</strong></td><td>{% if email.spoofing_risk_level is not none %}{{ email.spoofing_risk_level }}{% else %}N/A{% endif %}</td></tr>
                                                 </table>
                                                 
                                                 <h6>Government Detection</h6>
@@ -298,8 +642,8 @@
                                         <!-- SPAM SCORE BREAKDOWN SECTION -->
                                         <div class="row mt-4">
                                             <div class="col-12">
-                                                <div class="card border-{% if email.spam_score >= 5.0 %}danger{% elif email.spam_score >= 3.0 %}warning{% else %}success{% endif %}">
-                                                    <div class="card-header bg-{% if email.spam_score >= 5.0 %}danger{% elif email.spam_score >= 3.0 %}warning{% else %}success{% endif %} text-white">
+                                                <div class="card border-{% if email.spam_score >= 10.0 %}danger{% elif email.spam_score >= 6.0 %}warning{% else %}success{% endif %}">
+                                                    <div class="card-header bg-{% if email.spam_score >= 10.0 %}danger{% elif email.spam_score >= 6.0 %}warning{% else %}success{% endif %} text-white">
                                                         <h6 class="mb-0">
                                                             <i class="fas fa-chart-bar"></i> Spam Score Breakdown
                                                             <span class="badge bg-light text-dark float-end">Total: {{ "%.1f"|format(email.spam_score) }}</span>
@@ -376,6 +720,73 @@
                                             </div>
                                         </div>
 
+                                        <!-- ANALYSIS MODULES SECTION -->
+                                        {% if email.raw_email %}
+                                            {% set modules_run = [] %}
+                                            {% for line in email.raw_email.split('\n') %}
+                                                {% if line.startswith('X-Analysis-Modules:') %}
+                                                    {% set modules_value = line.split(':', 1)[1].strip() %}
+                                                    {% set modules_run = modules_value.split(', ') %}
+                                                {% endif %}
+                                            {% endfor %}
+
+                                            {% if modules_run %}
+                                            <div class="row mt-4">
+                                                <div class="col-12">
+                                                    <div class="card border-info">
+                                                        <div class="card-header bg-info text-white">
+                                                            <h6 class="mb-0">
+                                                                <i class="fas fa-cogs"></i> Analysis Modules Executed
+                                                                <span class="badge bg-light text-dark float-end">{{ modules_run|length }} modules</span>
+                                                            </h6>
+                                                        </div>
+                                                        <div class="card-body">
+                                                            <p class="text-muted small mb-2">The following security analysis modules were executed on this email:</p>
+                                                            <div class="d-flex flex-wrap gap-2">
+                                                                {% for module in modules_run %}
+                                                                    {% set clean_module = module.strip() %}
+                                                                    {% if clean_module %}
+                                                                        {% if 'display_name_spoofing' in clean_module %}
+                                                                            <span class="badge bg-danger"><i class="fas fa-user-secret"></i> Display Name Spoofing</span>
+                                                                        {% elif 'antivirus' in clean_module %}
+                                                                            <span class="badge bg-primary"><i class="fas fa-shield-virus"></i> Antivirus</span>
+                                                                        {% elif 'phishing' in clean_module %}
+                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-fish"></i> Phishing</span>
+                                                                        {% elif 'bec' in clean_module %}
+                                                                            <span class="badge bg-danger"><i class="fas fa-user-tie"></i> BEC Detection</span>
+                                                                        {% elif 'url' in clean_module %}
+                                                                            <span class="badge bg-info"><i class="fas fa-link"></i> URL Reputation</span>
+                                                                        {% elif 'dns' in clean_module %}
+                                                                            <span class="badge bg-secondary"><i class="fas fa-globe"></i> DNS</span>
+                                                                        {% elif 'rbl' in clean_module %}
+                                                                            <span class="badge bg-dark"><i class="fas fa-ban"></i> RBL</span>
+                                                                        {% elif 'funding' in clean_module %}
+                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-dollar-sign"></i> Funding Spam</span>
+                                                                        {% elif 'obfuscation' in clean_module %}
+                                                                            <span class="badge bg-secondary"><i class="fas fa-mask"></i> Obfuscation</span>
+                                                                        {% elif 'sentiment' in clean_module %}
+                                                                            <span class="badge bg-info"><i class="fas fa-smile"></i> Sentiment</span>
+                                                                        {% elif 'language' in clean_module %}
+                                                                            <span class="badge bg-secondary"><i class="fas fa-language"></i> Language</span>
+                                                                        {% elif 'ner' in clean_module or 'entity' in clean_module %}
+                                                                            <span class="badge bg-success"><i class="fas fa-tags"></i> Entity Extraction</span>
+                                                                        {% elif 'marketing' in clean_module %}
+                                                                            <span class="badge bg-info"><i class="fas fa-bullhorn"></i> Marketing</span>
+                                                                        {% elif 'behavioral' in clean_module %}
+                                                                            <span class="badge bg-primary"><i class="fas fa-chart-line"></i> Behavioral</span>
+                                                                        {% else %}
+                                                                            <span class="badge bg-secondary"><i class="fas fa-cube"></i> {{ clean_module }}</span>
+                                                                        {% endif %}
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        {% endif %}
+
                                         <div class="mt-3">
                                             <h6>Raw JSON Data</h6>
                                             <details>
@@ -442,43 +853,378 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="tab-pane fade" id="delivery" role="tabpanel" aria-labelledby="delivery-tab">
+                                <div class="card">
+                                    <div class="card-header bg-{% if email.disposition == 'quarantined' %}warning{% elif email.disposition == 'delivered' %}success{% elif email.disposition == 'deleted' %}danger{% else %}secondary{% endif %} text-white">
+                                        <h6 class="mb-0"><i class="fas fa-server"></i> Delivery Status</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <div class="detail-section mb-3">
+                                                    <div class="detail-label"><strong>Disposition:</strong></div>
+                                                    <div class="detail-value">
+                                                        {% if email.disposition == 'quarantined' or email.quarantine_status == 'held' %}
+                                                            <span class="badge bg-warning text-dark">
+                                                                <i class="fas fa-pause-circle"></i> QUARANTINED
+                                                            </span>
+                                                            {% if email.quarantine_reason %}
+                                                                <br><small class="text-muted">Reason: {{ email.quarantine_reason }}</small>
+                                                            {% endif %}
+                                                        {% elif email.disposition == 'deleted' %}
+                                                            <span class="badge bg-danger">
+                                                                <i class="fas fa-trash"></i> DELETED
+                                                            </span>
+                                                        {% elif email.disposition == 'rejected' %}
+                                                            <span class="badge bg-danger">
+                                                                <i class="fas fa-times-circle"></i> REJECTED
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="badge bg-success">
+                                                                <i class="fas fa-paper-plane"></i> DELIVERED
+                                                            </span>
+                                                            {% if email.disposition == 'released' or email.quarantine_status == 'released' %}
+                                                                <br><small class="text-muted">(Manually approved and released)</small>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+
+                                                {% if email.disposition == 'quarantined' or email.quarantine_status == 'held' %}
+                                                <div class="alert alert-warning mb-3">
+                                                    <i class="fas fa-exclamation-triangle"></i> <strong>Not Delivered</strong><br>
+                                                    <small>This email is being held in quarantine and has NOT been delivered to the recipient.</small>
+                                                </div>
+                                                {% elif email.disposition == 'deleted' %}
+                                                <div class="alert alert-danger mb-3">
+                                                    <i class="fas fa-trash"></i> <strong>Deleted</strong><br>
+                                                    <small>This email was deleted and was NOT delivered to the recipient.</small>
+                                                </div>
+                                                {% elif email.disposition == 'rejected' %}
+                                                <div class="alert alert-danger mb-3">
+                                                    <i class="fas fa-times-circle"></i> <strong>Rejected</strong><br>
+                                                    <small>This email was rejected and was NOT delivered to the recipient.</small>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+
+                                            <div class="col-md-6">
+                                                {% if email.relay_info and (email.disposition == 'delivered' or email.disposition == 'released' or email.quarantine_status == 'released') %}
+                                                    {% if email.relay_info.relay_host %}
+                                                    <div class="detail-section mb-3">
+                                                        <div class="detail-label"><strong>Relayed To:</strong></div>
+                                                        <div class="detail-value">
+                                                            {{ email.relay_info.relay_host }}
+                                                            {% if email.relay_info.relay_ip %}
+                                                            <br><small class="text-muted">{{ email.relay_info.relay_ip }}</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    {% endif %}
+
+                                                    {% if email.relay_info.recipient %}
+                                                    <div class="detail-section mb-3">
+                                                        <div class="detail-label"><strong>Delivered To:</strong></div>
+                                                        <div class="detail-value">{{ email.relay_info.recipient }}</div>
+                                                    </div>
+                                                    {% endif %}
+
+                                                    {% if email.relay_info.delivered_time %}
+                                                    <div class="detail-section mb-3">
+                                                        <div class="detail-label"><strong>Delivery Time:</strong></div>
+                                                        <div class="detail-value">{{ email.relay_info.delivered_time }}</div>
+                                                    </div>
+                                                    {% endif %}
+
+                                                    {% if email.relay_info.delay %}
+                                                    <div class="detail-section mb-3">
+                                                        <div class="detail-label"><strong>Delay:</strong></div>
+                                                        <div class="detail-value">{{ email.relay_info.delay }}s</div>
+                                                    </div>
+                                                    {% endif %}
+                                                {% elif email.disposition == 'quarantined' or email.disposition == 'deleted' or email.disposition == 'rejected' %}
+                                                    <div class="alert alert-secondary mb-0">
+                                                        <i class="fas fa-ban"></i> Email was not relayed to the recipient's mail server.
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-info mb-0">
+                                                        <i class="fas fa-info-circle"></i> No relay information available.
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        {% if email.relay_info and (email.disposition == 'delivered' or email.disposition == 'released' or email.quarantine_status == 'released') %}
+                                        <hr>
+                                        <h6>Queue Information</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                {% if email.relay_info.queue_id %}
+                                                <div class="detail-section mb-2">
+                                                    <div class="detail-label"><strong>Local Queue ID:</strong></div>
+                                                    <div class="detail-value"><code>{{ email.relay_info.queue_id }}</code></div>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="col-md-6">
+                                                {% if email.relay_info.upstream_queue_id %}
+                                                <div class="detail-section mb-2">
+                                                    <div class="detail-label"><strong>Upstream Queue ID:</strong></div>
+                                                    <div class="detail-value"><code>{{ email.relay_info.upstream_queue_id }}</code></div>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="card-footer bg-white">
-                <a href="/emails" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to List</a>
+                <a href="/emails" class="btn btn-secondary" id="back-to-list-btn"><i class="fas fa-arrow-left"></i> Back to List</a>
                 <a href="/export/json?id={{ email.id }}" class="btn btn-dark"><i class="fas fa-file-code"></i> Export as JSON</a>
             </div>
         </div>
     </div>
 </div>
+</div>
 
-<script>
-// Release email (mark as safe)
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+// Toast notification function
+function showToast(message, type = 'success', duration = 5000) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    if (type === 'error' || type === 'warning') {
+        toast.classList.add('toast-error');
+    } else {
+        toast.classList.add('toast-success');
+    }
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, duration);
+}
+
+// Restore filter state for back navigation
+document.addEventListener('DOMContentLoaded', function() {
+    // Get stored filter parameters from sessionStorage
+    const storedFilters = sessionStorage.getItem('emailListFilters');
+
+    if (storedFilters) {
+        // Update all back navigation links with the stored filters
+        const backToEmailsBtn = document.getElementById('back-to-emails-btn');
+        const backToListBtn = document.getElementById('back-to-list-btn');
+        const breadcrumbEmailsLink = document.getElementById('breadcrumb-emails-link');
+
+        if (backToEmailsBtn) {
+            backToEmailsBtn.href = '/emails' + storedFilters;
+        }
+        if (backToListBtn) {
+            backToListBtn.href = '/emails' + storedFilters;
+        }
+        if (breadcrumbEmailsLink) {
+            breadcrumbEmailsLink.href = '/emails' + storedFilters;
+        }
+    }
+});
+
+// Add event listeners when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Attach event listeners to action buttons
+    const btnRelease = document.getElementById('btn-release');
+    const btnNotSpam = document.getElementById('btn-not-spam');
+    const btnWhitelist = document.getElementById('btn-whitelist');
+    const btnBlockSender = document.getElementById('btn-block-sender');
+    const btnMarkSpam = document.getElementById('btn-mark-spam');
+    const btnDelete = document.getElementById('btn-delete');
+    const btnUndelete = document.getElementById('btn-undelete');
+
+    if (btnRelease) {
+        btnRelease.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            releaseEmail(emailId);
+        });
+    }
+
+    if (btnNotSpam) {
+        btnNotSpam.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            markNotSpam(emailId);
+        });
+    }
+
+    if (btnWhitelist) {
+        btnWhitelist.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            const sender = this.getAttribute('data-sender');
+            whitelistSender(emailId, sender);
+        });
+    }
+
+    if (btnBlockSender) {
+        btnBlockSender.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            const sender = this.getAttribute('data-sender');
+            blockSender(emailId, sender);
+        });
+    }
+
+    if (btnMarkSpam) {
+        btnMarkSpam.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            markAsSpam(emailId);
+        });
+    }
+
+    if (btnDelete) {
+        btnDelete.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            deleteEmail(emailId);
+        });
+    }
+
+    if (btnUndelete) {
+        btnUndelete.addEventListener('click', function() {
+            const emailId = this.getAttribute('data-email-id');
+            undeleteEmail(emailId);
+        });
+    }
+
+    // Header toggle and copy button
+    const headerToggleBtn = document.getElementById('headerToggleBtn');
+    const copyHeadersBtn = document.getElementById('copyHeadersBtn');
+    const emailHeadersCollapse = document.getElementById('emailHeadersCollapse');
+
+    if (headerToggleBtn && emailHeadersCollapse) {
+        emailHeadersCollapse.addEventListener('shown.bs.collapse', function() {
+            if (copyHeadersBtn) {
+                copyHeadersBtn.style.display = 'inline-block';
+            }
+        });
+
+        emailHeadersCollapse.addEventListener('hidden.bs.collapse', function() {
+            if (copyHeadersBtn) {
+                copyHeadersBtn.style.display = 'none';
+            }
+        });
+    }
+
+    if (copyHeadersBtn) {
+        copyHeadersBtn.addEventListener('click', copyHeaders);
+    }
+});
+
+// Release email from quarantine and deliver to recipient
 function releaseEmail(emailId) {
-    if (!confirm('Are you sure you want to release this email?\n\nThis will mark it as safe and reduce the spam score.')) {
+    if (!confirm('Are you sure you want to release this email?\n\nThis will mark it as safe and deliver it to the recipient immediately.')) {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    // Use the /api/emails/<id>/release endpoint which works for both email_analysis and email_quarantine
     fetch(`/api/emails/${emailId}/release`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         }
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Email released successfully!\n\nThe email has been marked as safe.');
-            window.location.reload();
+            showToast('✓ Email released and marked as safe. Delivery initiated.', 'success', 4000);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + (data.error || 'Failed to release email'));
+            showToast('❌ Error: ' + (data.error || 'Failed to release email'), 'error', 5000);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error releasing email');
+        showToast('❌ Error releasing email', 'error', 4000);
+    });
+}
+
+// Mark email as not spam for training
+function markNotSpam(emailId) {
+    const button = document.getElementById('btn-not-spam');
+    if (!button) return;
+
+    const currentCount = parseInt(button.dataset.trainCount || 0);
+    const maxCount = parseInt(button.dataset.maxCount || 3);
+
+    // Check if already at max
+    if (currentCount >= maxCount) {
+        showToast('⚠ Training limit reached (3/3)', 'warning', 4000);
+        return;
+    }
+
+    // Show confirmation
+    const nextCount = currentCount + 1;
+    if (!confirm(`Mark this email as NOT SPAM? This will train the spam filter.\n\nTraining iteration: ${nextCount}/3\n\nYou can mark it ${maxCount - nextCount} more time(s) after this for optimal learning.`)) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch(`/api/quarantine/${emailId}/not-spam`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.json().then(err => Promise.reject(err));
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            const trainCount = data.train_count || nextCount;
+            const maxCount = data.max_count || 3;
+
+            // Update button text and data
+            button.dataset.trainCount = trainCount;
+            const icon = button.querySelector('i');
+            if (trainCount >= maxCount) {
+                button.innerHTML = icon.outerHTML + ` Mark Not Spam (${trainCount}/${maxCount})`;
+                button.disabled = true;
+                button.classList.remove('btn-outline-success');
+                button.classList.add('btn-secondary');
+                showToast(`✓ Email marked as not spam (${trainCount}/${maxCount}) - Maximum training reached`, 'success', 5000);
+            } else {
+                button.innerHTML = icon.outerHTML + ` Mark Not Spam (${trainCount}/${maxCount})`;
+                showToast(`✓ Email marked as not spam (${trainCount}/${maxCount}) - You can train ${maxCount - trainCount} more time(s)`, 'success', 5000);
+            }
+
+            // Update the training count display in email details
+            const trainingBadge = document.getElementById('training-badge');
+            if (trainingBadge) {
+                if (trainCount >= maxCount) {
+                    trainingBadge.innerHTML = '<span class="badge bg-secondary"><i class="fas fa-graduation-cap"></i> ' + trainCount + '/' + maxCount + '</span> <span class="text-muted small">(Max learning reached)</span>';
+                } else if (trainCount > 0) {
+                    trainingBadge.innerHTML = '<span class="badge bg-info"><i class="fas fa-brain"></i> ' + trainCount + '/' + maxCount + '</span> <span class="text-muted small">(Learning in progress)</span>';
+                } else {
+                    trainingBadge.innerHTML = '<span class="badge bg-light text-dark"><i class="fas fa-book"></i> 0/' + maxCount + '</span> <span class="text-muted small">(Not trained)</span>';
+                }
+            }
+
+            // Reload page after training to show updated disposition/status
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast('❌ Error: ' + (data.error || data.message || 'Unknown error'), 'error', 5000);
+        }
+    })
+    .catch(err => {
+        console.error('Mark not spam error:', err);
+        showToast('❌ Error: ' + (err.error || err.message || err), 'error', 5000);
     });
 }
 
@@ -488,10 +1234,12 @@ function whitelistSender(emailId, sender) {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/emails/whitelist-sender', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         },
         body: JSON.stringify({ sender: sender })
     })
@@ -499,7 +1247,9 @@ function whitelistSender(emailId, sender) {
     .then(data => {
         if (data.success) {
             alert('Sender whitelisted successfully!\n\nFuture emails from ' + sender + ' will be trusted.');
-            window.location.href = '/emails';
+            // Return to emails list with filters preserved
+            const storedFilters = sessionStorage.getItem('emailListFilters') || '';
+            window.location.href = '/emails' + storedFilters;
         } else {
             alert('Error: ' + (data.error || 'Failed to whitelist sender'));
         }
@@ -510,23 +1260,59 @@ function whitelistSender(emailId, sender) {
     });
 }
 
+// Block sender
+function blockSender(emailId, sender) {
+    if (!confirm(`Are you sure you want to block "${sender}"?`)) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/emails/block-sender', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ sender: sender })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Sender blocked: ' + sender);
+            setTimeout(() => {
+                // Return to emails list with filters preserved
+                const storedFilters = sessionStorage.getItem('emailListFilters') || '';
+                window.location.href = '/emails' + storedFilters;
+            }, 1000);
+        } else {
+            alert('Error: ' + (data.error || 'Failed to block sender'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error blocking sender');
+    });
+}
+
 // Mark as spam
 function markAsSpam(emailId) {
     if (!confirm('Are you sure you want to mark this email as spam?\n\nThis will increase the spam score and may affect future emails from this sender.')) {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch(`/api/emails/${emailId}/mark-spam`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         }
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Email marked as spam successfully!');
-            window.location.reload();
+            showToast('✓ Email marked as spam');
+            setTimeout(() => window.location.reload(), 1000);
         } else {
             alert('Error: ' + (data.error || 'Failed to mark as spam'));
         }
@@ -543,17 +1329,23 @@ function deleteEmail(emailId) {
         return;
     }
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch(`/api/emails/${emailId}/delete`, {
         method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
         }
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Email deleted successfully!');
-            window.location.href = '/emails';
+            showToast('✓ Email deleted');
+            setTimeout(() => {
+                // Return to emails list with filters preserved
+                const storedFilters = sessionStorage.getItem('emailListFilters') || '';
+                window.location.href = '/emails' + storedFilters;
+            }, 1000);
         } else {
             alert('Error: ' + (data.error || 'Failed to delete email'));
         }
@@ -563,5 +1355,195 @@ function deleteEmail(emailId) {
         alert('Error deleting email');
     });
 }
+
+// Undelete/restore a deleted email
+function undeleteEmail(emailId) {
+    if (!confirm('Are you sure you want to restore this email?')) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch(`/api/emails/${emailId}/undelete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('✓ Email restored successfully');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            alert('Error: ' + (data.error || 'Failed to restore email'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error restoring email');
+    });
+}
+
+// Copy email headers to clipboard
+function copyHeaders() {
+    const headersText = document.getElementById('emailHeadersText').innerText;
+
+    // Use the modern clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(headersText).then(() => {
+            // Show success feedback
+            const copyBtn = document.getElementById('copyHeadersBtn');
+            const originalHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            copyBtn.classList.remove('btn-success');
+            copyBtn.classList.add('btn-primary');
+
+            setTimeout(() => {
+                copyBtn.innerHTML = originalHTML;
+                copyBtn.classList.remove('btn-primary');
+                copyBtn.classList.add('btn-success');
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy headers:', err);
+            alert('Failed to copy headers to clipboard');
+        });
+    } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = headersText;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('Headers copied to clipboard!');
+        } catch (err) {
+            console.error('Failed to copy headers:', err);
+            alert('Failed to copy headers to clipboard');
+        }
+        document.body.removeChild(textArea);
+    }
+}
+
+// Attachment download function
+function downloadAttachment(event, emailId, attachmentIndex, filename) {
+    console.log('downloadAttachment called:', {event, emailId, attachmentIndex, filename});
+
+    // Get file extension
+    const ext = filename.split('.').pop().toLowerCase();
+    const dangerousExts = ['exe', 'dll', 'bat', 'cmd', 'vbs', 'js', 'jar', 'scr', 'pif', 'msi', 'app', 'sh', 'deb', 'rpm', 'com'];
+
+    // Warn for dangerous file types
+    if (dangerousExts.includes(ext)) {
+        if (!confirm(`WARNING: "${filename}" is a potentially dangerous file type (.${ext}).\n\nThis file could contain malware or viruses.\n\nAre you sure you want to download it?`)) {
+            return;
+        }
+    }
+
+    // Show loading indicator
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+
+    // Download the file
+    fetch(`/api/email/${emailId}/attachment/${attachmentIndex}/download`)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || 'Download failed');
+                });
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            // Show success message
+            showToast(`Downloading ${filename}`, 'success');
+
+            // Restore button
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        })
+        .catch(error => {
+            console.error('Download error:', error);
+            alert(`Download failed: ${error.message}`);
+
+            // Restore button
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        });
+}
+
+// Toast notification helper
+// HTML escape function to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Scan attachment for viruses
+function scanAttachment(emailId, attachmentIndex, statusElement) {
+    fetch(`/api/email/${emailId}/attachment/${attachmentIndex}/scan`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'clean') {
+                statusElement.innerHTML = '<small class="text-success"><i class="fas fa-check-circle"></i> No virus detected</small>';
+            } else if (data.status === 'infected') {
+                // Escape virus name to prevent XSS
+                const virusInfo = data.virus_name ? ` (${escapeHtml(data.virus_name)})` : '';
+                statusElement.innerHTML = `<small class="text-danger"><strong><i class="fas fa-exclamation-circle"></i> VIRUS DETECTED${virusInfo}</strong></small>`;
+            } else {
+                statusElement.innerHTML = '<small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Scan error</small>';
+            }
+        })
+        .catch(error => {
+            console.error('Scan error:', error);
+            statusElement.innerHTML = '<small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Scan failed</small>';
+        });
+}
+
+// Attach event listeners to all attachment download buttons
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Setting up attachment download buttons...');
+    const downloadButtons = document.querySelectorAll('.attachment-download-btn');
+    console.log('Found', downloadButtons.length, 'download buttons');
+
+    downloadButtons.forEach(button => {
+        button.addEventListener('click', function(event) {
+            const emailId = parseInt(this.getAttribute('data-email-id'));
+            const attachmentIndex = parseInt(this.getAttribute('data-attachment-index'));
+            const filename = this.getAttribute('data-filename');
+
+            console.log('Button clicked:', {emailId, attachmentIndex, filename});
+            downloadAttachment(event, emailId, attachmentIndex, filename);
+        });
+    });
+
+    // Auto-scan all attachments
+    console.log('Starting virus scans for attachments...');
+    const scanStatusElements = document.querySelectorAll('.scan-status');
+    console.log('Found', scanStatusElements.length, 'attachments to scan');
+
+    scanStatusElements.forEach(element => {
+        const emailId = parseInt(element.getAttribute('data-email-id'));
+        const attachmentIndex = parseInt(element.getAttribute('data-attachment-index'));
+
+        // Scan this attachment
+        scanAttachment(emailId, attachmentIndex, element);
+    });
+});
 </script>
 {% endblock %}

@@ -40,6 +40,14 @@ copy_module_files() {
         debug "Copied: email_filter.py"
     fi
 
+    # Copy notification_service.py (SMS notification service)
+    if [[ -f "${source_dir}/notification_service.py" ]]; then
+        cp "${source_dir}/notification_service.py" "${install_dir}/"
+        chown spacy-filter:spacy-filter "${install_dir}/notification_service.py"
+        chmod 750 "${install_dir}/notification_service.py"
+        debug "Copied: notification_service.py"
+    fi
+
     # Copy VERSION file for system information display
     if [[ -f "${SCRIPT_DIR}/VERSION" ]]; then
         cp "${SCRIPT_DIR}/VERSION" "${install_dir}/"
@@ -103,6 +111,10 @@ copy_module_files() {
         chmod -R 750 "${install_dir}/tools"/*.sh
         debug "Copied: tools/*"
     fi
+
+    # Ensure main directory has correct ownership
+    chown spacy-filter:spacy-filter "${install_dir}"
+    chmod 750 "${install_dir}"
 
     success "Module files copied"
     return 0
@@ -193,19 +205,26 @@ update_hosted_domains() {
     fi
     domains_python+="]"
 
-    # Update HOSTED_DOMAINS in app.py (handle multi-line format)
-    if grep -q "^HOSTED_DOMAINS = \[" "${app_file}"; then
-        # Find the line number of HOSTED_DOMAINS = [
-        local start_line=$(grep -n "^HOSTED_DOMAINS = \[" "${app_file}" | cut -d: -f1)
-        # Find the closing ] (next line that starts with ])
-        local end_line=$(tail -n +${start_line} "${app_file}" | grep -n "^\]" | head -1 | cut -d: -f1)
-        end_line=$((start_line + end_line - 1))
+    # Update HOSTED_DOMAINS in app.py
+    if grep -q "^HOSTED_DOMAINS = " "${app_file}"; then
+        # Find the line number of HOSTED_DOMAINS
+        local hosted_line=$(grep -n "^HOSTED_DOMAINS = " "${app_file}" | head -1 | cut -d: -f1)
 
-        # Delete the old HOSTED_DOMAINS block
-        sed -i "${start_line},${end_line}d" "${app_file}"
+        # Check if it's a single-line definition (contains both [ and ] on same line)
+        if grep "^HOSTED_DOMAINS = \[.*\]" "${app_file}" > /dev/null; then
+            # Single-line format - just replace the line
+            sed -i "${hosted_line}s/.*/HOSTED_DOMAINS = ${domains_python}/" "${app_file}"
+        else
+            # Multi-line format - find closing bracket
+            local end_line=$(tail -n +${hosted_line} "${app_file}" | grep -n "^\]" | head -1 | cut -d: -f1)
+            end_line=$((hosted_line + end_line - 1))
 
-        # Insert new HOSTED_DOMAINS on single line
-        sed -i "${start_line}i\\HOSTED_DOMAINS = ${domains_python}" "${app_file}"
+            # Delete the old HOSTED_DOMAINS block
+            sed -i "${hosted_line},${end_line}d" "${app_file}"
+
+            # Insert new HOSTED_DOMAINS on single line
+            sed -i "${hosted_line}i\\HOSTED_DOMAINS = ${domains_python}" "${app_file}"
+        fi
 
         local domain_count=1
         if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then

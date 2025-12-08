@@ -3,7 +3,7 @@
 {% block title %}Enhanced Dashboard - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .domain-selector {
         background: white;
         border-radius: 10px;
@@ -12,8 +12,17 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
+    .dashboard-banner {
+        background: linear-gradient(135deg, #5568d3 0%, #6b4a8f 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
     .system-overview {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #7289e8 0%, #8a5db0 100%);
         color: white;
         border-radius: 10px;
         padding: 25px;
@@ -212,13 +221,13 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <div class="card bg-primary text-white">
-            <div class="card-body">
-                <h1 class="card-title mb-0">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header dashboard-banner border-0">
+                <h1 class="mb-1">
                     <i class="fas fa-tachometer-alt"></i> Enhanced Email Security Dashboard
                 </h1>
-                <p class="card-text">
-                    Comprehensive email monitoring and threat analysis for 
+                <p class="mb-0">
+                    Comprehensive email monitoring and threat analysis for
                     {% if current_user.is_admin() %}
                         all hosted domains
                     {% else %}
@@ -307,7 +316,7 @@
     <h5><i class="fas fa-globe"></i> Select Domain to View</h5>
     <div class="row align-items-center">
         <div class="col-md-6">
-            <select class="form-select" onchange="changeDomain(this.value)">
+            <select class="form-select" id="domain-selector">
                 {% for domain in user_domains %}
                 <option value="{{ domain }}" {% if domain == selected_domain %}selected{% endif %}>
                     {{ domain }}
@@ -457,24 +466,12 @@
 {% endif %}
 {% endif %}
 
-<!-- Sentiment Chart -->
-{% if sentiment_chart %}
-<div class="chart-container">
-    <div class="chart-title">
-        <i class="fas fa-chart-pie"></i> Email Sentiment Analysis - {{ selected_domain }}
-    </div>
-    <div class="text-center">
-        <img src="{{ sentiment_chart }}" alt="Sentiment Distribution Chart" style="max-width: 100%; height: auto;">
-    </div>
-</div>
-{% endif %}
-
 <!-- Recent Messages Section -->
-<div class="card mb-4">
-    <div class="card-header bg-primary text-white">
-        <h5 class="card-title mb-0">
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom">
+        <h6 class="mb-0">
             <i class="fas fa-inbox"></i> Recent Messages - {{ selected_domain }}
-        </h5>
+        </h6>
     </div>
     <div class="card-body">
         {% if recent_emails %}
@@ -507,11 +504,11 @@
                         </td>
                         <td>
                             {% if email.spam_score >= 5.0 %}
-                                <span class="badge bg-danger">{{ email.spam_score }}</span>
+                                <span class="badge bg-danger">{{ "%.1f"|format(email.spam_score) }}</span>
                             {% elif email.spam_score >= 3.0 %}
-                                <span class="badge bg-warning text-dark">{{ email.spam_score }}</span>
+                                <span class="badge bg-warning text-dark">{{ "%.1f"|format(email.spam_score) }}</span>
                             {% else %}
-                                <span class="badge bg-success">{{ email.spam_score }}</span>
+                                <span class="badge bg-success">{{ "%.1f"|format(email.spam_score) }}</span>
                             {% endif %}
                         </td>
                         <td>
@@ -539,12 +536,24 @@
     </div>
 </div>
 
+<!-- Sentiment Chart -->
+{% if sentiment_chart %}
+<div class="chart-container">
+    <div class="chart-title">
+        <i class="fas fa-chart-pie"></i> Email Sentiment Analysis - {{ selected_domain }}
+    </div>
+    <div class="text-center">
+        <img src="{{ sentiment_chart }}" alt="Sentiment Distribution Chart" style="max-width: 100%; height: auto;">
+    </div>
+</div>
+{% endif %}
+
 <!-- Actions Panel -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="card-title mb-0">
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom">
+        <h6 class="mb-0">
             <i class="fas fa-tools"></i> Available Actions
-        </h5>
+        </h6>
     </div>
     <div class="card-body">
         {% if selected_domain %}
@@ -596,13 +605,23 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
     function changeDomain(selectedDomain) {
         if (selectedDomain) {
             window.location.href = '{{ url_for("dashboard") }}?domain=' + encodeURIComponent(selectedDomain);
         }
     }
-    
+
+    // Add event listener for domain selector
+    document.addEventListener('DOMContentLoaded', function() {
+        const domainSelector = document.getElementById('domain-selector');
+        if (domainSelector) {
+            domainSelector.addEventListener('change', function() {
+                changeDomain(this.value);
+            });
+        }
+    });
+
     // Auto-refresh every 5 minutes
     setTimeout(function() {
         window.location.reload();

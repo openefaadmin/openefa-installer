@@ -272,7 +272,7 @@ class PhishingDetector:
             from_domain = from_header.split('@')[-1].lower().strip('>')
         
         # Check if content claims to be from a different organization
-        # Example: From casino.com but claims "Rdjohnsonlaw shared folder"
+        # Example: From casino.com but claims "Acme Corp shared folder"
         if from_domain:
             # Look for organization names in content that don't match sender
             org_pattern = r"(?:from|via|by|on behalf of)\s+([a-z0-9\-]+(?:\.[a-z]+)?)"

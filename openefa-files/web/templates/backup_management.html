@@ -3,20 +3,20 @@
 {% block title %}Backup & Restore - OpenEFA{% endblock %}
 
 {% block extra_css %}
-<style>
-    .backup-header {
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem 0;
-        margin-bottom: 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .backup-card {
         border: none;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
 
     .backup-item {
@@ -63,41 +63,49 @@
 {% endblock %}
 
 {% block content %}
-<!-- Backup Header -->
-<div class="backup-header">
-    <div class="container">
-        <div class="row align-items-center mb-3">
-            <div class="col-md-8">
-                <h1><i class="fas fa-database"></i> Backup & Restore</h1>
-                <p class="mb-0">Manage database backups and restore points</p>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-database me-2"></i>Backup & Restore</h4>
+                <p class="mb-0 small">Manage database backups and restore points</p>
+            </div>
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
             </div>
         </div>
+    </div>
 
-        <!-- Database Backup Options -->
-        <div class="row mt-3">
-            <div class="col-md-12">
-                <div class="card bg-white bg-opacity-25">
-                    <div class="card-body">
-                        <div class="row align-items-center">
-                            <div class="col-md-8">
-                                <h6 class="text-white mb-2"><i class="fas fa-database"></i> Database Backup Options</h6>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="db-backup-database" checked disabled>
-                                    <label class="form-check-label text-white" for="db-backup-database">
-                                        <small>Database Tables</small>
-                                    </label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="db-backup-attachments" checked>
-                                    <label class="form-check-label text-white" for="db-backup-attachments">
-                                        <small>Email Attachments</small>
-                                    </label>
-                                </div>
+    <!-- Database Backup Options -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="card backup-card">
+                <div class="card-header bg-white border-bottom">
+                    <h6 class="mb-0"><i class="fas fa-database"></i> Database Backup Options</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="db-backup-database" checked disabled>
+                                <label class="form-check-label" for="db-backup-database">
+                                    <small>Database Tables</small>
+                                </label>
                             </div>
-                            <div class="col-md-4 text-md-end">
-                                <button class="btn btn-light" onclick="createBackup()">
-                                    <i class="fas fa-download"></i> Download Database Backup
-                                </button>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="db-backup-attachments" checked>
+                                <label class="form-check-label" for="db-backup-attachments">
+                                    <small>Email Attachments</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <button class="btn btn-primary btn-sm" id="btn-create-backup">
+                                <i class="fas fa-download"></i> Create Database Backup
+                            </button>
                             </div>
                         </div>
                     </div>
@@ -105,53 +113,51 @@
             </div>
         </div>
 
-        <!-- Full System Backup Options -->
-        <div class="row mt-2">
-            <div class="col-md-12">
-                <div class="card bg-white bg-opacity-25">
-                    <div class="card-body">
-                        <div class="row align-items-center">
-                            <div class="col-md-8">
-                                <h6 class="text-white mb-2"><i class="fas fa-archive"></i> Full System Backup Options</h6>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="full-backup-database" checked disabled>
-                                    <label class="form-check-label text-white" for="full-backup-database">
-                                        <small>Database</small>
-                                    </label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="full-backup-config" checked>
-                                    <label class="form-check-label text-white" for="full-backup-config">
-                                        <small>Configuration Files</small>
-                                    </label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="full-backup-webapp" checked>
-                                    <label class="form-check-label text-white" for="full-backup-webapp">
-                                        <small>Web Application</small>
-                                    </label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="checkbox" id="full-backup-attachments">
-                                    <label class="form-check-label text-white" for="full-backup-attachments">
-                                        <small>Email Attachments</small>
-                                    </label>
-                                </div>
+    <!-- Full System Backup Options -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="card backup-card">
+                <div class="card-header bg-white border-bottom">
+                    <h6 class="mb-0"><i class="fas fa-archive"></i> Full System Backup Options</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="full-backup-database" checked disabled>
+                                <label class="form-check-label" for="full-backup-database">
+                                    <small>Database</small>
+                                </label>
                             </div>
-                            <div class="col-md-4 text-md-end">
-                                <button class="btn btn-primary" onclick="createFullBackup()">
-                                    <i class="fas fa-download"></i> Download Full System Backup
-                                </button>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="full-backup-config" checked>
+                                <label class="form-check-label" for="full-backup-config">
+                                    <small>Configuration Files</small>
+                                </label>
                             </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="full-backup-webapp" checked>
+                                <label class="form-check-label" for="full-backup-webapp">
+                                    <small>Web Application</small>
+                                </label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="full-backup-attachments">
+                                <label class="form-check-label" for="full-backup-attachments">
+                                    <small>Email Attachments</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <button class="btn btn-secondary btn-sm" id="btn-create-full-backup">
+                                <i class="fas fa-download"></i> Create Full Backup
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-
-<div class="container">
     <!-- Progress indicator -->
     <div id="backup-progress" class="alert alert-info">
         <div class="d-flex align-items-center">
@@ -166,39 +172,39 @@
     <div id="alert-container"></div>
 
     <!-- Database Statistics -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card stat-card border-primary">
-                <div class="card-body">
-                    <h6 class="text-muted mb-2"><i class="fas fa-database"></i> Database Size</h6>
-                    <h3 class="mb-0">{{ db_size or 'N/A' }}</h3>
+    <div class="d-flex gap-2 flex-wrap mb-3">
+        <div class="flex-fill">
+            <div class="card backup-card border-start border-primary border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-database"></i> Database Size</h6>
+                    <h4 class="mb-0">{{ db_size or 'N/A' }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card stat-card border-success">
-                <div class="card-body">
-                    <h6 class="text-muted mb-2"><i class="fas fa-copy"></i> Total Backups</h6>
-                    <h3 class="mb-0">{{ backups|length }}</h3>
+        <div class="flex-fill">
+            <div class="card backup-card border-start border-success border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-copy"></i> Total Backups</h6>
+                    <h4 class="mb-0">{{ backups|length }}</h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card stat-card border-info">
-                <div class="card-body">
-                    <h6 class="text-muted mb-2"><i class="fas fa-table"></i> Database Tables</h6>
-                    <h3 class="mb-0">{{ table_stats|length }}</h3>
+        <div class="flex-fill">
+            <div class="card backup-card border-start border-info border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-table"></i> Database Tables</h6>
+                    <h4 class="mb-0">{{ table_stats|length }}</h4>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Table Statistics -->
-    <div class="row mb-4">
+    <div class="row">
         <div class="col-md-12">
             <div class="card backup-card">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-table"></i> Database Tables</h5>
+                <div class="card-header bg-white border-bottom">
+                    <h6 class="mb-0"><i class="fas fa-table"></i> Database Tables</h6>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -232,8 +238,8 @@
     <div class="row">
         <div class="col-md-12">
             <div class="card backup-card">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-archive"></i> Available Backups</h5>
+                <div class="card-header bg-white border-bottom">
+                    <h6 class="mb-0"><i class="fas fa-archive"></i> Available Backups</h6>
                 </div>
                 <div class="card-body p-0">
                     {% if backups %}
@@ -261,10 +267,10 @@
                                 {% else %}
                                 <span class="badge bg-secondary backup-type-badge me-2">CONFIG</span>
                                 {% endif %}
-                                <button class="btn btn-sm btn-success me-1" onclick="downloadBackup('{{ backup.filename }}')" title="Download">
+                                <button class="btn btn-sm btn-success me-1 btn-download-backup" data-filename="{{ backup.filename }}" title="Download">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteBackup('{{ backup.filename }}')" title="Delete">
+                                <button class="btn btn-sm btn-danger btn-delete-backup" data-filename="{{ backup.filename }}" title="Delete">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -321,7 +327,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function showAlert(message, type = 'success') {
     const alertContainer = document.getElementById('alert-container');
     const alertDiv = document.createElement('div');
@@ -349,6 +355,10 @@ function createBackup() {
     progressDiv.style.display = 'block';
     progressText.textContent = 'Creating database backup... This may take a few minutes.';
 
+    // Create AbortController with extended timeout (10 minutes)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
+
     fetch('/api/backup/create', {
         method: 'POST',
         headers: {
@@ -356,10 +366,12 @@ function createBackup() {
         },
         body: JSON.stringify({
             include_attachments: includeAttachments
-        })
+        }),
+        signal: controller.signal
     })
     .then(response => response.json())
     .then(data => {
+        clearTimeout(timeoutId);
         progressDiv.style.display = 'none';
 
         if (data.success) {
@@ -375,8 +387,13 @@ function createBackup() {
         }
     })
     .catch(error => {
+        clearTimeout(timeoutId);
         progressDiv.style.display = 'none';
-        showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating backup: ${error}`, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Backup timed out after 10 minutes. Please contact support.`, 'danger');
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating backup: ${error}`, 'danger');
+        }
     });
 }
 
@@ -393,6 +410,10 @@ function createFullBackup() {
     progressDiv.style.display = 'block';
     progressText.textContent = 'Creating full system backup... This may take several minutes.';
 
+    // Create AbortController with extended timeout (10 minutes)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
+
     fetch('/api/backup/create-full', {
         method: 'POST',
         headers: {
@@ -402,10 +423,12 @@ function createFullBackup() {
             include_config: includeConfig,
             include_webapp: includeWebapp,
             include_attachments: includeAttachments
-        })
+        }),
+        signal: controller.signal
     })
     .then(response => response.json())
     .then(data => {
+        clearTimeout(timeoutId);
         progressDiv.style.display = 'none';
 
         if (data.success) {
@@ -425,8 +448,13 @@ function createFullBackup() {
         }
     })
     .catch(error => {
+        clearTimeout(timeoutId);
         progressDiv.style.display = 'none';
-        showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating full backup: ${error}`, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Backup timed out after 10 minutes. Please contact support.`, 'danger');
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error creating full backup: ${error}`, 'danger');
+        }
     });
 }
 
@@ -459,5 +487,36 @@ function deleteBackup(filename) {
         showAlert(`<i class="fas fa-exclamation-circle"></i> Error deleting backup: ${error}`, 'danger');
     });
 }
+
+// Attach event listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Create Database Backup button
+    const btnCreateBackup = document.getElementById('btn-create-backup');
+    if (btnCreateBackup) {
+        btnCreateBackup.addEventListener('click', createBackup);
+    }
+
+    // Create Full System Backup button
+    const btnCreateFullBackup = document.getElementById('btn-create-full-backup');
+    if (btnCreateFullBackup) {
+        btnCreateFullBackup.addEventListener('click', createFullBackup);
+    }
+
+    // Download backup buttons (multiple)
+    document.querySelectorAll('.btn-download-backup').forEach(button => {
+        button.addEventListener('click', function() {
+            const filename = this.getAttribute('data-filename');
+            downloadBackup(filename);
+        });
+    });
+
+    // Delete backup buttons (multiple)
+    document.querySelectorAll('.btn-delete-backup').forEach(button => {
+        button.addEventListener('click', function() {
+            const filename = this.getAttribute('data-filename');
+            deleteBackup(filename);
+        });
+    });
+});
 </script>
 {% endblock %}

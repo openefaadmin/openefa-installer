@@ -8,7 +8,7 @@ Before releasing these files publicly, manually review:
 - [ ] Replace HOSTED_DOMAINS hardcoded list with database query:
 ```python
 # OLD (line ~53):
-HOSTED_DOMAINS = ['safesoundins.com', 'phoenixdefence.com', ...]
+HOSTED_DOMAINS = ['example.com', 'client1.com', ...]
 
 # NEW:
 def get_hosted_domains():

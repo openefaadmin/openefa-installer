@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Digest Action Result - OpenEFA{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header {% if success %}bg-success{% else %}bg-danger{% endif %} text-white">
+                    <h4 class="mb-0">
+                        {% if success %}
+                        <i class="fas fa-check-circle"></i> Action Successful
+                        {% else %}
+                        <i class="fas fa-times-circle"></i> Action Failed
+                        {% endif %}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% if success %}
+                    <div class="alert alert-success">
+                        <h5><i class="fas fa-check"></i> Success!</h5>
+                        <p class="mb-0">{{ message }}</p>
+                    </div>
+
+                    {% if email %}
+                    <h6 class="mt-4">Email Details:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <tr>
+                                <th style="width: 150px;">From:</th>
+                                <td>{{ email.sender }}</td>
+                            </tr>
+                            <tr>
+                                <th>Subject:</th>
+                                <td>{{ email.subject }}</td>
+                            </tr>
+                            <tr>
+                                <th>Time:</th>
+                                <td>{{ email.timestamp }}</td>
+                            </tr>
+                            {% if action == 'release' %}
+                            <tr>
+                                <th>Status:</th>
+                                <td><span class="badge badge-success">Released for Delivery</span></td>
+                            </tr>
+                            {% elif action == 'whitelist' %}
+                            <tr>
+                                <th>Status:</th>
+                                <td><span class="badge badge-info">Sender Whitelisted</span></td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    <div class="mt-4">
+                        {% if action == 'release' %}
+                        <p><i class="fas fa-info-circle text-info"></i> The email has been released and is being delivered to the recipient.</p>
+                        {% elif action == 'whitelist' %}
+                        <p><i class="fas fa-info-circle text-info"></i> Future emails from this sender will bypass the spam filter.</p>
+                        {% endif %}
+                    </div>
+
+                    {% else %}
+                    <div class="alert alert-danger">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Error</h5>
+                        <p class="mb-0">{{ message }}</p>
+                    </div>
+
+                    <div class="mt-3">
+                        <p><strong>Common reasons for failure:</strong></p>
+                        <ul>
+                            <li>The link has expired (tokens are valid for 72 hours)</li>
+                            <li>The link has already been used</li>
+                            <li>The email was already released or deleted</li>
+                            <li>Invalid or malformed link</li>
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <hr class="my-4">
+
+                    <div class="text-center">
+                        <a href="/quarantine" class="btn btn-primary">
+                            <i class="fas fa-inbox"></i> View Quarantine
+                        </a>
+                        <a href="/settings/quarantine-notifications" class="btn btn-secondary">
+                            <i class="fas fa-cog"></i> Notification Settings
+                        </a>
+                    </div>
+
+                    <div class="mt-3 text-center text-muted">
+                        <small>
+                            This action was performed via email digest link.<br>
+                            For security, each link can only be used once.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Notice -->
+            <div class="alert alert-info mt-4">
+                <h6><i class="fas fa-shield-alt"></i> Security Notice</h6>
+                <p class="mb-0">
+                    This action has been logged for security purposes. If you did not initiate this action,
+                    please contact your administrator immediately.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

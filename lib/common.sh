@@ -250,6 +250,12 @@ confirm() {
     local prompt="$1"
     local response
 
+    # In non-interactive mode, auto-accept confirmations
+    if [[ "${OPENEFA_NONINTERACTIVE:-}" == "1" ]]; then
+        info "Non-interactive mode: auto-accepting '$prompt'"
+        return 0
+    fi
+
     while true; do
         read -p "${prompt} [y/N]: " response
         case "${response}" in

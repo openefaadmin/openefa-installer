@@ -12,7 +12,12 @@ NC='\033[0m'
 SPACY_ROOT="/opt/spacyserver"
 MYSQL_CONFIG="$SPACY_ROOT/config/.my.cnf"
 BACKUP_DIR="$SPACY_ROOT/backups"
-DB_NAME="spacy_email_db"
+
+# Load database configuration from environment
+if [[ -f /etc/spacy-server/.env ]]; then
+    source /etc/spacy-server/.env
+fi
+: "${DB_NAME:=spacy_email_db}"
 
 echo -e "${BLUE}=== SpaCy MySQL Database Status Check ===${NC}"
 echo ""

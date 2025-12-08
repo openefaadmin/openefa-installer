@@ -475,7 +475,33 @@ CREATE TABLE `email_analysis` (
   `pii_detected` tinyint(1) DEFAULT 0,
   `pii_types` text DEFAULT NULL,
   `raw_email` longtext DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  `upstream_queue_id` varchar(255) DEFAULT NULL,
+  `modules_run` text DEFAULT NULL,
+  `not_spam_train_count` int(11) DEFAULT 0,
+  `mail_direction` enum('inbound','outbound') DEFAULT 'inbound',
+  `raw_email_path` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) DEFAULT 0,
+  `disposition` enum('delivered','quarantined','rejected','deleted','released','relay_pending','relay_failed','bounced') DEFAULT 'relay_pending',
+  `quarantine_status` enum('held','released','deleted') DEFAULT NULL,
+  `quarantine_reason` varchar(255) DEFAULT NULL,
+  `quarantine_expires_at` datetime DEFAULT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  `deleted_by` varchar(255) DEFAULT NULL,
+  `spam_train_count` int(11) DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_message_id` (`message_id`),
+  KEY `idx_timestamp` (`timestamp`),
+  KEY `idx_sender` (`sender`),
+  KEY `idx_recipients` (`recipients`(255)),
+  KEY `idx_subject` (`subject`(255)),
+  KEY `idx_spam_score` (`spam_score`),
+  KEY `idx_email_category` (`email_category`),
+  KEY `idx_content_summary` (`content_summary`(255)),
+  KEY `idx_mail_direction` (`mail_direction`),
+  KEY `idx_disposition` (`disposition`),
+  KEY `idx_quarantine_status` (`quarantine_status`),
+  KEY `idx_quarantine_reason` (`quarantine_reason`),
+  KEY `idx_is_deleted` (`is_deleted`)
 ) ENGINE=InnoDB AUTO_INCREMENT=149491 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -535,6 +561,58 @@ CREATE TABLE `false_positive_tracking` (
   KEY `idx_domain` (`domain`),
   KEY `idx_release_date` (`release_timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `email_quarantine` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) NOT NULL,
+  `timestamp` datetime NOT NULL DEFAULT current_timestamp(),
+  `quarantine_status` enum('held','released','deleted','expired') DEFAULT 'held',
+  `quarantine_reason` varchar(100) DEFAULT NULL,
+  `quarantine_expires_at` datetime NOT NULL,
+  `user_classification` enum('spam','not_spam','uncertain') DEFAULT NULL,
+  `reviewed_by` varchar(100) DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `sender` varchar(255) NOT NULL,
+  `sender_domain` varchar(255) DEFAULT NULL,
+  `recipients` text DEFAULT NULL,
+  `recipient_domains` text DEFAULT NULL,
+  `subject` varchar(500) DEFAULT NULL,
+  `raw_email` longtext NOT NULL,
+  `email_size` int(11) DEFAULT NULL,
+  `text_content` mediumtext DEFAULT NULL,
+  `html_content` longtext DEFAULT NULL,
+  `has_attachments` tinyint(1) DEFAULT 0,
+  `attachment_count` int(11) DEFAULT 0,
+  `attachment_names` text DEFAULT NULL,
+  `spam_score` decimal(5,2) DEFAULT NULL,
+  `spam_modules_detail` text DEFAULT NULL,
+  `virus_detected` tinyint(1) DEFAULT 0,
+  `virus_names` text DEFAULT NULL,
+  `phishing_detected` tinyint(1) DEFAULT 0,
+  `spf_result` varchar(20) DEFAULT NULL,
+  `dkim_result` varchar(20) DEFAULT NULL,
+  `dmarc_result` varchar(20) DEFAULT NULL,
+  `auth_score` decimal(5,2) DEFAULT NULL,
+  `released_by` varchar(100) DEFAULT NULL,
+  `released_at` datetime DEFAULT NULL,
+  `released_to` varchar(100) DEFAULT NULL,
+  `deleted_by` varchar(100) DEFAULT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  `admin_notes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `message_id` (`message_id`),
+  KEY `idx_timestamp` (`timestamp`),
+  KEY `idx_status` (`quarantine_status`),
+  KEY `idx_reason` (`quarantine_reason`),
+  KEY `idx_expires` (`quarantine_expires_at`),
+  KEY `idx_sender` (`sender`),
+  KEY `idx_sender_domain` (`sender_domain`),
+  KEY `idx_recipient_domains` (`recipient_domains`(100)),
+  KEY `idx_spam_score` (`spam_score`),
+  KEY `idx_reviewed_by` (`reviewed_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
@@ -852,6 +930,7 @@ CREATE TABLE `users` (
   `last_login` timestamp NULL DEFAULT NULL,
   `failed_login_attempts` int(11) DEFAULT 0,
   `locked_until` timestamp NULL DEFAULT NULL,
+  `date_format` varchar(10) DEFAULT 'US',
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   KEY `idx_users_email` (`email`),
@@ -936,7 +1015,7 @@ CREATE TABLE `whitelist_requests` (
 /*!50001 SET character_set_results     = utf8mb3 */;
 /*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`spacy_user`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=CURRENT_USER SQL SECURITY DEFINER */
 /*!50001 VIEW `conversation_learning_stats` AS select (select count(0) from `conversation_vocabulary` where `conversation_vocabulary`.`frequency` > 1) AS `vocabulary_count`,(select count(0) from `conversation_relationships`) AS `relationship_count`,(select count(0) from `conversation_phrases`) AS `phrase_count`,(select count(distinct `conversation_domain_stats`.`domain`) from `conversation_domain_stats`) AS `domain_count`,(select count(0) from `conversation_vocabulary` where `conversation_vocabulary`.`last_seen` > current_timestamp() - interval 1 day) AS `new_patterns_24h`,(select count(0) from `conversation_vocabulary` where `conversation_vocabulary`.`last_seen` > current_timestamp() - interval 7 day) AS `new_patterns_7d`,(select avg(`conversation_relationships`.`avg_spam_score`) from `conversation_relationships` where `conversation_relationships`.`message_count` > 3) AS `avg_legitimate_score` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -949,7 +1028,7 @@ CREATE TABLE `whitelist_requests` (
 /*!50001 SET character_set_results     = utf8mb3 */;
 /*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`spacy_user`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=CURRENT_USER SQL SECURITY DEFINER */
 /*!50001 VIEW `current_effectiveness` AS select `em`.`id` AS `id`,`em`.`metric_date` AS `metric_date`,`em`.`total_emails` AS `total_emails`,`em`.`spam_caught` AS `spam_caught`,`em`.`clean_passed` AS `clean_passed`,`em`.`gray_area` AS `gray_area`,`em`.`false_positives` AS `false_positives`,`em`.`false_negatives` AS `false_negatives`,`em`.`avg_spam_score` AS `avg_spam_score`,`em`.`detection_rate` AS `detection_rate`,`em`.`false_positive_rate` AS `false_positive_rate`,`em`.`true_positive_rate` AS `true_positive_rate`,`em`.`precision_score` AS `precision_score`,`em`.`recall_score` AS `recall_score`,`em`.`f1_score` AS `f1_score`,`em`.`effectiveness_score` AS `effectiveness_score`,`em`.`auto_whitelists_added` AS `auto_whitelists_added`,`em`.`unique_senders_released` AS `unique_senders_released`,`em`.`learning_rate` AS `learning_rate`,`em`.`created_at` AS `created_at`,case when `em`.`effectiveness_score` >= 95 then 'Excellent' when `em`.`effectiveness_score` >= 90 then 'Good' when `em`.`effectiveness_score` >= 85 then 'Acceptable' else 'Needs Improvement' end AS `performance_rating`,round(100 - `em`.`false_positive_rate` * 100,2) AS `accuracy_percentage` from `effectiveness_metrics` `em` where `em`.`metric_date` = curdate() */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -962,7 +1041,7 @@ CREATE TABLE `whitelist_requests` (
 /*!50001 SET character_set_results     = utf8mb3 */;
 /*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`spacy_user`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=CURRENT_USER SQL SECURITY DEFINER */
 /*!50001 VIEW `effectiveness_trends` AS select `effectiveness_metrics`.`metric_date` AS `metric_date`,`effectiveness_metrics`.`effectiveness_score` AS `effectiveness_score`,`effectiveness_metrics`.`false_positive_rate` AS `false_positive_rate`,`effectiveness_metrics`.`detection_rate` AS `detection_rate`,`effectiveness_metrics`.`learning_rate` AS `learning_rate`,avg(`effectiveness_metrics`.`effectiveness_score`) over ( order by `effectiveness_metrics`.`metric_date` rows between 6 preceding  and  current row ) AS `week_avg`,avg(`effectiveness_metrics`.`effectiveness_score`) over ( order by `effectiveness_metrics`.`metric_date` rows between 29 preceding  and  current row ) AS `month_avg` from `effectiveness_metrics` where `effectiveness_metrics`.`metric_date` >= curdate() - interval 30 day order by `effectiveness_metrics`.`metric_date` desc */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -975,7 +1054,7 @@ CREATE TABLE `whitelist_requests` (
 /*!50001 SET character_set_results     = utf8mb3 */;
 /*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=CURRENT_USER SQL SECURITY DEFINER */
 /*!50001 VIEW `sender_anomaly_status` AS select `sbb`.`sender_email` AS `sender_email`,`sbb`.`sender_domain` AS `sender_domain`,`sbb`.`total_emails_analyzed` AS `total_emails_analyzed`,`sbb`.`learning_confidence` AS `learning_confidence`,`sbb`.`anomaly_count` AS `anomaly_count`,`sbb`.`last_anomaly_date` AS `last_anomaly_date`,count(distinct `ba`.`id`) AS `recent_anomalies_7d`,max(`ba`.`anomaly_severity`) AS `highest_severity_7d`,case when `sbb`.`learning_confidence` >= 0.8 then 'Established' when `sbb`.`learning_confidence` >= 0.5 then 'Learning' else 'Insufficient Data' end AS `baseline_status` from (`sender_behavior_baseline` `sbb` left join `behavioral_anomalies` `ba` on(`sbb`.`sender_email` = `ba`.`sender_email` and `ba`.`anomaly_timestamp` >= current_timestamp() - interval 7 day)) group by `sbb`.`sender_email` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -990,3 +1069,224 @@ CREATE TABLE `whitelist_requests` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+
+-- VIP Alerts Tables
+CREATE TABLE IF NOT EXISTS `vip_senders` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_email` varchar(255) NOT NULL COMMENT 'Email address receiving the alerts',
+  `client_domain_id` int(11) NOT NULL,
+  `vip_sender_email` varchar(255) NOT NULL COMMENT 'Email address to monitor',
+  `vip_sender_name` varchar(255) DEFAULT NULL COMMENT 'Friendly name (optional)',
+  `mobile_number` varchar(20) NOT NULL COMMENT 'SMS destination (E.164 format)',
+  `alert_enabled` tinyint(1) DEFAULT 1,
+  `alert_hours_start` time DEFAULT '08:00:00',
+  `alert_hours_end` time DEFAULT '22:00:00',
+  `alert_timezone` varchar(50) DEFAULT 'America/Los_Angeles',
+  `max_alerts_per_hour` int(11) DEFAULT 5 COMMENT 'Rate limit per VIP sender',
+  `min_spam_score_threshold` decimal(5,2) DEFAULT 5.00 COMMENT 'Dont alert if email score >= this',
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_by` varchar(255) DEFAULT NULL COMMENT 'Who configured this alert',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_vip_per_user` (`user_email`,`vip_sender_email`,`client_domain_id`),
+  KEY `client_domain_id` (`client_domain_id`),
+  KEY `idx_sender_lookup` (`vip_sender_email`),
+  KEY `idx_user_lookup` (`user_email`),
+  KEY `idx_enabled` (`alert_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='VIP sender alert configuration';
+
+CREATE TABLE IF NOT EXISTS `vip_recipients` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_email` varchar(255) NOT NULL COMMENT 'User who will receive alerts',
+  `client_domain_id` int(11) NOT NULL,
+  `monitored_recipient_email` varchar(255) NOT NULL COMMENT 'Recipient address to monitor for quarantine',
+  `monitored_recipient_name` varchar(255) DEFAULT NULL,
+  `mobile_number` varchar(20) NOT NULL COMMENT 'Phone number for SMS alerts',
+  `alert_enabled` tinyint(1) DEFAULT 1,
+  `alert_hours_start` time DEFAULT '08:00:00',
+  `alert_hours_end` time DEFAULT '22:00:00',
+  `alert_timezone` varchar(50) DEFAULT 'America/Los_Angeles',
+  `max_alerts_per_hour` int(11) DEFAULT 5,
+  `alert_on_quarantine` tinyint(1) DEFAULT 1 COMMENT 'Alert when recipient email is quarantined',
+  `min_spam_score_threshold` decimal(5,2) DEFAULT 5.00 COMMENT 'Only alert if spam score exceeds this',
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_by` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_recipient` (`user_email`,`monitored_recipient_email`,`client_domain_id`),
+  KEY `idx_user_email` (`user_email`),
+  KEY `idx_client_domain` (`client_domain_id`),
+  KEY `idx_monitored_recipient` (`monitored_recipient_email`),
+  KEY `idx_alert_enabled` (`alert_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='VIP recipient monitoring - alerts when emails TO specific recipients are quarantined';
+
+CREATE TABLE IF NOT EXISTS `sms_alert_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `message_id` varchar(255) NOT NULL COMMENT 'Email message ID',
+  `email_subject` varchar(500) DEFAULT NULL,
+  `sender_email` varchar(255) NOT NULL,
+  `recipient_email` varchar(255) NOT NULL,
+  `spam_score` decimal(5,2) DEFAULT NULL,
+  `vip_sender_id` int(11) NOT NULL COMMENT 'FK to vip_senders',
+  `client_domain_id` int(11) NOT NULL,
+  `mobile_number` varchar(20) NOT NULL,
+  `sms_message` text DEFAULT NULL COMMENT 'Actual SMS content sent',
+  `sent_at` timestamp NULL DEFAULT current_timestamp(),
+  `delivery_status` enum('pending','sent','delivered','failed','rate_limited','quiet_hours','spam_filtered') DEFAULT 'pending',
+  `clicksend_message_id` varchar(100) DEFAULT NULL COMMENT 'ClickSend API message ID',
+  `clicksend_response` text DEFAULT NULL COMMENT 'Raw API response',
+  `delivery_timestamp` timestamp NULL DEFAULT NULL COMMENT 'When SMS was delivered',
+  `error_message` text DEFAULT NULL,
+  `cost_usd` decimal(6,4) DEFAULT 0.0000 COMMENT 'Actual ClickSend cost',
+  `billable_amount_usd` decimal(6,2) DEFAULT 0.20 COMMENT 'Amount charged to customer',
+  `billing_status` enum('unbilled','billed','refunded') DEFAULT 'unbilled',
+  `billing_cycle` varchar(7) DEFAULT NULL COMMENT 'YYYY-MM format for monthly billing',
+  `invoice_id` int(11) DEFAULT NULL COMMENT 'FK to invoices table (if you have one)',
+  `retry_count` int(11) DEFAULT 0,
+  `last_retry_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_message` (`message_id`),
+  KEY `idx_vip_sender` (`vip_sender_id`),
+  KEY `idx_billing_cycle` (`billing_cycle`,`billing_status`),
+  KEY `idx_client_domain` (`client_domain_id`),
+  KEY `idx_recipient` (`recipient_email`),
+  KEY `idx_sent_at` (`sent_at`),
+  KEY `idx_delivery_status` (`delivery_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SMS alert delivery log and billing records';
+
+-- VIP Views
+CREATE OR REPLACE VIEW `vip_sender_stats` AS
+SELECT 
+  vs.id, vs.user_email, vs.vip_sender_email, vs.vip_sender_name,
+  vs.mobile_number, vs.alert_enabled, vs.alert_hours_start, vs.alert_hours_end,
+  COUNT(sal.id) AS total_alerts_sent,
+  COUNT(CASE WHEN sal.delivery_status = 'delivered' THEN 1 END) AS alerts_delivered,
+  COUNT(CASE WHEN sal.delivery_status = 'rate_limited' THEN 1 END) AS alerts_rate_limited,
+  MAX(sal.sent_at) AS last_alert_at,
+  SUM(sal.billable_amount_usd) AS total_billed
+FROM vip_senders vs
+LEFT JOIN sms_alert_log sal ON vs.id = sal.vip_sender_id
+GROUP BY vs.id, vs.user_email, vs.vip_sender_email, vs.vip_sender_name,
+         vs.mobile_number, vs.alert_enabled, vs.alert_hours_start, vs.alert_hours_end;
+
+CREATE OR REPLACE VIEW `vip_alerts_unbilled` AS
+SELECT 
+  cd.domain AS client_domain,
+  sal.recipient_email,
+  DATE_FORMAT(sal.sent_at, '%Y-%m') AS billing_cycle,
+  COUNT(*) AS alert_count,
+  SUM(sal.billable_amount_usd) AS total_amount,
+  AVG(sal.billable_amount_usd) AS avg_per_alert,
+  SUM(CASE WHEN sal.delivery_status = 'delivered' THEN 1 ELSE 0 END) AS delivered_count,
+  SUM(CASE WHEN sal.delivery_status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+FROM sms_alert_log sal
+JOIN client_domains cd ON sal.client_domain_id = cd.id
+WHERE sal.billing_status = 'unbilled'
+GROUP BY cd.domain, sal.recipient_email, DATE_FORMAT(sal.sent_at, '%Y-%m')
+ORDER BY DATE_FORMAT(sal.sent_at, '%Y-%m') DESC, SUM(sal.billable_amount_usd) DESC;
+
+-- Notification Tables
+CREATE TABLE IF NOT EXISTS `notification_settings` (
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `notification_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `notification_type` varchar(50) NOT NULL,
+  `recipient` varchar(50) NOT NULL,
+  `message` text NOT NULL,
+  `email_id` varchar(255) DEFAULT NULL,
+  `trigger_reason` varchar(100) DEFAULT NULL,
+  `status` enum('pending','sent','failed','rate_limited') DEFAULT 'pending',
+  `response_code` varchar(50) DEFAULT NULL,
+  `response_message` text DEFAULT NULL,
+  `sent_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_type` (`notification_type`),
+  KEY `idx_recipient` (`recipient`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created` (`created_at`),
+  KEY `idx_email_id` (`email_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `notification_rate_limit` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `recipient` varchar(50) NOT NULL,
+  `notification_type` varchar(50) NOT NULL,
+  `last_sent` timestamp NULL DEFAULT current_timestamp(),
+  `hourly_count` int(11) DEFAULT 1,
+  `hour_window` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_recipient_type` (`recipient`,`notification_type`),
+  KEY `idx_hour_window` (`hour_window`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Quarantine Digest Tables
+CREATE TABLE IF NOT EXISTS `user_quarantine_notifications` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `domain` varchar(100) NOT NULL,
+  `enabled` tinyint(1) DEFAULT 0 COMMENT 'Whether notifications are enabled',
+  `frequency` enum('daily','weekly','realtime') DEFAULT 'daily' COMMENT 'How often to send digests',
+  `delivery_time` time DEFAULT '08:00:00' COMMENT 'Preferred delivery time (local time)',
+  `delivery_day` tinyint(4) DEFAULT 1 COMMENT 'Day of week for weekly digests (1=Monday, 7=Sunday)',
+  `min_spam_score` decimal(5,2) DEFAULT 5.00 COMMENT 'Only include emails with score >= this value',
+  `include_released` tinyint(1) DEFAULT 0 COMMENT 'Include recently released emails in digest',
+  `max_emails` int(11) DEFAULT 50 COMMENT 'Maximum number of emails per digest',
+  `last_sent_at` timestamp NULL DEFAULT NULL COMMENT 'When the last digest was sent',
+  `last_email_count` int(11) DEFAULT 0 COMMENT 'Number of emails in last digest',
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user` (`user_id`),
+  KEY `idx_email` (`email`),
+  KEY `idx_domain` (`domain`),
+  KEY `idx_enabled_frequency` (`enabled`,`frequency`),
+  KEY `idx_delivery_time` (`delivery_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='User preferences for quarantine digest notifications';
+
+CREATE TABLE IF NOT EXISTS `quarantine_digest_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `domain` varchar(100) NOT NULL,
+  `frequency` enum('daily','weekly','realtime') DEFAULT NULL,
+  `email_count` int(11) DEFAULT 0 COMMENT 'Number of quarantined emails in digest',
+  `sent_at` timestamp NULL DEFAULT current_timestamp(),
+  `status` enum('sent','failed','bounced') DEFAULT 'sent',
+  `error_message` text DEFAULT NULL COMMENT 'Error details if delivery failed',
+  `smtp_response` text DEFAULT NULL COMMENT 'SMTP server response',
+  `opened_at` timestamp NULL DEFAULT NULL COMMENT 'When user opened the email (if tracking enabled)',
+  `first_click_at` timestamp NULL DEFAULT NULL COMMENT 'When user first clicked a link',
+  `actions_taken` int(11) DEFAULT 0 COMMENT 'Number of actions taken from this digest',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_sent_at` (`sent_at`),
+  KEY `idx_status` (`status`),
+  KEY `idx_domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Log of sent quarantine digests';
+
+CREATE TABLE IF NOT EXISTS `quarantine_digest_tokens` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `token` varchar(64) NOT NULL COMMENT 'Secure token for action link',
+  `user_id` int(11) NOT NULL,
+  `email_id` int(11) NOT NULL,
+  `action` enum('release','whitelist','delete','view') NOT NULL COMMENT 'Action to perform',
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `expires_at` timestamp NOT NULL COMMENT 'Token expiration (typically 72 hours)',
+  `used_at` timestamp NULL DEFAULT NULL COMMENT 'When token was used (one-time use)',
+  `ip_address` varchar(45) DEFAULT NULL COMMENT 'IP address that used the token',
+  `user_agent` text DEFAULT NULL COMMENT 'Browser user agent',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `idx_token` (`token`),
+  KEY `idx_email_id` (`email_id`),
+  KEY `idx_expires` (`expires_at`),
+  KEY `idx_user_action` (`user_id`,`action`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Secure tokens for digest email action links';

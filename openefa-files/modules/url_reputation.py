@@ -54,6 +54,8 @@ class URLReputationAnalyzer:
             'ups.com', 'fedex.com', 'usps.com', 'dhl.com',
             # Government
             'irs.gov', 'ssa.gov', 'medicare.gov',
+            # Healthcare/Pharmacy
+            'optumrx.com', 'myuhcmedicare.com', 'unitedhealthcare.com', 'cvs.com', 'walgreens.com',
             # Antivirus/Security
             'mcafee.com', 'norton.com', 'kaspersky.com', 'avast.com', 'bitdefender.com'
             # Note: Add your organization's domains to email_filter_config.json trusted_domains
@@ -166,7 +168,8 @@ class URLReputationAnalyzer:
                         legitimate_services = ['.slack.com', '.salesforce.com', '.microsoft.com',
                                               '.google.com', '.amazonaws.com', '.zoom.us',
                                               '.bankofamerica.com', '.wellsfargo.com', '.chase.com',
-                                              '.datto.com', '.t-mobile.com']
+                                              '.datto.com', '.t-mobile.com', '.optumrx.com',
+                                              '.unitedhealthcare.com', '.yourpharmacybenefits.com']
                         is_legitimate = any(domain.endswith(svc) for svc in legitimate_services)
                         if not is_legitimate:
                             # Not a known legitimate service, flag it
@@ -203,7 +206,8 @@ class URLReputationAnalyzer:
         # Skip legitimate subdomains of protected services
         legitimate_services = ['.slack.com', '.salesforce.com', '.microsoft.com', '.google.com',
                                '.amazonaws.com', '.github.com', '.zendesk.com', '.office365.com',
-                               '.zoom.us']
+                               '.zoom.us', '.optumrx.com', '.unitedhealthcare.com',
+                               '.yourpharmacybenefits.com']
         for service in legitimate_services:
             if domain_lower.endswith(service):
                 return False  # Legitimate subdomain, not a homograph
@@ -334,8 +338,12 @@ class URLReputationAnalyzer:
         )
         unicode_urls = unicode_url_pattern.findall(email_content)
         for url in unicode_urls:
-            # Clean up the URL (remove trailing punctuation)
+            # Clean up the URL (remove trailing punctuation and HTML tags)
             url = url.rstrip('.,;:!?)')
+            # Remove HTML closing tags that may have been captured
+            url = re.sub(r'</[a-z]+>.*$', '', url, flags=re.IGNORECASE)
+            # Remove any remaining HTML artifacts
+            url = url.rstrip('<>')
             if url not in urls and url.startswith(('http://', 'https://')):
                 urls.append(url)
 

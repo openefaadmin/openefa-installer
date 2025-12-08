@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+
+{% block title %}Whitelist Rules - OpenEFA{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .rule-card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+    }
+
+    .rule-item {
+        border-bottom: 1px solid #f0f0f0;
+        padding: 1rem;
+        transition: background-color 0.2s;
+    }
+
+    .rule-item:last-child {
+        border-bottom: none;
+    }
+
+    .rule-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .rule-item.inactive {
+        opacity: 0.6;
+        background-color: #f8f9fa;
+    }
+
+    .rule-value {
+        font-weight: 600;
+        color: #10b981;
+        font-family: 'Courier New', monospace;
+    }
+
+    .rule-description {
+        font-size: 0.9rem;
+        color: #6c757d;
+        font-style: italic;
+    }
+
+    .rule-type-badge {
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-user-check me-2"></i>Whitelist Rules</h4>
+                <p class="mb-0 small">Manage email whitelist rules for {{ selected_domain }}</p>
+            </div>
+            <div>
+                {% if user_domains|length > 1 %}
+                <div class="dropdown d-inline-block me-2">
+                    <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe"></i> {{ selected_domain }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        {% for d in user_domains %}
+                        <li><a class="dropdown-item" href="/config/whitelist?domain={{ d }}">{{ d }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% if current_user.is_admin() %}
+                <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addWhitelistModal">
+                    <i class="fas fa-plus"></i> Add Whitelist
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <!-- Alert messages -->
+    <div id="alert-container"></div>
+
+    <!-- Statistics -->
+    <div class="d-flex gap-2 flex-wrap mb-3">
+        <div class="flex-fill">
+            <div class="card rule-card border-start border-success border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-list"></i> Total Rules</h6>
+                    <h4 class="mb-0">{{ total_rules }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="flex-fill">
+            <div class="card rule-card border-start border-success border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-check-circle"></i> Active Rules</h6>
+                    <h4 class="mb-0">{{ rules|selectattr('active', 'equalto', 1)|list|length }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="flex-fill">
+            <div class="card rule-card border-start border-secondary border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-pause-circle"></i> Inactive Rules</h6>
+                    <h4 class="mb-0">{{ rules|selectattr('active', 'equalto', 0)|list|length }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="flex-fill">
+            <div class="card rule-card border-start border-warning border-3">
+                <div class="card-body text-center py-2">
+                    <h6 class="mb-1 small text-muted"><i class="fas fa-user-check"></i> Whitelisted (30d)</h6>
+                    <h4 class="mb-0">{{ total_blocked }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Whitelist Rules List -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card rule-card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Whitelist Rules ({{ total_rules }})</h5>
+                    <input type="text" id="search-box" class="form-control form-control-sm" placeholder="Search rules..." style="width: 250px;">
+                </div>
+                <div class="card-body p-0">
+                    {% if rules %}
+                    <div id="rules-list">
+                        {% for rule in rules %}
+                        <div class="rule-item {% if not rule.active %}inactive{% endif %}" data-rule-id="{{ rule.id }}">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="flex-grow-1">
+                                    <div>
+                                        <span class="badge bg-{% if rule.rule_type == 'domain' %}primary{% elif rule.rule_type == 'sender' %}info{% elif rule.rule_type == 'country' %}warning{% else %}secondary{% endif %} rule-type-badge me-2">
+                                            {{ rule.rule_type|upper }}
+                                        </span>
+                                        {% if rule.rule_pattern == 'wildcard' %}
+                                        <span class="badge bg-secondary rule-type-badge me-2">WILDCARD</span>
+                                        {% endif %}
+                                        {% if rule.is_global %}
+                                        <span class="badge bg-success rule-type-badge me-2">GLOBAL</span>
+                                        {% endif %}
+                                        <span class="rule-value">{{ rule.rule_value }}</span>
+                                        {% if not rule.active %}
+                                        <span class="badge bg-secondary ms-2">DISABLED</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if rule.description %}
+                                    <div class="rule-description mt-1">{{ rule.description }}</div>
+                                    {% endif %}
+                                    <small class="text-muted">
+                                        Created: {% if rule.created_at %}{{ rule.created_at.strftime('%Y-%m-%d') }}{% else %}Unknown{% endif %}
+                                        {% if rule.created_by %}by {{ rule.created_by }}{% endif %}
+                                    </small>
+                                </div>
+                                {% if current_user.is_admin() %}
+                                <div>
+                                    <button class="btn btn-sm {% if rule.active %}btn-warning{% else %}btn-success{% endif %} me-1"
+                                            onclick="toggleRule({{ rule.id }})"
+                                            title="{% if rule.active %}Disable{% else %}Enable{% endif %}">
+                                        <i class="fas fa-{% if rule.active %}pause{% else %}play{% endif %}"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-success"
+                                            onclick="deleteRule({{ rule.id }}, '{{ rule.rule_value }}')"
+                                            title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                {% else %}
+                                <div>
+                                    <span class="badge bg-secondary">View Only</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-inbox fa-3x mb-3"></i>
+                        <p>No whitelist rules configured for {{ selected_domain }}.</p>
+                        {% if current_user.is_admin() %}
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addWhitelistModal">
+                            <i class="fas fa-plus"></i> Add Your First Rule
+                        </button>
+                        {% else %}
+                        <p class="text-muted mt-2"><i class="fas fa-info-circle"></i> If you need a blocking rule, please contact your domain administrator.</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Information Section -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card rule-card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle"></i> About Whitelist Rules</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Rule Types</h6>
+                    <ul>
+                        <li><strong>Domain:</strong> Allow emails from specific domains (e.g., senate.gov, ssa.gov)</li>
+                        <li><strong>Sender:</strong> Allow emails from specific email addresses (e.g., info@trusteddomain.com)</li>
+                        <li><strong>Country:</strong> Allow emails from specific countries using 2-letter ISO codes (e.g., US, GB, CA)</li>
+                    </ul>
+
+                    <h6 class="mt-3">Pattern Matching</h6>
+                    <ul>
+                        <li><strong>Exact:</strong> Must match exactly (e.g., "senate.gov" only allows senate.gov)</li>
+                        <li><strong>Wildcard:</strong> Matches patterns (e.g., "*.gov" allows all .gov domains)</li>
+                    </ul>
+
+                    <div class="alert alert-success mt-3">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Note:</strong> Whitelist rules bypass spam filtering. Global whitelist rules (superadmin only) apply to all client domains.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Whitelist Modal -->
+<div class="modal fade" id="addWhitelistModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Add Whitelist Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addRuleForm">
+                    <div class="mb-3">
+                        <label for="rule_type" class="form-label">Rule Type <span class="text-danger">*</span></label>
+                        <select class="form-select" id="rule_type" name="rule_type" required onchange="updatePlaceholder()">
+                            <option value="">Select type...</option>
+                            <option value="domain">Domain</option>
+                            <option value="sender">Sender (Email Address)</option>
+                            <option value="country">Country Code</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rule_value" class="form-label">Value <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="rule_value" name="rule_value"
+                               placeholder="Select rule type first..." required>
+                        <small class="form-text text-muted" id="rule_help"></small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rule_pattern" class="form-label">Pattern Match</label>
+                        <select class="form-select" id="rule_pattern" name="rule_pattern">
+                            <option value="exact">Exact Match</option>
+                            <option value="wildcard">Wildcard (e.g., *.cn, *spam*)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"
+                                  placeholder="Why is this being whitelisted?"></textarea>
+                    </div>
+
+                    <!-- Debug: User role = {{ current_user.role }} | is_admin = {{ current_user.is_admin() }} -->
+
+                    {% if current_user.is_admin() %}
+                    <div class="mb-3" style="border: 2px solid red; padding: 10px;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="is_global" name="is_global">
+                            <label class="form-check-label" for="is_global">
+                                <strong>Apply to ALL domains (Global Rule)</strong>
+                                <small class="d-block text-muted">This rule will apply to all client domains in the system</small>
+                            </label>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="mb-3">
+                        <div class="alert alert-warning">
+                            <strong>Note:</strong> Global rules are only available to administrators. Your role: {{ current_user.role }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="btn-add-rule">
+                    <i class="fas fa-plus"></i> Add Whitelist
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+function updatePlaceholder() {
+    const ruleType = document.getElementById('rule_type').value;
+    const ruleValueInput = document.getElementById('rule_value');
+    const ruleHelp = document.getElementById('rule_help');
+
+    const placeholders = {
+        'domain': 'e.g., senate.gov, ssa.gov',
+        'sender': 'e.g., info@trusted.com',
+        'country': 'e.g., US, GB, CA'
+    };
+
+    const helpTexts = {
+        'domain': 'Enter a domain name to whitelist (e.g., senate.gov)',
+        'sender': 'Enter an email address to whitelist (e.g., noreply@trusteddomain.com)',
+        'country': '2-letter ISO country code (US=United States, GB=United Kingdom, CA=Canada, etc.)'
+    };
+
+    ruleValueInput.placeholder = placeholders[ruleType] || 'Select rule type first...';
+    ruleHelp.textContent = helpTexts[ruleType] || '';
+}
+
+function showAlert(message, type = 'success') {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+    alertContainer.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function addRule() {
+    const ruleType = document.getElementById('rule_type').value;
+    const ruleValue = document.getElementById('rule_value').value.trim();
+    const rulePattern = document.getElementById('rule_pattern').value;
+    const description = document.getElementById('description').value.trim();
+    const isGlobalCheckbox = document.getElementById('is_global');
+    const isGlobal = isGlobalCheckbox ? isGlobalCheckbox.checked : false;
+
+    if (!ruleType || !ruleValue) {
+        showAlert('<i class="fas fa-exclamation-circle"></i> Please fill in required fields', 'warning');
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/whitelist-rules/add', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            domain: '{{ selected_domain }}',
+            rule_type: ruleType,
+            rule_value: ruleValue,
+            rule_pattern: rulePattern,
+            description: description,
+            is_global: isGlobal
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('addWhitelistModal')).hide();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger'));
+}
+
+function deleteRule(ruleId, ruleValue) {
+    if (!confirm(`Delete whitelist rule: ${ruleValue}?`)) return;
+
+    fetch(`/api/whitelist-rules/delete/${ruleId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger'));
+}
+
+function toggleRule(ruleId) {
+    fetch(`/api/whitelist-rules/toggle/${ruleId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`<i class="fas fa-check-circle"></i> ${data.message}`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${data.error}`, 'danger');
+        }
+    })
+    .catch(error => showAlert(`<i class="fas fa-exclamation-circle"></i> Error: ${error}`, 'danger'));
+}
+
+// Add Whitelist button event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const btnAddRule = document.getElementById('btn-add-rule');
+    if (btnAddRule) {
+        btnAddRule.addEventListener('click', addRule);
+    }
+});
+
+// Search functionality
+document.getElementById('search-box')?.addEventListener('input', function(e) {
+    const search = e.target.value.toLowerCase();
+    document.querySelectorAll('.rule-item').forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(search) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

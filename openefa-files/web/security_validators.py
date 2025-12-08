@@ -173,6 +173,101 @@ def validate_date_string(date_str):
 
     return date_str
 
+def get_user_email_filter_conditions(user, user_aliases=None, authorized_domains=None, hosted_domains=None):
+    """
+    Generate SQL WHERE conditions for filtering emails based on user role and permissions.
+
+    This ensures consistent permission enforcement across email lists, reports, and exports.
+
+    Args:
+        user: User object with role and email
+        user_aliases: List of user's managed email aliases (for client role)
+        authorized_domains: List of domains user is authorized to access (for non-admin)
+        hosted_domains: List of all hosted domains (for admin)
+
+    Returns:
+        dict: {
+            'where_clause': SQL WHERE clause string (e.g., "recipients LIKE '%@domain.com%'"),
+            'description': Human-readable description of what user can see
+        }
+
+    Raises:
+        ValueError: If validation fails or user has no access
+    """
+    conditions = []
+    description = ""
+
+    # Admin sees everything in hosted domains
+    if hasattr(user, 'is_admin') and user.is_admin():
+        if not hosted_domains:
+            raise ValueError("No hosted domains available for admin")
+
+        # Validate hosted domains
+        safe_hosted_domains = []
+        for domain in hosted_domains:
+            try:
+                safe_hosted_domains.append(validate_domain(domain))
+            except ValueError as e:
+                logger.warning(f"Invalid hosted domain for admin: {e}")
+                continue
+
+        if safe_hosted_domains:
+            domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in safe_hosted_domains]
+            conditions.append(f"({' OR '.join(domain_conditions)})")
+            description = f"All emails for {len(safe_hosted_domains)} hosted domains"
+        else:
+            raise ValueError("No valid hosted domains for admin")
+
+    # Client role: only their own emails and aliases
+    elif user.role == 'client':
+        # Validate user email
+        safe_user_email = validate_email(user.email)
+
+        # Build conditions for client
+        user_conditions = [f"sender = '{safe_user_email}'"]
+        user_conditions.append(f"recipients LIKE '%{safe_user_email}%'")
+
+        # Add managed aliases
+        if user_aliases:
+            safe_aliases = validate_email_list(user_aliases)
+            for alias in safe_aliases:
+                user_conditions.append(f"recipients LIKE '%{alias}%'")
+
+            description = f"Emails for {safe_user_email} and {len(safe_aliases)} alias(es)"
+        else:
+            description = f"Emails for {safe_user_email}"
+
+        conditions.append(f"({' OR '.join(user_conditions)})")
+
+    # Domain admin and other roles: authorized domains
+    else:
+        if not authorized_domains:
+            raise ValueError(f"User {user.email} has no authorized domains")
+
+        # Validate authorized domains
+        safe_domains = []
+        for domain in authorized_domains:
+            try:
+                safe_domains.append(validate_domain(domain))
+            except ValueError as e:
+                logger.warning(f"Invalid authorized domain for user {user.id}: {e}")
+                continue
+
+        if safe_domains:
+            domain_conditions = [f"recipients LIKE '%@{domain}%'" for domain in safe_domains]
+            conditions.append(f"({' OR '.join(domain_conditions)})")
+            description = f"All emails for {len(safe_domains)} authorized domain(s)"
+        else:
+            raise ValueError(f"No valid authorized domains for user {user.email}")
+
+    if not conditions:
+        raise ValueError("No filter conditions could be generated")
+
+    return {
+        'where_clause': ' OR '.join(conditions) if len(conditions) > 1 else conditions[0],
+        'description': description
+    }
+
 # Convenience function for Flask routes
 def validate_or_abort(validator_func, value, error_message=None):
     """

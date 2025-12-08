@@ -3,44 +3,51 @@
 {% block title %}OpenEFA - Conversation Learning System{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
     .card {
-        margin-bottom: 1.5rem;
-        border: 1px solid #dee2e6;
-        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+        margin-bottom: 1rem;
     }
-    
-    .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 1px solid #dee2e6;
-        font-weight: 600;
-    }
-    
+
     .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        display: flex;
         gap: 1rem;
-        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
     }
-    
+
     .stat-card {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 0.25rem;
-        padding: 1rem;
-        text-align: center;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 150px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
-    
-    .stat-value {
-        font-size: 1.75rem;
-        font-weight: bold;
-        color: #495057;
-        margin-bottom: 0.25rem;
-    }
-    
+
     .stat-label {
-        font-size: 0.875rem;
+        font-size: 0.75rem;
         color: #6c757d;
+        margin-bottom: 0.25rem;
+        font-weight: 500;
+        order: 1;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1;
+        order: 2;
     }
     
     .progress {
@@ -72,12 +79,16 @@
 {% endblock %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-header">
-            <h4 class="mb-0">
-                <i class="fas fa-brain text-primary"></i> Conversation Learning System
-            </h4>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div>
+            <h4 class="mb-1"><i class="fas fa-brain me-2"></i>Conversation Learning System</h4>
+            <p class="mb-0 small">AI-powered analysis of email patterns and domain relationships</p>
         </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
         <div class="card-body">
             {% if stats %}
             <!-- Statistics Overview -->
@@ -217,11 +228,11 @@
     </div>
     
     <!-- Manual Feed Section -->
-    <div class="card">
-        <div class="card-header">
-            <h4 class="mb-0">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
                 <i class="fas fa-upload text-primary"></i> Manual Email Feed
-            </h4>
+            </h5>
         </div>
         <div class="card-body">
             <p class="text-muted mb-4">
@@ -258,11 +269,11 @@
     </div>
     
     <!-- Instructions -->
-    <div class="card">
-        <div class="card-header">
-            <h4 class="mb-0">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
                 <i class="fas fa-question-circle text-info"></i> How It Works
-            </h4>
+            </h5>
         </div>
         <div class="card-body">
             <h5>Automatic Learning</h5>
@@ -286,10 +297,11 @@
             </ul>
         </div>
     </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function feedEmailToLearning() {
     const messageId = document.getElementById('messageId').value.trim();
     const overrideScore = document.getElementById('overrideScore').value.trim();

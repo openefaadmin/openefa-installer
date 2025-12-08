@@ -321,33 +321,6 @@ prompt_relay_server() {
     export RELAY_SERVER_PORT
 }
 
-#
-# Prompt for internal DNS resolver
-#
-prompt_dns_resolver() {
-    section "DNS Resolver Configuration"
-
-    info "Enter your internal DNS resolver IP address"
-    info "(Leave blank to use system default)"
-    echo ""
-
-    read -p "DNS resolver IP [system default]: " DNS_RESOLVER_IP
-
-    if [[ -n "${DNS_RESOLVER_IP}" ]]; then
-        if ! validate_ip "${DNS_RESOLVER_IP}"; then
-            error "Invalid IP address format: ${DNS_RESOLVER_IP}"
-            DNS_RESOLVER_IP=""
-        fi
-    fi
-
-    export DNS_RESOLVER_IP
-    
-    if [[ -n "${DNS_RESOLVER_IP}" ]]; then
-        success "DNS resolver: ${DNS_RESOLVER_IP}"
-    else
-        info "Using system default DNS resolver"
-    fi
-}
 
 #
 # Prompt for OpenSpacy module tier selection
@@ -359,13 +332,19 @@ prompt_module_tier() {
 Choose the module tier to install:
 
   1) Tier 1 - Core Only (Minimal)
-     Authentication, blocking, basic spam scoring, RBL checker
+     SPF/DKIM/DMARC authentication, sender blocking, spam scoring, RBL checker
      Recommended for: Low-resource systems, basic filtering needs
 
   2) Tier 2 - Standard (Recommended)
-     Includes Tier 1 + BEC detection, typosquatting, DNS reputation,
-     obfuscation detector, marketing filter, PDF analyzer, URL reputation
-     Recommended for: Most installations, balanced performance
+     Includes Tier 1 plus:
+     • BEC/impersonation detection   • Typosquatting protection
+     • DNS & domain reputation       • URL reputation checking
+     • PDF/attachment analysis       • Obfuscation detection
+     • Marketing spam filter         • Conversation analysis
+     Recommended for: Most installations, balanced security & performance
+
+  For a complete module list and descriptions, visit:
+  https://openefa.com/docs/modules
 
 EOF
 
@@ -424,7 +403,6 @@ The following configuration will be installed:
   Admin Username:       ${ADMIN_USER}
   Admin Email:          ${ADMIN_EMAIL}
   Relay Server:         ${RELAY_SERVER_IP}:${RELAY_SERVER_PORT}
-  DNS Resolver:         ${DNS_RESOLVER_IP:-System Default}
   Module Tier:          Tier ${MODULE_TIER}
   Debug Logging:        $([ "${ENABLE_DEBUG_LOGGING}" -eq 1 ] && echo "Enabled" || echo "Disabled")
 
@@ -489,7 +467,6 @@ load_config_from_env() {
     export DB_USER="${OPENEFA_DB_USER:-spacy_user}"
     export ADMIN_USER="${OPENEFA_ADMIN_USER:-admin}"
     export RELAY_SERVER_PORT="${OPENEFA_RELAY_PORT:-25}"
-    export DNS_RESOLVER_IP="${OPENEFA_DNS_RESOLVER:-}"
     export MODULE_TIER="${OPENEFA_MODULE_TIER:-2}"
     export ENABLE_DEBUG_LOGGING="${OPENEFA_DEBUG_LOGGING:-1}"
 
@@ -548,7 +525,6 @@ gather_installation_config() {
   Admin Username:       ${ADMIN_USER}
   Admin Email:          ${ADMIN_EMAIL}
   Relay Server:         ${RELAY_SERVER_IP}:${RELAY_SERVER_PORT}
-  DNS Resolver:         ${DNS_RESOLVER_IP:-System Default}
   Module Tier:          Tier ${MODULE_TIER}
   Debug Logging:        $([ "${ENABLE_DEBUG_LOGGING}" -eq 1 ] && echo "Enabled" || echo "Disabled")
 
@@ -560,7 +536,6 @@ EOF
         prompt_database
         prompt_admin_account
         prompt_relay_server
-        prompt_dns_resolver
         prompt_module_tier
         prompt_logging
 
@@ -594,7 +569,6 @@ ADMIN_EMAIL="${ADMIN_EMAIL}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD}"
 RELAY_SERVER_IP="${RELAY_SERVER_IP}"
 RELAY_SERVER_PORT="${RELAY_SERVER_PORT}"
-DNS_RESOLVER_IP="${DNS_RESOLVER_IP}"
 MODULE_TIER="${MODULE_TIER}"
 ENABLE_DEBUG_LOGGING="${ENABLE_DEBUG_LOGGING}"
 EOF
@@ -606,6 +580,6 @@ EOF
 # Export functions
 export -f validate_email validate_domain validate_ip validate_password
 export -f prompt_domain prompt_database prompt_admin_account
-export -f prompt_relay_server prompt_dns_resolver prompt_module_tier
+export -f prompt_relay_server prompt_module_tier
 export -f prompt_logging confirm_configuration gather_installation_config
 export -f save_installation_config is_non_interactive load_config_from_env

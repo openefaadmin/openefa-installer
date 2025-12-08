@@ -92,9 +92,6 @@ validate_services() {
     local services=(
         "spacy-db-processor"
         "spacyweb"
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
     )
 
     local failed_services=()
@@ -198,27 +195,10 @@ validate_spacyweb() {
 
 #
 # Validate API endpoints
+# Legacy EFA v5 API services removed - no longer needed
 #
 validate_apis() {
-    info "Validating API endpoints..."
-
-    local api_ports=(5001 5002 5003)
-    local failed_apis=()
-
-    for port in "${api_ports[@]}"; do
-        if ss -tuln | grep -q ":${port} "; then
-            success "API port ${port}: Listening"
-        else
-            error "API port ${port}: NOT listening"
-            failed_apis+=("${port}")
-        fi
-    done
-
-    if [[ ${#failed_apis[@]} -gt 0 ]]; then
-        error "Failed APIs on ports: ${failed_apis[*]}"
-        return 1
-    fi
-
+    info "API validation skipped (legacy services removed)"
     return 0
 }
 

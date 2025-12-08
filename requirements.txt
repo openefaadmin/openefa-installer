@@ -1,0 +1,67 @@
+# OpenEFA Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+numpy>=2.3.0
+requests==2.31.0
+cryptography==41.0.7
+python-dotenv==1.0.0
+bcrypt==4.1.2
+psutil==5.9.6
+
+# Flask and extensions
+Flask==3.0.0
+Flask-CORS==4.0.0
+Flask-Login==0.6.3
+Flask-Compress==1.20
+Flask-Caching==2.3.1
+Flask-Limiter==4.0.0
+flask-talisman==1.1.0
+Flask-WTF==1.2.2
+gunicorn==23.0.0
+
+# Database
+redis==5.0.1
+mysql-connector-python==8.2.0
+pymysql==1.1.0
+SQLAlchemy==2.0.23
+
+# Email authentication
+dnspython==2.4.2
+pyspf==2.0.14
+py3dns==4.0.2
+dkimpy==1.1.8
+authheaders==0.16.3
+email-validator==2.3.0
+
+# Content analysis
+beautifulsoup4==4.12.2
+lxml==5.1.0
+Pillow==10.1.0
+PyPDF2==3.0.1
+PyMuPDF==1.23.8
+python-magic==0.4.27
+pyzbar==0.1.9
+qrcode==7.4.2
+
+# Text/language processing
+langdetect==1.0.9
+nltk==3.8.1
+python-Levenshtein==0.23.0
+publicsuffix2==2.20191221
+
+# Data analysis and reporting
+pandas==2.1.4
+matplotlib==3.8.2
+seaborn==0.13.0
+reportlab==4.0.7
+
+# Antivirus integration
+pyclamd==0.4.0
+
+# Optional: SpaCy (installed separately for Tier 2+)
+# spacy==3.8.7
+# en_core_web_lg (language model)
+
+# Optional: GeoIP (installed via setup_geoip.sh)
+# geoip2==5.1.0

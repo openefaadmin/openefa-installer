@@ -30,6 +30,13 @@ TRUSTED_DOMAINS_CONFIG="$SPACY_ROOT/config/trusted_domains.json"
 BACKUP_DIR="$SPACY_ROOT/backups"
 LOG_DIR="$SPACY_ROOT/logs"
 
+# Load database configuration from environment
+if [[ -f /etc/spacy-server/.env ]]; then
+    source /etc/spacy-server/.env
+fi
+: "${DB_NAME:=spacy_email_db}"
+: "${DB_USER:=spacy_user}"
+
 mkdir -p "$BACKUP_DIR" "$LOG_DIR"
 
 # ============================================================================
@@ -72,7 +79,7 @@ show_main_menu() {
     echo -e "${GREEN}13.${NC} Check File Permissions"
     echo -e "${GREEN}14.${NC} Domain Management (Add/Remove Domains)"
     echo -e "${GREEN}15.${NC} DNS Diagnostics & Testing"
-    echo -e "${GREEN}16.${NC} Email Blocking Management (Domain/Country Blocking)"
+    echo -e "${GREEN}16.${NC} Email Blocking Management (MTA blocking - currently disabled, see spam penalties)"
     echo -e "${GREEN}17.${NC} Search Email by Sender"
     echo -e "${GREEN}18.${NC} Trusted Domains Management (Fast-track Whitelist)"
     echo -e "${GREEN}19.${NC} Unified Whitelist Search (Search All Whitelists)"
@@ -1412,11 +1419,13 @@ test_sender_auth() {
         # Test real authentication if available
         if [[ "$auth_req" =~ "spf" ]]; then
             echo -e "${BLUE}Testing SPF...${NC}"
+            # Get server's primary IP for SPF test
+            local server_ip=$(hostname -I | awk '{print $1}')
             python3 -c "
 import sys
 try:
     import spf
-    result, explanation = spf.check2('192.168.50.37', '$test_sender', '$(echo $test_sender | cut -d@ -f2)')
+    result, explanation = spf.check2('$server_ip', '$test_sender', '$(echo $test_sender | cut -d@ -f2)')
     print(f'  SPF Result: {result}')
     print(f'  Explanation: {explanation}')
 except ImportError:
@@ -2205,7 +2214,7 @@ backup_database() {
     echo ""
     
     # Check if we can connect to the database
-    if ! mysql -e "SELECT 1 FROM spacy_email_db.users LIMIT 1" &>/dev/null; then
+    if ! mysql -e "SELECT 1 FROM $DB_NAME.users LIMIT 1" &>/dev/null; then
         echo -e "${RED}✗ Cannot connect to database${NC}"
         echo -e "${YELLOW}Make sure MySQL is running and credentials are configured${NC}"
         pause_for_user
@@ -2213,13 +2222,13 @@ backup_database() {
     fi
     
     # Get database size
-    db_size=$(mysql -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'DB Size in MB' FROM information_schema.tables WHERE table_schema='spacy_email_db';" -s 2>/dev/null | tail -1)
+    db_size=$(mysql -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'DB Size in MB' FROM information_schema.tables WHERE table_schema='$DB_NAME';" -s 2>/dev/null | tail -1)
     echo -e "${CYAN}Database size: ${db_size} MB${NC}"
     echo ""
     
     # Perform the backup
     echo -e "${BLUE}Running mysqldump...${NC}"
-    if mysqldump --single-transaction --routines --triggers --events spacy_email_db > "$backup_file" 2>/dev/null; then
+    if mysqldump --single-transaction --routines --triggers --events $DB_NAME > "$backup_file" 2>/dev/null; then
         # Compress the backup
         echo -e "${BLUE}Compressing backup...${NC}"
         gzip "$backup_file"
@@ -2236,7 +2245,7 @@ backup_database() {
         # Show table statistics
         echo ""
         echo -e "${WHITE}Tables backed up:${NC}"
-        mysql -e "SELECT table_name AS 'Table', table_rows AS 'Rows' FROM information_schema.tables WHERE table_schema='spacy_email_db' ORDER BY table_rows DESC;" 2>/dev/null | head -15
+        mysql -e "SELECT table_name AS 'Table', table_rows AS 'Rows' FROM information_schema.tables WHERE table_schema='$DB_NAME' ORDER BY table_rows DESC;" 2>/dev/null | head -15
     else
         echo -e "${RED}✗ Database backup failed!${NC}"
         echo -e "${YELLOW}Check MySQL credentials and permissions${NC}"
@@ -2343,7 +2352,7 @@ restore_database_backup() {
     timestamp=$(date +%Y%m%d_%H%M%S)
     safety_backup="$BACKUP_DIR/spacy_db_safety_${timestamp}.sql.gz"
     
-    if mysqldump --single-transaction spacy_email_db | gzip > "$safety_backup" 2>/dev/null; then
+    if mysqldump --single-transaction $DB_NAME | gzip > "$safety_backup" 2>/dev/null; then
         echo -e "${GREEN}✓ Safety backup created: $(basename "$safety_backup")${NC}"
     else
         echo -e "${RED}✗ Could not create safety backup!${NC}"
@@ -2362,7 +2371,7 @@ restore_database_backup() {
     # Check if file is compressed
     if [[ "$selected_backup" == *.gz ]]; then
         echo -e "${CYAN}Decompressing and restoring...${NC}"
-        if gunzip -c "$selected_backup" | mysql spacy_email_db 2>/dev/null; then
+        if gunzip -c "$selected_backup" | mysql $DB_NAME 2>/dev/null; then
             echo -e "${GREEN}✓ Database restored successfully!${NC}"
         else
             echo -e "${RED}✗ Database restore failed!${NC}"
@@ -2370,7 +2379,7 @@ restore_database_backup() {
         fi
     else
         echo -e "${CYAN}Restoring uncompressed backup...${NC}"
-        if mysql spacy_email_db < "$selected_backup" 2>/dev/null; then
+        if mysql $DB_NAME < "$selected_backup" 2>/dev/null; then
             echo -e "${GREEN}✓ Database restored successfully!${NC}"
         else
             echo -e "${RED}✗ Database restore failed!${NC}"
@@ -2412,7 +2421,7 @@ full_system_backup() {
     echo -e "${BLUE}2. Backing up database...${NC}"
     db_backup_file="$full_backup_dir/spacy_database.sql"
     
-    if mysqldump --single-transaction --routines --triggers --events spacy_email_db > "$db_backup_file" 2>/dev/null; then
+    if mysqldump --single-transaction --routines --triggers --events $DB_NAME > "$db_backup_file" 2>/dev/null; then
         gzip "$db_backup_file"
         echo -e "   ${GREEN}✓${NC} Database backed up and compressed"
     else
@@ -2461,8 +2470,8 @@ Contents:
 
 - Database:
   * spacy_database.sql.gz (complete MySQL dump)
-  * Tables included: $(mysql -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='spacy_email_db';" -s 2>/dev/null | tail -1)
-  * Total records: $(mysql -e "SELECT SUM(table_rows) FROM information_schema.tables WHERE table_schema='spacy_email_db';" -s 2>/dev/null | tail -1)
+  * Tables included: $(mysql -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME';" -s 2>/dev/null | tail -1)
+  * Total records: $(mysql -e "SELECT SUM(table_rows) FROM information_schema.tables WHERE table_schema='$DB_NAME';" -s 2>/dev/null | tail -1)
 
 - Python Modules:
   * email_filter.py
@@ -2472,7 +2481,7 @@ Contents:
 Restore Instructions:
 --------------------
 1. Configuration files: Copy *.json files to /opt/spacyserver/config/
-2. Database: gunzip -c spacy_database.sql.gz | mysql spacy_email_db
+2. Database: gunzip -c spacy_database.sql.gz | mysql $DB_NAME
 3. Modules: Copy to /opt/spacyserver/ (backup only, verify before overwriting)
 EOF
     
@@ -4675,7 +4684,7 @@ system_info() {
         (SELECT COUNT(*) FROM email_analysis WHERE DATE(timestamp) = CURDATE()) as today_emails,
         (SELECT COUNT(*) FROM email_analysis WHERE spam_score > 5) as blocked_emails,
         (SELECT ROUND(AVG(spam_score), 2) FROM email_analysis WHERE timestamp > DATE_SUB(NOW(), INTERVAL 7 DAY)) as avg_spam_7d
-        FROM dual;" spacy_email_db 2>/dev/null | tail -1)
+        FROM dual;" $DB_NAME 2>/dev/null | tail -1)
     
     if [[ -n "$db_stats" ]]; then
         IFS=$'\t' read -r total_emails today_emails blocked_emails avg_spam <<< "$db_stats"
@@ -5463,7 +5472,7 @@ show_effectiveness_metrics() {
             false_positives,
             learning_rate,
             performance_rating
-        FROM spacy_email_db.current_effectiveness
+        FROM $DB_NAME.current_effectiveness
     " 2>/dev/null | tail -n1)
 
     if [[ -z "$current_metrics" ]]; then
@@ -5522,7 +5531,7 @@ show_effectiveness_metrics() {
             ROUND(false_positive_rate * 100, 2) as 'FP%',
             total_emails as 'Emails',
             spam_caught as 'Spam'
-        FROM spacy_email_db.effectiveness_metrics
+        FROM $DB_NAME.effectiveness_metrics
         WHERE metric_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
         ORDER BY metric_date DESC
         LIMIT 7
@@ -5538,7 +5547,7 @@ show_effectiveness_metrics() {
             total_spam_caught,
             total_false_positives,
             ROUND(improvement_from_previous, 1)
-        FROM spacy_email_db.effectiveness_weekly_summary
+        FROM $DB_NAME.effectiveness_weekly_summary
         ORDER BY week_end DESC
         LIMIT 1
     " 2>/dev/null | tail -n1)
@@ -5640,7 +5649,7 @@ show_module_performance() {
             false_positives as 'False Pos',
             ROUND(accuracy * 100, 1) as 'Accuracy%',
             ROUND(avg_score_contribution, 2) as 'Avg Score'
-        FROM spacy_email_db.module_effectiveness
+        FROM $DB_NAME.module_effectiveness
         WHERE metric_date = CURDATE()
         ORDER BY triggers DESC
     " 2>/dev/null | column -t
@@ -5659,7 +5668,7 @@ show_module_performance() {
             SUM(true_positives) as 'True Positives',
             SUM(false_positives) as 'False Positives',
             ROUND(AVG(accuracy) * 100, 1) as 'Avg Accuracy%'
-        FROM spacy_email_db.module_effectiveness
+        FROM $DB_NAME.module_effectiveness
         WHERE metric_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
         GROUP BY module_name
         ORDER BY SUM(triggers) DESC
@@ -5750,7 +5759,7 @@ spamassassin_rule_management() {
                 echo ""
                 echo -e "${BLUE}Quarantine Release Statistics:${NC}"
                 echo ""
-                mysql --defaults-file=/opt/spacyserver/config/.my.cnf spacy_email_db -e "
+                mysql --defaults-file=/opt/spacyserver/config/.my.cnf $DB_NAME -e "
                 SELECT 
                     COUNT(*) as total_releases,
                     COUNT(DISTINCT sender) as unique_senders,
@@ -5760,7 +5769,7 @@ spamassassin_rule_management() {
                 FROM trusted_senders;"
                 echo ""
                 echo -e "${GREEN}Top 10 Most Trusted Senders:${NC}"
-                mysql --defaults-file=/opt/spacyserver/config/.my.cnf spacy_email_db -e "
+                mysql --defaults-file=/opt/spacyserver/config/.my.cnf $DB_NAME -e "
                 SELECT sender_email, trust_score, release_count, last_subject 
                 FROM trusted_senders 
                 ORDER BY trust_score DESC, release_count DESC 
@@ -6311,7 +6320,31 @@ main() {
             13) check_permissions_menu ;;
             14) /opt/spacyserver/tools/domain_manager.sh ;;
             15) dns_diagnostics_menu ;;
-            16) /opt/spacyserver/tools/blocking_manager.sh ;;
+            16)
+                clear
+                echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${RED}⚠️  MTA-LEVEL BLOCKING IS CURRENTLY DISABLED${NC}"
+                echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${BLUE}Country and domain blocking is now handled via spam score penalties${NC}"
+                echo -e "${BLUE}instead of MTA-level hard blocking. This provides:${NC}"
+                echo ""
+                echo -e "  ${GREEN}✓${NC} Better visibility in the web GUI"
+                echo -e "  ${GREEN}✓${NC} Allows Domain Admins to release legitimate emails"
+                echo -e "  ${GREEN}✓${NC} 30-day quarantine with full email storage"
+                echo -e "  ${GREEN}✓${NC} Clear spam score breakdown showing why emails were blocked"
+                echo ""
+                echo -e "${YELLOW}Current Country Blocking:${NC}"
+                echo -e "  High-risk countries (CN, HK, RU, KP, IR, NG, VN, ID, PK, BD, UA)"
+                echo -e "  receive +50 spam points, quarantining them for admin review."
+                echo ""
+                echo -e "${BLUE}The blocking manager tool is still available but not actively used.${NC}"
+                echo -e "${BLUE}To re-enable MTA blocking, see email_filter.py lines 2739-2776.${NC}"
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to launch blocking manager anyway, or Ctrl+C to cancel: ${NC}"
+                read
+                /opt/spacyserver/tools/blocking_manager.sh
+                ;;
             17) search_email_by_sender ;;
             18) trusted_domains_menu ;;
             19) unified_whitelist_search ;;
@@ -6599,7 +6632,7 @@ search_and_feed_email() {
                   LIMIT 10"
     
     results=$(sudo -u spacy-filter mysql --defaults-file=/opt/spacyserver/config/.my.cnf \
-              spacy_email_db -e "$search_query" 2>/dev/null | tail -n +2)
+              $DB_NAME -e "$search_query" 2>/dev/null | tail -n +2)
     
     if [[ -z "$results" ]]; then
         echo -e "${RED}No emails found from $sender_search${NC}"

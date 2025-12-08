@@ -11,6 +11,10 @@ from typing import Dict, Optional, List
 from email.message import EmailMessage
 import configparser
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 class QuarantineManager:
     """Manage email quarantine operations"""
@@ -25,10 +29,10 @@ class QuarantineManager:
             config = configparser.ConfigParser()
             config.read('/opt/spacyserver/config/.my.cnf')
             return {
-                'user': config.get('client', 'user', fallback='root'),
+                'user': config.get('client', 'user', fallback=os.getenv('DB_USER', 'spacy_user')),
                 'password': config.get('client', 'password', fallback=''),
-                'host': config.get('client', 'host', fallback='localhost'),
-                'database': config.get('client', 'database', fallback='spacy_email_db')
+                'host': config.get('client', 'host', fallback=os.getenv('DB_HOST', 'localhost')),
+                'database': config.get('client', 'database', fallback=os.getenv('DB_NAME', 'spacy_email_db'))
             }
         except Exception as e:
             print(f"Error loading database config: {e}")
@@ -87,6 +91,14 @@ class QuarantineManager:
 
             # Extract data
             message_id = email_data.get('message_id', '')
+
+            # Generate unique message_id if missing
+            if not message_id or message_id.strip() == '':
+                import hashlib
+                timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+                unique_part = hashlib.md5(f"{timestamp}{msg.as_string()[:1000]}".encode()).hexdigest()[:12]
+                message_id = f"<quarantine-{timestamp}-{unique_part}@openspacy.local>"
+
             sender = email_data.get('sender', '')
             sender_domain = sender.split('@')[-1].lower() if '@' in sender else ''
             recipients = email_data.get('recipients', [])
@@ -124,7 +136,9 @@ class QuarantineManager:
                         attachment_names.append(filename)
 
             # Determine quarantine reason
-            if virus_detected:
+            if analysis_results.get('has_dangerous_attachment', False):
+                reason = 'dangerous_attachment'
+            elif virus_detected:
                 reason = 'virus'
             elif spam_score >= 8.0:
                 reason = 'spam_high'
@@ -132,6 +146,18 @@ class QuarantineManager:
                 reason = 'spam'
             else:
                 reason = 'policy'
+
+            # Check if this is a foreign language email (should be auto-deleted)
+            # BUT: Don't override dangerous_attachment reason
+            headers_to_add = analysis_results.get('headers_to_add', {})
+            is_foreign_language = 'X-Language-Block-Reason' in headers_to_add
+
+            # Determine initial quarantine status
+            if is_foreign_language and reason != 'dangerous_attachment':
+                initial_status = 'deleted'  # Auto-delete foreign language emails
+                reason = 'foreign_language'
+            else:
+                initial_status = 'held'  # Normal quarantine
 
             # Calculate expiration (30 days default)
             retention_days = self.quarantine_config.get('retention', {}).get('default_days', 30)
@@ -168,7 +194,7 @@ class QuarantineManager:
             values = (
                 message_id,
                 datetime.datetime.now(),
-                'held',
+                initial_status,  # Use 'deleted' for foreign languages, 'held' for others
                 reason,
                 expires_at,
                 sender,

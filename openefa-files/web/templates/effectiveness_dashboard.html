@@ -1,73 +1,175 @@
 {% extends 'base.html' %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid mt-4">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card bg-gradient-purple text-white">
-                <div class="card-body">
-                    <h2 class="mb-0">
-                        <i class="fas fa-shield-alt"></i> Spam Fighting Effectiveness Dashboard
-                    </h2>
-                    <p class="mb-0 mt-2">Real-time metrics on SpaCy's performance and accuracy</p>
-                </div>
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas fa-shield-alt me-2"></i>Spam Fighting Effectiveness Dashboard</h4>
+                <p class="mb-0 small">Real-time metrics on SpaCy's performance and accuracy</p>
+            </div>
+            <div class="text-end">
+                <small class="d-block"><i class="fas fa-clock me-1"></i>Statistics updated every 4 hours</small>
+                <small class="text-light opacity-75">Next update: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00</small>
             </div>
         </div>
     </div>
 
     <!-- Current Status Cards -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-md-3">
-            <div class="card h-100">
+            <div class="card h-100 border-0 shadow-sm border-start border-primary border-3">
                 <div class="card-body text-center">
-                    <h3 class="text-primary">{{ current.effectiveness_score|default(0)|round(1) }}%</h3>
-                    <h6 class="text-muted mb-2">Overall Effectiveness</h6>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar {{ 'bg-success' if (current.effectiveness_score|default(0)) >= 85 else 'bg-warning' if (current.effectiveness_score|default(0)) >= 70 else 'bg-danger' }}" 
-                             role="progressbar" 
-                             style="width: {{ current.effectiveness_score|default(0) }}%"></div>
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-trophy text-primary me-2"></i>
+                        <h6 class="text-muted mb-0">F1 Score</h6>
                     </div>
-                    <small class="text-muted">{{ current.performance_rating|default('Calculating...') }}</small>
+                    <h2 class="text-primary mb-2">{{ (current.f1_score|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar {{ 'bg-success' if (current.f1_score|default(0)) >= 90 else 'bg-warning' if (current.f1_score|default(0)) >= 80 else 'bg-danger' }}"
+                             role="progressbar"
+                             style="width: {{ (current.f1_score|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">F1 = 2 × (Precision × Recall) / (Precision + Recall)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-primary"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card h-100">
+            <div class="card h-100 border-0 shadow-sm border-start border-success border-3">
                 <div class="card-body text-center">
-                    <h3 class="text-success">{{ ((current.detection_rate|default(0)) * 100)|round(1) }}%</h3>
-                    <h6 class="text-muted mb-2">Detection Rate</h6>
-                    <small class="text-muted">{{ current.spam_caught|default(0) }} / {{ ((current.spam_caught|default(0)) + (current.false_negatives|default(0)))|default(1) }} spam caught</small>
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-shield-alt text-success me-2"></i>
+                        <h6 class="text-muted mb-0">Detection Rate (Recall)</h6>
+                    </div>
+                    <h2 class="text-success mb-2">{{ (current.detection_rate|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-success"
+                             role="progressbar"
+                             style="width: {{ (current.detection_rate|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Recall = True Positives / (True Positives + False Negatives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-success"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card h-100">
+            <div class="card h-100 border-0 shadow-sm border-start border-primary border-3">
                 <div class="card-body text-center">
-                    <h3 class="text-info">{{ ((current.false_positive_rate|default(0)) * 100)|round(2) }}%</h3>
-                    <h6 class="text-muted mb-2">False Positive Rate</h6>
-                    <small class="text-muted">{{ current.false_positives|default(0) }} legitimate emails blocked</small>
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-bullseye text-primary me-2"></i>
+                        <h6 class="text-muted mb-0">Precision</h6>
+                    </div>
+                    <h2 class="text-primary mb-2">{{ (current.precision_score|default(0))|round(1) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-primary"
+                             role="progressbar"
+                             style="width: {{ (current.precision_score|default(0))|round(1) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Precision = True Positives / (True Positives + False Positives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-primary"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-3">
-            <div class="card h-100">
+            <div class="card h-100 border-0 shadow-sm border-start border-info border-3">
                 <div class="card-body text-center">
-                    <h3 class="text-warning">{{ current.accuracy_percentage|default(100)|round(1) }}%</h3>
-                    <h6 class="text-muted mb-2">Accuracy</h6>
-                    <small class="text-muted">100% - False Positive Rate</small>
+                    <div class="d-flex justify-content-center align-items-center mb-2">
+                        <i class="fas fa-exclamation-triangle text-info me-2"></i>
+                        <h6 class="text-muted mb-0">False Positive Rate</h6>
+                    </div>
+                    <h2 class="text-info mb-2">{{ (current.false_positive_rate|default(0))|round(2) }}%</h2>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-info"
+                             role="progressbar"
+                             style="width: {{ (current.false_positive_rate|default(0))|round(2) }}%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">FPR = False Positives / (False Positives + True Negatives)</small>
+                    <a href="https://openefa.com/doc/effectiveness_scoring" target="_blank" class="text-decoration-none">
+                        <small class="text-info"><i class="fas fa-info-circle"></i> Learn More</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recipient Verification Widget -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="card border-0 shadow-sm border-start border-warning border-3">
+                <div class="card-header bg-warning text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-user-check me-2"></i>Recipient Verification</h5>
+                        <span class="badge badge-light text-dark">
+                            <i class="fas fa-circle text-{{ 'success' if recipient_verification.policy_server_status == 'active' else 'danger' }} me-1"></i>
+                            {{ recipient_verification.policy_server_status|upper }}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2 text-center border-end">
+                            <h4 class="text-warning mb-1">{{ recipient_verification.today_rejections|default(0) }}</h4>
+                            <small class="text-muted">Rejected Today</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h4 class="text-info mb-1">{{ recipient_verification.week_rejections|default(0) }}</h4>
+                            <small class="text-muted">This Week</small>
+                        </div>
+                        <div class="col-md-2 text-center border-end">
+                            <h4 class="text-success mb-1">{{ recipient_verification.domains_protected|default(0) }}</h4>
+                            <small class="text-muted">Domains Protected</small>
+                        </div>
+                        <div class="col-md-6">
+                            {% if recipient_verification.top_domains %}
+                                <p class="mb-1"><small class="text-muted"><strong>Most Rejected Today:</strong></small></p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% for domain in recipient_verification.top_domains %}
+                                        <span class="badge bg-warning text-dark">
+                                            {{ domain.domain }} <strong>({{ domain.count }})</strong>
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="text-muted mb-0"><small>No rejections today</small></p>
+                            {% endif %}
+                            <small class="text-muted d-block mt-2">
+                                <i class="fas fa-info-circle"></i> Invalid recipients rejected at SMTP time (before spam scanning)
+                            </small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Today's Statistics -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-light">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
                     <h5 class="mb-0"><i class="fas fa-chart-line"></i> Today's Performance ({{ current.metric_date|default('Loading...') }})</h5>
                 </div>
                 <div class="card-body">
@@ -93,8 +195,8 @@
                             <small class="text-muted">Avg Score</small>
                         </div>
                         <div class="col-md-2 text-center">
-                            <h5 class="text-secondary">{{ current.f1_score|default(0)|round(3) }}</h5>
-                            <small class="text-muted">F1 Score</small>
+                            <h5 class="text-primary">{{ current.effectiveness_score|default(0)|round(1) }}%</h5>
+                            <small class="text-muted">Overall Effectiveness</small>
                         </div>
                     </div>
                 </div>
@@ -103,24 +205,28 @@
     </div>
 
     <!-- Trends Chart -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-light">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
                     <h5 class="mb-0"><i class="fas fa-chart-area"></i> 30-Day Effectiveness Trend</h5>
                 </div>
                 <div class="card-body">
+                    {% if trend_dates and trend_dates|length > 0 %}
                     <canvas id="effectivenessChart" height="80"></canvas>
+                    {% else %}
+                    <p class="text-muted text-center">No trend data available yet. Metrics are calculated every 4 hours.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Module Performance -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-md-6">
-            <div class="card h-100">
-                <div class="card-header bg-light">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
                     <h5 class="mb-0"><i class="fas fa-puzzle-piece"></i> Module Effectiveness</h5>
                 </div>
                 <div class="card-body">
@@ -157,41 +263,67 @@
         </div>
         
         <div class="col-md-6">
-            <div class="card h-100">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0"><i class="fas fa-calendar-week"></i> Weekly Summary</h5>
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar-week"></i> Weekly Summary
+                        {% if weekly_summary %}
+                        <small class="text-muted float-end">
+                            {{ weekly_summary.week_start.strftime('%b %d') }} - {{ weekly_summary.week_end.strftime('%b %d, %Y') }}
+                        </small>
+                        {% endif %}
+                    </h5>
                 </div>
                 <div class="card-body">
                     {% if weekly_summary %}
                     <div class="row mb-3">
-                        <div class="col-6">
-                            <small class="text-muted">Week Average</small>
-                            <h4 class="text-primary">{{ (weekly_summary.avg_effectiveness|default(0))|round(1) }}%</h4>
+                        <div class="col-md-4 col-6 mb-3">
+                            <small class="text-muted">Average Effectiveness</small>
+                            <h4 class="text-primary mb-0">{{ (weekly_summary.avg_effectiveness|default(0))|round(1) }}%</h4>
+                            <small class="text-muted">
+                                Range: {{ (weekly_summary.worst_day_effectiveness|default(0))|round(1) }}% - {{ (weekly_summary.best_day_effectiveness|default(0))|round(1) }}%
+                            </small>
                         </div>
-                        <div class="col-6">
-                            <small class="text-muted">Improvement</small>
-                            <h4 class="{{ 'text-success' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'text-danger' }}">
+                        <div class="col-md-4 col-6 mb-3">
+                            <small class="text-muted">Week-over-Week</small>
+                            <h4 class="{{ 'text-success' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'text-danger' if (weekly_summary.improvement_from_previous|default(0)) < 0 else 'text-muted' }} mb-0">
                                 {% if (weekly_summary.improvement_from_previous|default(none)) is not none %}
-                                    {{ (weekly_summary.improvement_from_previous|default(0))|round(1)|abs }}%
-                                    <i class="fas fa-arrow-{{ 'up' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'down' }}"></i>
+                                    {% if (weekly_summary.improvement_from_previous|default(0)) > 0 %}+{% endif %}{{ (weekly_summary.improvement_from_previous|default(0))|round(1) }}%
+                                    <i class="fas fa-arrow-{{ 'up' if (weekly_summary.improvement_from_previous|default(0)) > 0 else 'down' if (weekly_summary.improvement_from_previous|default(0)) < 0 else 'right' }}"></i>
                                 {% else %}
-                                    N/A
+                                    <span class="text-muted">N/A</span>
                                 {% endif %}
                             </h4>
+                            <small class="text-muted">
+                                {% if (weekly_summary.improvement_from_previous|default(0)) > 0 %}Improving{% elif (weekly_summary.improvement_from_previous|default(0)) < 0 %}Declining{% else %}Stable{% endif %}
+                            </small>
+                        </div>
+                        <div class="col-md-4 col-12 mb-3">
+                            <small class="text-muted">Total Volume</small>
+                            <h4 class="mb-0">{{ "{:,}".format(weekly_summary.total_emails|default(0)) }}</h4>
+                            <small class="text-muted">
+                                {{ (weekly_summary.total_emails / 7)|round(0)|int }} emails/day avg
+                            </small>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-4">
-                            <small class="text-muted d-block">Emails</small>
-                            <strong>{{ weekly_summary.total_emails|default(0) }}</strong>
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">Spam Caught</small>
+                                <strong class="text-success">{{ weekly_summary.total_spam_caught|default(0) }}</strong>
+                            </div>
                         </div>
                         <div class="col-4">
-                            <small class="text-muted d-block">Spam</small>
-                            <strong>{{ weekly_summary.total_spam_caught|default(0) }}</strong>
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">False Positives</small>
+                                <strong class="text-warning">{{ weekly_summary.total_false_positives|default(0) }}</strong>
+                            </div>
                         </div>
                         <div class="col-4">
-                            <small class="text-muted d-block">False Pos</small>
-                            <strong>{{ weekly_summary.total_false_positives|default(0) }}</strong>
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">Clean Delivered</small>
+                                <strong class="text-info">{{ (weekly_summary.total_emails - weekly_summary.total_spam_caught - weekly_summary.total_false_positives)|default(0) }}</strong>
+                            </div>
                         </div>
                     </div>
                     {% else %}
@@ -242,29 +374,30 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-<script>
+{% if trend_dates and trend_dates|length > 0 %}
+<script nonce="{{ csp_nonce }}">
 // Effectiveness Trend Chart
 const ctx = document.getElementById('effectivenessChart').getContext('2d');
 const effectivenessChart = new Chart(ctx, {
     type: 'line',
     data: {
-        labels: {{ trend_dates|tojson }},
+        labels: {{ trend_dates|tojson|safe }},
         datasets: [{
             label: 'Effectiveness Score',
-            data: {{ trend_scores|tojson }},
+            data: {{ trend_scores|tojson|safe }},
             borderColor: 'rgb(75, 192, 192)',
             backgroundColor: 'rgba(75, 192, 192, 0.2)',
             tension: 0.1
         }, {
             label: '7-Day Average',
-            data: {{ trend_week_avg|tojson }},
+            data: {{ trend_week_avg|tojson|safe }},
             borderColor: 'rgb(255, 206, 86)',
             backgroundColor: 'rgba(255, 206, 86, 0.2)',
             borderDash: [5, 5],
             tension: 0.1
         }, {
             label: '30-Day Average',
-            data: {{ trend_month_avg|tojson }},
+            data: {{ trend_month_avg|tojson|safe }},
             borderColor: 'rgb(153, 102, 255)',
             backgroundColor: 'rgba(153, 102, 255, 0.2)',
             borderDash: [10, 5],
@@ -297,10 +430,5 @@ const effectivenessChart = new Chart(ctx, {
     }
 });
 </script>
-
-<style>
-.bg-gradient-purple {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-</style>
+{% endif %}
 {% endblock %}

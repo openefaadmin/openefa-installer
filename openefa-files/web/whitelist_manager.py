@@ -23,11 +23,12 @@ class WhitelistManager:
         self.backup_dir = "/opt/spacyserver/backups"
 
         # Database configuration
+        import os
         self.db_config = {
-            'user': 'spacy_user',
-            'password': 'Correct-Horse-Battery-Staple-2024',
-            'host': 'localhost',
-            'database': 'spacy_email_db',
+            'user': os.getenv('DB_USER', 'spacy_user'),
+            'password': os.getenv('DB_PASSWORD', ''),
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'database': os.getenv('DB_NAME', 'spacy_email_db'),
             'pool_name': 'whitelist_pool',
             'pool_size': 5
         }
@@ -303,17 +304,28 @@ class WhitelistManager:
                 if sender_email in bec_config['whitelist']['authentication_aware']['senders']:
                     # Verify this sender was whitelisted for this domain
                     sender_config = bec_config['whitelist']['authentication_aware']['senders'][sender_email]
+
+                    print(f"DEBUG: Attempting to remove {sender_email} for domain {domain}")
+                    print(f"DEBUG: Sender config: {sender_config}")
+                    print(f"DEBUG: for_domain field: {sender_config.get('for_domain')}")
+
                     # Only allow removal if it was added for this domain
                     # or if it's from the same domain (no for_domain field but domain matches)
                     if sender_config.get('for_domain') == domain:
                         del bec_config['whitelist']['authentication_aware']['senders'][sender_email]
                         removed = True
+                        print(f"DEBUG: Removed via for_domain match")
                     elif not sender_config.get('for_domain'):
-                        # Legacy entry - check if sender domain matches
+                        # Legacy entry without for_domain - allow removal from any domain page
+                        # since it's not explicitly tied to a specific domain
                         sender_domain = sender_email.split('@')[1] if '@' in sender_email else ''
-                        if sender_domain == domain:
-                            del bec_config['whitelist']['authentication_aware']['senders'][sender_email]
-                            removed = True
+                        print(f"DEBUG: Legacy entry - sender_domain={sender_domain}, requested_domain={domain}")
+                        print(f"DEBUG: Allowing removal of legacy entry from any domain page")
+                        del bec_config['whitelist']['authentication_aware']['senders'][sender_email]
+                        removed = True
+                        print(f"DEBUG: Removed legacy entry")
+                    else:
+                        print(f"DEBUG: for_domain exists but doesn't match: {sender_config.get('for_domain')} != {domain}")
 
             # Check legacy format
             if not removed and 'whitelist' in bec_config and 'senders' in bec_config['whitelist']:
@@ -338,6 +350,63 @@ class WhitelistManager:
 
         except Exception as e:
             return False, f"Error removing from whitelist: {str(e)}"
+
+    def remove_domain_whitelist(self, domain: str, target_domain: str, removed_by: str = "Web Admin") -> Tuple[bool, str]:
+        """Remove a domain from the whitelist"""
+
+        # Backup before modifying
+        self._backup_config()
+
+        try:
+            with open(self.bec_config_path, 'r') as f:
+                bec_config = json.load(f)
+
+            removed = False
+
+            # Check whitelist domains
+            if ('whitelist' in bec_config and
+                'domains' in bec_config['whitelist']):
+
+                if target_domain in bec_config['whitelist']['domains']:
+                    # Verify this domain was whitelisted for this domain
+                    domain_config = bec_config['whitelist']['domains'][target_domain]
+
+                    print(f"DEBUG: Attempting to remove {target_domain} for domain {domain}")
+                    print(f"DEBUG: Domain config: {domain_config}")
+                    print(f"DEBUG: for_domain field: {domain_config.get('for_domain')}")
+
+                    # Only allow removal if it was added for this domain
+                    # or if it's a legacy entry without for_domain field
+                    if domain_config.get('for_domain') == domain:
+                        del bec_config['whitelist']['domains'][target_domain]
+                        removed = True
+                        print(f"DEBUG: Removed via for_domain match")
+                    elif not domain_config.get('for_domain'):
+                        # Legacy entry without for_domain - allow removal from any domain page
+                        print(f"DEBUG: Legacy entry - allowing removal from any domain page")
+                        del bec_config['whitelist']['domains'][target_domain]
+                        removed = True
+                        print(f"DEBUG: Removed legacy entry")
+                    else:
+                        print(f"DEBUG: for_domain exists but doesn't match: {domain_config.get('for_domain')} != {domain}")
+
+            if removed:
+                with open(self.bec_config_path, 'w') as f:
+                    json.dump(bec_config, f, indent=2)
+
+                # Ensure proper ownership
+                try:
+                    os.chmod(self.bec_config_path, 0o664)
+                except Exception as e:
+                    pass  # Log but don't fail
+
+                self._audit_log(f"Removed domain {target_domain} from whitelist for {domain} by {removed_by}")
+                return True, f"Successfully removed {target_domain} from whitelist"
+            else:
+                return False, f"Domain {target_domain} not found in whitelist"
+
+        except Exception as e:
+            return False, f"Error removing domain from whitelist: {str(e)}"
 
     def add_domain_whitelist(self, domain: str, target_domain: str, trust_level: int = 5,
                             require_auth: List[str] = None, bypass_checks: bool = False,

@@ -1,0 +1,543 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .stat-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid #17a2b8;
+    }
+    .stat-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .profit-positive {
+        color: #28a745;
+    }
+    .profit-negative {
+        color: #dc3545;
+    }
+    .table-sm td, .table-sm th {
+        padding: 0.4rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4><i class="fas fa-chart-line text-info me-2"></i>VIP Alerts - Billing Overview (Admin)</h4>
+            <p class="text-muted mb-0">Comprehensive usage and billing across all users</p>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('admin_vip_billing_export', billing_cycle=billing_cycle, type='summary') }}" class="btn btn-sm btn-outline-success">
+                <i class="fas fa-file-excel me-1"></i>Export Summary
+            </a>
+            <a href="{{ url_for('admin_vip_billing_export', billing_cycle=billing_cycle, type='detailed') }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-file-csv me-1"></i>Export Detailed
+            </a>
+        </div>
+    </div>
+
+    <!-- Billing Cycle Filter -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body py-2">
+                    <form method="GET" class="row align-items-center">
+                        <div class="col-auto">
+                            <label class="col-form-label"><strong>Billing Cycle:</strong></label>
+                        </div>
+                        <div class="col-auto">
+                            <select name="billing_cycle" class="form-select form-select-sm" onchange="this.form.submit()">
+                                {% for cycle in available_cycles %}
+                                <option value="{{ cycle }}" {% if cycle == billing_cycle %}selected{% endif %}>
+                                    {{ cycle }}
+                                    {% if cycle == current_month %}(Current){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-info">{{ platform_stats.active_users_this_month or 0 }} active users</span>
+                            <span class="badge bg-success">{{ platform_stats.alerts_this_month or 0 }} alerts</span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Platform Statistics -->
+    <div class="row mb-3">
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-dollar-sign fa-2x text-success mb-2"></i>
+                    <h6 class="text-muted mb-1">Revenue</h6>
+                    <h4 class="mb-0">${{ "%.2f"|format(platform_stats.revenue_this_month or 0) }}</h4>
+                    <small class="text-muted">This month</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-coins fa-2x text-warning mb-2"></i>
+                    <h6 class="text-muted mb-1">Cost</h6>
+                    <h4 class="mb-0">${{ "%.2f"|format(platform_stats.cost_this_month or 0) }}</h4>
+                    <small class="text-muted">ClickSend</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-hand-holding-usd fa-2x text-info mb-2"></i>
+                    <h6 class="text-muted mb-1">Profit</h6>
+                    <h4 class="mb-0 profit-positive">${{ "%.2f"|format(platform_stats.profit_this_month or 0) }}</h4>
+                    <small class="text-muted">{{ "%.1f"|format(platform_stats.profit_margin_pct or 0) }}% margin</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-bell fa-2x text-primary mb-2"></i>
+                    <h6 class="text-muted mb-1">Alerts Sent</h6>
+                    <h4 class="mb-0">{{ platform_stats.alerts_this_month or 0 }}</h4>
+                    <small class="text-muted">{{ platform_stats.active_users_this_month or 0 }} users</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                    <h6 class="text-muted mb-1">Delivered</h6>
+                    <h4 class="mb-0">{{ platform_stats.delivered_this_month or 0 }}</h4>
+                    {% if platform_stats.alerts_this_month > 0 %}
+                    <small class="text-muted">{{ "%.1f"|format((platform_stats.delivered_this_month / platform_stats.alerts_this_month * 100) if platform_stats.alerts_this_month > 0 else 0) }}%</small>
+                    {% else %}
+                    <small class="text-muted">0%</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stat-card h-100">
+                <div class="card-body text-center py-3">
+                    <i class="fas fa-exclamation-triangle fa-2x text-danger mb-2"></i>
+                    <h6 class="text-muted mb-1">Failed</h6>
+                    <h4 class="mb-0">{{ platform_stats.failed_this_month or 0 }}</h4>
+                    <small class="text-muted">{{ platform_stats.rate_limited_this_month or 0 }} rate limited</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Trend Chart -->
+    {% if monthly_trend and monthly_trend|length > 0 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>12-Month Trend</h5>
+                </div>
+                <div class="card-body">
+                    <div style="height: 300px; position: relative;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Unbilled Alerts (Invoicing) -->
+    {% if unbilled_users and unbilled_users|length > 0 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>Unbilled Alerts ({{ unbilled_users|length }} users)</h5>
+                    <button class="btn btn-sm btn-dark" onclick="markAllBilled()">
+                        <i class="fas fa-check me-1"></i>Mark All as Billed
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Company</th>
+                                    <th class="text-center">Unbilled Alerts</th>
+                                    <th class="text-end">Amount Due</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in unbilled_users %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ user.recipient_email }}</strong>
+                                        {% if user.first_name %}
+                                        <br><small class="text-muted">{{ user.first_name }} {{ user.last_name }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.company_name or '-' }}</td>
+                                    <td class="text-center">{{ user.unbilled_alert_count }}</td>
+                                    <td class="text-end"><strong>${{ "%.2f"|format(user.unbilled_amount) }}</strong></td>
+                                    <td class="text-center">
+                                        <button class="btn btn-xs btn-outline-success" onclick="markUserBilled('{{ user.recipient_email }}')">
+                                            <i class="fas fa-check"></i> Mark Billed
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="2"><strong>Total Unbilled</strong></td>
+                                    <td class="text-center"><strong>{{ unbilled_users|sum(attribute='unbilled_alert_count') }}</strong></td>
+                                    <td class="text-end"><strong>${{ "%.2f"|format(unbilled_users|sum(attribute='unbilled_amount')) }}</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Usage by User -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-users me-2"></i>Usage by User ({{ user_billing|length }} users)</h5>
+                </div>
+                <div class="card-body">
+                    {% if user_billing and user_billing|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Domain</th>
+                                    <th class="text-center">VIPs</th>
+                                    <th class="text-center">Total Alerts</th>
+                                    <th class="text-center">Billable</th>
+                                    <th class="text-center">Delivered</th>
+                                    <th class="text-center">Failed</th>
+                                    <th class="text-end">Cost</th>
+                                    <th class="text-end">Revenue</th>
+                                    <th class="text-end">Profit</th>
+                                    <th>Last Alert</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in user_billing %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ user.recipient_email }}</strong>
+                                        {% if user.first_name %}
+                                        <br><small class="text-muted">{{ user.first_name }} {{ user.last_name }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.domain or '-' }}</td>
+                                    <td class="text-center">{{ user.vip_count }}</td>
+                                    <td class="text-center">{{ user.total_alerts }}</td>
+                                    <td class="text-center"><span class="badge bg-primary">{{ user.billable_alerts }}</span></td>
+                                    <td class="text-center"><span class="badge bg-success">{{ user.delivered_alerts }}</span></td>
+                                    <td class="text-center">
+                                        {% if user.failed_alerts > 0 %}
+                                        <span class="badge bg-danger">{{ user.failed_alerts }}</span>
+                                        {% else %}
+                                        <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">${{ "%.2f"|format(user.total_cost or 0) }}</td>
+                                    <td class="text-end">${{ "%.2f"|format(user.total_revenue or 0) }}</td>
+                                    <td class="text-end profit-positive">${{ "%.2f"|format(user.profit or 0) }}</td>
+                                    <td><small>{{ user.last_alert.strftime('%b %d, %I:%M %p') if user.last_alert else '-' }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="3"><strong>Total</strong></td>
+                                    <td class="text-center"><strong>{{ user_billing|sum(attribute='total_alerts') }}</strong></td>
+                                    <td class="text-center"><strong>{{ user_billing|sum(attribute='billable_alerts') }}</strong></td>
+                                    <td class="text-center"><strong>{{ user_billing|sum(attribute='delivered_alerts') }}</strong></td>
+                                    <td class="text-center"><strong>{{ user_billing|sum(attribute='failed_alerts') }}</strong></td>
+                                    <td class="text-end"><strong>${{ "%.2f"|format(user_billing|sum(attribute='total_cost')) }}</strong></td>
+                                    <td class="text-end"><strong>${{ "%.2f"|format(user_billing|sum(attribute='total_revenue')) }}</strong></td>
+                                    <td class="text-end profit-positive"><strong>${{ "%.2f"|format(user_billing|sum(attribute='profit')) }}</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">No usage data for this billing cycle</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Usage by Domain -->
+    {% if domain_billing and domain_billing|length > 0 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-building me-2"></i>Usage by Domain ({{ domain_billing|length }} domains)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th class="text-center">Users</th>
+                                    <th class="text-center">Total Alerts</th>
+                                    <th class="text-center">Billable</th>
+                                    <th class="text-end">Cost</th>
+                                    <th class="text-end">Revenue</th>
+                                    <th class="text-end">Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for domain in domain_billing %}
+                                <tr>
+                                    <td><strong>{{ domain.domain }}</strong></td>
+                                    <td class="text-center">{{ domain.user_count }}</td>
+                                    <td class="text-center">{{ domain.total_alerts }}</td>
+                                    <td class="text-center"><span class="badge bg-primary">{{ domain.billable_alerts }}</span></td>
+                                    <td class="text-end">${{ "%.2f"|format(domain.total_cost or 0) }}</td>
+                                    <td class="text-end">${{ "%.2f"|format(domain.total_revenue or 0) }}</td>
+                                    <td class="text-end profit-positive">${{ "%.2f"|format(domain.profit or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top VIP Senders -->
+    {% if top_vip_senders and top_vip_senders|length > 0 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-star me-2"></i>Top VIP Senders (Most Active)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>VIP Sender</th>
+                                    <th class="text-center">Users Monitoring</th>
+                                    <th class="text-center">Alerts Sent</th>
+                                    <th class="text-end">Revenue Generated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vip in top_vip_senders %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ vip.vip_sender_name or vip.vip_sender_email }}</strong>
+                                        {% if vip.vip_sender_name %}
+                                        <br><small class="text-muted">{{ vip.vip_sender_email }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ vip.user_count }}</td>
+                                    <td class="text-center">{{ vip.alert_count }}</td>
+                                    <td class="text-end">${{ "%.2f"|format(vip.total_revenue or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if monthly_trend and monthly_trend|length > 0 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script nonce="{{ csp_nonce }}">
+// Monthly Trend Chart
+const ctx = document.getElementById('trendChart').getContext('2d');
+const trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ trend_labels|tojson|safe }},
+        datasets: [
+            {
+                label: 'Revenue ($)',
+                data: {{ trend_revenue|tojson|safe }},
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                yAxisID: 'y',
+                tension: 0.3
+            },
+            {
+                label: 'Cost ($)',
+                data: {{ trend_cost|tojson|safe }},
+                borderColor: 'rgba(255, 159, 64, 1)',
+                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                yAxisID: 'y',
+                tension: 0.3
+            },
+            {
+                label: 'Profit ($)',
+                data: {{ trend_profit|tojson|safe }},
+                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                yAxisID: 'y',
+                tension: 0.3,
+                fill: true
+            },
+            {
+                label: 'Active Users',
+                data: {{ trend_users|tojson|safe }},
+                borderColor: 'rgba(153, 102, 255, 1)',
+                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                yAxisID: 'y1',
+                tension: 0.3
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Amount ($)'
+                }
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: 'Active Users'
+                },
+                grid: {
+                    drawOnChartArea: false,
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        let label = context.dataset.label || '';
+                        if (label) {
+                            label += ': ';
+                        }
+                        if (context.parsed.y !== null) {
+                            if (context.dataset.yAxisID === 'y') {
+                                label += '$' + context.parsed.y.toFixed(2);
+                            } else {
+                                label += context.parsed.y;
+                            }
+                        }
+                        return label;
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Mark user as billed
+function markUserBilled(email) {
+    if (!confirm('Mark all unbilled alerts for ' + email + ' as billed?')) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const formData = new FormData();
+    formData.append('billing_cycle', '{{ billing_cycle }}');
+    formData.append('user_email', email);
+
+    fetch('/admin/vip-billing/mark-billed', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+// Mark all as billed
+function markAllBilled() {
+    if (!confirm('Mark ALL unbilled alerts for {{ billing_cycle }} as billed?\n\nThis will affect {{ unbilled_users|length }} users.')) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const formData = new FormData();
+    formData.append('billing_cycle', '{{ billing_cycle }}');
+
+    fetch('/admin/vip-billing/mark-billed', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+</script>
+{% endif %}
+
+{% endblock %}

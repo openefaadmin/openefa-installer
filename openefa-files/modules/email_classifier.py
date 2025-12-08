@@ -45,11 +45,10 @@ class EmailClassifier:
         }
 
         # Email addresses that receive system notifications
+        # Add your monitored addresses here
         self.SYSTEM_NOTIFICATION_RECIPIENTS = {
             'alerts@example.com',
-            'alerts@offgriddynamics.com',
-            'alerts@example.com',
-            'alerts@securedata247.com',
+            'notifications@example.com',
         }
 
         # Specific sender email addresses that always send system notifications

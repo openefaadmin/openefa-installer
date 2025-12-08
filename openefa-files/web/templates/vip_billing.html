@@ -1,0 +1,475 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .billing-card {
+        border-left: 4px solid #17a2b8;
+    }
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    /* Invoice Branding Styles */
+    .invoice-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 0.5rem 0.5rem 0 0;
+        margin-bottom: 0;
+    }
+
+    .invoice-logo-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 1.5rem;
+    }
+
+    .company-logo {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    .invoice-info {
+        text-align: right;
+    }
+
+    .invoice-number {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .company-details {
+        opacity: 0.95;
+        line-height: 1.6;
+    }
+
+    .bill-to-section {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .invoice-table {
+        background: white;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .invoice-summary {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #667eea;
+    }
+
+    .invoice-total {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #667eea;
+    }
+
+    .payment-terms {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 0.25rem;
+    }
+
+    .footer-branding {
+        text-align: center;
+        padding: 2rem 0;
+        color: #6c757d;
+        border-top: 2px solid #e9ecef;
+        margin-top: 2rem;
+    }
+
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+        .invoice-header {
+            background: #667eea !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Invoice Header -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="invoice-header">
+            <div class="invoice-logo-section">
+                <div>
+                    <div class="company-logo">
+                        <i class="fas fa-shield-alt me-2"></i>OpenEFA
+                    </div>
+                    <div class="company-details mt-2">
+                        <div><strong>Email Security Services</strong></div>
+                        <div>VIP Alert Monitoring System</div>
+                    </div>
+                </div>
+                <div class="invoice-info">
+                    <div class="invoice-number">STATEMENT</div>
+                    <div>Period: {{ current_month }}</div>
+                    <div class="mt-2">
+                        <button id="printInvoiceBtn" class="btn btn-light btn-sm no-print">
+                            <i class="fas fa-print me-1"></i>Print
+                        </button>
+                        <a href="{{ url_for('vip_billing_export') }}" class="btn btn-light btn-sm ms-2 no-print">
+                            <i class="fas fa-download me-1"></i>Export CSV
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="bill-to-section bg-white bg-opacity-10">
+                        <h6 class="mb-2"><strong>BILL TO:</strong></h6>
+                        <div>{{ current_user.get_display_name() or current_user.email }}</div>
+                        {% if current_user.company_name %}
+                        <div>{{ current_user.company_name }}</div>
+                        {% endif %}
+                        <div>{{ current_user.email }}</div>
+                        {% if current_user.domain %}
+                        <div>Domain: {{ current_user.domain }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-md-6 text-end no-print">
+                    <a href="{{ url_for('vip_alerts_page') }}" class="btn btn-light">
+                        <i class="fas fa-arrow-left me-1"></i>Back to VIP Alerts
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invoice Summary -->
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card billing-card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-bell fa-2x text-primary mb-2"></i>
+                                    <h6 class="text-muted mb-1">Total Alerts Sent</h6>
+                                    <h4 class="mb-0">{{ current_usage.total_alerts or 0 }}</h4>
+                                    <small class="text-muted">{{ current_usage.billable_alerts or 0 }} billable</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card billing-card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
+                                    <h6 class="text-muted mb-1">Delivery Success Rate</h6>
+                                    <h4 class="mb-0">
+                                        {% if current_usage.total_alerts > 0 %}
+                                            {{ "%.1f"|format((current_usage.delivered_alerts / current_usage.total_alerts * 100) if current_usage.total_alerts > 0 else 0) }}%
+                                        {% else %}
+                                            0%
+                                        {% endif %}
+                                    </h4>
+                                    <small class="text-muted">{{ current_usage.delivered_alerts or 0 }} of {{ current_usage.total_alerts or 0 }} delivered</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="invoice-summary h-100">
+                        <h5 class="mb-3"><i class="fas fa-file-invoice-dollar me-2"></i>Amount Due</h5>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Billable Alerts:</span>
+                            <strong>{{ current_usage.billable_alerts or 0 }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Rate per Alert:</span>
+                            <strong>$0.20</strong>
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="h6 mb-0">Total:</span>
+                            <span class="invoice-total">${{ "%.2f"|format(current_usage.total_billable_usd or 0) }}</span>
+                        </div>
+                        <div class="text-muted small mt-2">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Charges for {{ current_month }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Breakdown by VIP Sender -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card invoice-table">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-list-alt me-2"></i>Line Items - VIP Alert Services</h5>
+                    <small>Breakdown by VIP Sender for {{ current_month }}</small>
+                </div>
+                <div class="card-body">
+                    {% if vip_breakdown and vip_breakdown|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th class="text-center">Quantity</th>
+                                    <th class="text-center">Rate</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vip in vip_breakdown %}
+                                <tr>
+                                    <td>
+                                        <strong>VIP Alert Service</strong> - {{ vip.vip_sender_name or vip.vip_sender_email }}
+                                        <br><small class="text-muted">Monitoring alerts from {{ vip.vip_sender_email }}</small>
+                                    </td>
+                                    <td class="text-center">{{ vip.total_alerts }} alerts</td>
+                                    <td class="text-center">$0.20</td>
+                                    <td class="text-end">
+                                        <strong>${{ "%.2f"|format(vip.total_billed) }}</strong>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="3" class="text-end"><strong>Total Due:</strong></td>
+                                    <td class="text-end"><strong class="text-primary" style="font-size: 1.2rem;">${{ "%.2f"|format(current_usage.total_billable_usd or 0) }}</strong></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">No alerts sent this month</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Alert Log -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Alerts (Last 50)</h5>
+                    <a href="{{ url_for('vip_billing_export') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-download me-1"></i>Export CSV
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if recent_alerts and recent_alerts|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date/Time</th>
+                                    <th>VIP Sender</th>
+                                    <th>Subject</th>
+                                    <th>Mobile</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-end">Charge</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in recent_alerts %}
+                                <tr>
+                                    <td>
+                                        <small>{{ alert.sent_at.strftime('%b %d, %Y %I:%M %p') }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ alert.sender_email }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ alert.email_subject[:50] }}{{ '...' if alert.email_subject|length > 50 else '' }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ alert.mobile_number }}</small>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if alert.delivery_status == 'delivered' %}
+                                            <span class="badge bg-success">Delivered</span>
+                                        {% elif alert.delivery_status == 'sent' %}
+                                            <span class="badge bg-info">Sent</span>
+                                        {% elif alert.delivery_status == 'failed' %}
+                                            <span class="badge bg-danger" title="{{ alert.error_message }}">Failed</span>
+                                        {% elif alert.delivery_status == 'rate_limited' %}
+                                            <span class="badge bg-warning text-dark">Rate Limited</span>
+                                        {% elif alert.delivery_status == 'quiet_hours' %}
+                                            <span class="badge bg-secondary">Quiet Hours</span>
+                                        {% elif alert.delivery_status == 'spam_filtered' %}
+                                            <span class="badge bg-dark">Spam Filtered</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ alert.delivery_status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <small>${{ "%.2f"|format(alert.billable_amount_usd) }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">No recent alerts</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historical Usage Chart (Last 6 Months) -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Usage History (Last 6 Months)</h5>
+                </div>
+                <div class="card-body">
+                    {% if historical_usage and historical_usage|length > 0 %}
+                    <div class="chart-container">
+                        <canvas id="usageChart"></canvas>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">No historical data available yet</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Terms & Notes -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="payment-terms">
+                <h6 class="mb-2"><i class="fas fa-credit-card me-2"></i>Payment Terms</h6>
+                <p class="mb-1 small"><strong>Billing Cycle:</strong> Monthly</p>
+                <p class="mb-1 small"><strong>Payment Method:</strong> Invoiced monthly with email security services</p>
+                <p class="mb-1 small"><strong>Rate:</strong> $0.20 per successfully delivered VIP alert</p>
+                <p class="mb-0 small"><strong>No Charges For:</strong> Failed deliveries, rate-limited alerts, quiet hours blocks, or spam-filtered emails</p>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="fas fa-question-circle me-2"></i>Billing Information</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small mb-2">VIP Alert charges are added to your monthly OpenEFA invoice automatically.</p>
+                    <p class="small mb-2"><strong>What's Included:</strong></p>
+                    <ul class="small mb-0">
+                        <li>SMS alerts for emails from designated VIP senders</li>
+                        <li>Real-time delivery notifications</li>
+                        <li>24/7 monitoring service</li>
+                        <li>Detailed usage tracking and reporting</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer Branding -->
+    <div class="footer-branding no-print">
+        <div class="mb-2">
+            <i class="fas fa-shield-alt me-2"></i>
+            <strong>OpenEFA Email Security Services</strong>
+        </div>
+        <div class="small">
+            VIP Alert Monitoring • Real-Time Email Notifications • Enterprise-Grade Security
+        </div>
+        <div class="small text-muted mt-2">
+            Questions about your statement? Contact your account administrator or support team.
+        </div>
+    </div>
+</div>
+
+{% if historical_usage and historical_usage|length > 0 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script nonce="{{ csp_nonce }}">
+// Usage History Chart
+const ctx = document.getElementById('usageChart').getContext('2d');
+const usageChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ historical_labels|tojson|safe }},
+        datasets: [{
+            label: 'Alerts Sent',
+            data: {{ historical_counts|tojson|safe }},
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }, {
+            label: 'Billing ($)',
+            data: {{ historical_billing|tojson|safe }},
+            type: 'line',
+            yAxisID: 'y1',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Number of Alerts'
+                }
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: 'Billing ($)'
+                },
+                grid: {
+                    drawOnChartArea: false,
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+
+<script nonce="{{ csp_nonce }}">
+// Print button event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const printBtn = document.getElementById('printInvoiceBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', function() {
+            window.print();
+        });
+    }
+});
+</script>
+
+{% endblock %}

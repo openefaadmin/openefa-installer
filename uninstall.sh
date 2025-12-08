@@ -48,6 +48,16 @@ require_root() {
     fi
 }
 
+# Load existing configuration if available
+load_config() {
+    if [[ -f /etc/spacy-server/.env ]]; then
+        source /etc/spacy-server/.env 2>/dev/null || true
+    fi
+    # Set defaults if not loaded
+    DB_NAME="${DB_NAME:-spacy_email_db}"
+    DB_USER="${DB_USER:-spacy_user}"
+}
+
 #
 # Stop all services
 #
@@ -122,6 +132,9 @@ remove_database() {
 main() {
     clear 2>/dev/null || true
 
+    # Load configuration to get actual database name
+    load_config
+
     echo "╔════════════════════════════════════════════════════════════════╗"
     echo "║                    UNINSTALL OpenEFA                           ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
@@ -130,8 +143,8 @@ main() {
     echo ""
     echo "The following will be removed:"
     echo "  • All OpenEFA services"
-    echo "  • Database: spacy_email_db"
-    echo "  • Database user: spacy_user"
+    echo "  • Database: ${DB_NAME}"
+    echo "  • Database user: ${DB_USER}"
     echo "  • Installation directory: /opt/spacyserver"
     echo "  • System user: spacy-filter"
     echo "  • Postfix will be stopped (config backed up)"
@@ -152,10 +165,6 @@ main() {
 
     # Check root
     require_root
-
-    # Set default database variables
-    DB_NAME="${DB_NAME:-spacy_email_db}"
-    DB_USER="${DB_USER:-spacy_user}"
 
     # Initialize logging
     echo "=== OpenEFA Uninstall Started: $(date) ===" > "${LOG_FILE}"

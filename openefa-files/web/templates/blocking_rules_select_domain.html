@@ -1,28 +1,60 @@
 {% extends "base.html" %}
 
-{% block title %}Blocking Rules - Select Domain{% endblock %}
+{% block title %}{{ page_title|default('Blocking Rules') }} - Select Domain{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .preview-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .select-card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
+<div class="container-fluid px-4 py-2">
+    <!-- Header Banner -->
+    <div class="preview-banner mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1"><i class="fas {{ page_icon|default('fa-ban') }} me-2"></i>{{ page_title|default('Blocking Rules') }}</h4>
+                <p class="mb-0 small">{{ page_description|default('Select a domain to manage blocking rules') }}</p>
+            </div>
+            <div>
+                <a href="{{ url_for('config_dashboard') }}" class="btn btn-light btn-sm">
+                    <i class="fas fa-arrow-left"></i> Back to Config
+                </a>
+            </div>
+        </div>
+    </div>
+
     <div class="row justify-content-center">
         <div class="col-md-8">
-            <div class="card shadow">
-                <div class="card-header bg-danger text-white text-center">
-                    <h3 class="mb-0">
-                        <i class="fas fa-ban"></i> Blocking Rules
-                    </h3>
+            <div class="card select-card">
+                <div class="card-header bg-white border-bottom text-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-globe"></i> Select Domain
+                    </h6>
                 </div>
-                <div class="card-body text-center p-5">
-                    <i class="fas fa-globe fa-4x text-primary mb-4"></i>
-                    <h4 class="mb-4">Select a Domain</h4>
-                    <p class="text-muted mb-4">
-                        Choose which domain's blocking rules you want to manage
+                <div class="card-body text-center p-4">
+                    <i class="fas fa-globe fa-3x text-primary mb-3"></i>
+                    <p class="text-muted mb-3">
+                        Choose which domain's {{ page_title|default('blocking rules')|lower }} you want to manage
                     </p>
 
                     {% if user_domains %}
                     <div class="list-group">
                         {% for domain in user_domains %}
-                        <a href="/config/blocking?domain={{ domain }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <a href="{{ target_url|default('/config/blocking') }}?domain={{ domain }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                             <span>
                                 <i class="fas fa-globe text-primary"></i>
                                 <strong>{{ domain }}</strong>
@@ -37,12 +69,6 @@
                         You don't have access to any domains.
                     </div>
                     {% endif %}
-
-                    <div class="mt-4">
-                        <a href="{{ url_for('config_dashboard') }}" class="btn btn-secondary">
-                            <i class="fas fa-arrow-left"></i> Back to Configuration
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>

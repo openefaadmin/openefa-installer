@@ -280,12 +280,15 @@ class ConversationLearner:
         try:
             # Check vocabulary overlap
             if features['word_hashes']:
-                format_strings = ','.join(['%s'] * len(features['word_hashes']))
-                cursor.execute(f"""
-                    SELECT COUNT(*) FROM conversation_vocabulary 
-                    WHERE word_hash IN ({format_strings})
+                # Security: Validate all hashes are integers to prevent injection
+                word_hashes = [int(h) for h in features['word_hashes']]
+                format_strings = ','.join(['%s'] * len(word_hashes))
+                query = """
+                    SELECT COUNT(*) FROM conversation_vocabulary
+                    WHERE word_hash IN ({})
                     AND frequency > 2
-                """, features['word_hashes'])
+                """.format(format_strings)
+                cursor.execute(query, word_hashes)
                 matches = cursor.fetchone()[0]
                 scores['vocabulary_match'] = min(matches / 10, 1.0)  # Scale to 0-1
             
@@ -310,12 +313,15 @@ class ConversationLearner:
             
             # Check professional phrases
             if features['professional_phrases']:
-                format_strings = ','.join(['%s'] * len(features['professional_phrases']))
-                cursor.execute(f"""
-                    SELECT COUNT(*) FROM conversation_phrases 
-                    WHERE phrase IN ({format_strings})
+                # Security: Sanitize phrases (truncate to max 100 chars each to prevent injection)
+                safe_phrases = [str(p)[:100] for p in features['professional_phrases']]
+                format_strings = ','.join(['%s'] * len(safe_phrases))
+                query = """
+                    SELECT COUNT(*) FROM conversation_phrases
+                    WHERE phrase IN ({})
                     AND frequency > 3
-                """, features['professional_phrases'])
+                """.format(format_strings)
+                cursor.execute(query, safe_phrases)
                 matches = cursor.fetchone()[0]
                 scores['phrase_match'] = min(matches / 3, 1.0)
             

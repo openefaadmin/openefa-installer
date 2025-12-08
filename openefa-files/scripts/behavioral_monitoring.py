@@ -24,7 +24,7 @@ def get_db_connection():
         host='localhost',
         user=config.get('user', 'spacy_user'),
         password=config.get('password', ''),
-        database='spacy_email_db'
+        database=os.getenv('DB_NAME', 'spacy_email_db')
     )
 
 

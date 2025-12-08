@@ -4,11 +4,16 @@ Module Access Control System
 Checks which premium modules are enabled for each client domain
 """
 
+import os
 import pymysql
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +24,7 @@ class ModuleAccessManager:
         """Initialize with database configuration"""
         self.db_config = db_config or {
             'read_default_file': '/opt/spacyserver/config/.my.cnf',
-            'database': 'spacy_email_db',
+            'database': os.getenv('DB_NAME', 'spacy_email_db'),
             'charset': 'utf8mb4'
         }
         self.cache = {}  # Simple cache to avoid repeated DB queries

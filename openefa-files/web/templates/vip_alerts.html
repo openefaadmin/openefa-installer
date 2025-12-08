@@ -1,0 +1,410 @@
+{% extends 'base.html' %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+    .vip-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid #6c757d;
+    }
+    .vip-card.enabled {
+        border-left-color: #28a745;
+    }
+    .vip-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .alert-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-2">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4><i class="fas fa-bell text-warning me-2"></i>VIP Email Alerts</h4>
+            <p class="text-muted mb-0">Get instant SMS notifications when important contacts email you</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVipModal">
+            <i class="fas fa-plus me-1"></i>Add VIP Sender
+        </button>
+    </div>
+
+    <!-- ClickSend Setup Requirements -->
+    {% if not clicksend_configured %}
+    <div class="alert alert-warning border-start border-warning border-4 mb-3">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-exclamation-triangle fa-2x text-warning me-3"></i>
+            <div class="flex-grow-1">
+                <strong>Setup Required:</strong> VIP Alerts require a <a href="https://www.clicksend.com/" target="_blank" class="alert-link">ClickSend</a> account for SMS delivery.
+                <br><small class="text-muted">
+                    1. Add API credentials to <code>/etc/spacy-server/.env</code>: <code>CLICKSEND_USERNAME</code> and <code>CLICKSEND_API_KEY</code><br>
+                    2. Configure notification settings in <code>/opt/spacyserver/config/notification_config.json</code> (see file for detailed setup instructions)
+                </small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pricing Info Banner -->
+    <div class="alert alert-info border-start border-primary border-4 mb-3">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-info-circle fa-2x text-primary me-3"></i>
+            <div class="flex-grow-1">
+                <strong>Pay-Per-Use Pricing:</strong> $0.20 per alert sent
+                <span class="mx-2">|</span>
+                <strong>This Month:</strong> {{ current_month_usage.billable_alerts or 0 }} alerts = ${{ "%.2f"|format(current_month_usage.total_billable_usd or 0) }}
+                <span class="mx-2">|</span>
+                <a href="{{ url_for('vip_billing') }}" class="alert-link">View Billing Details <i class="fas fa-arrow-right"></i></a>
+            </div>
+        </div>
+    </div>
+
+    {% if vip_senders and vip_senders|length > 0 %}
+    <!-- VIP Senders List -->
+    <div class="row">
+        {% for vip in vip_senders %}
+        <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card vip-card {{ 'enabled' if vip.alert_enabled else '' }} h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="flex-grow-1">
+                            <h5 class="card-title mb-1">
+                                {% if vip.vip_sender_name %}
+                                    {{ vip.vip_sender_name }}
+                                {% else %}
+                                    {{ vip.vip_sender_email }}
+                                {% endif %}
+                            </h5>
+                            <p class="text-muted small mb-0">
+                                <i class="fas fa-envelope me-1"></i>{{ vip.vip_sender_email }}
+                            </p>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input vip-toggle" type="checkbox" id="toggle{{ vip.id }}"
+                                   data-vip-id="{{ vip.id }}"
+                                   {% if vip.alert_enabled %}checked{% endif %}>
+                            <label class="form-check-label text-muted small" for="toggle{{ vip.id }}">
+                                {{ 'ON' if vip.alert_enabled else 'OFF' }}
+                            </label>
+                        </div>
+                    </div>
+
+                    <hr class="my-2">
+
+                    <div class="row text-center mb-2">
+                        <div class="col-4">
+                            <small class="text-muted d-block">Total Alerts</small>
+                            <strong class="text-primary">{{ vip.total_alerts_sent or 0 }}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted d-block">Delivered</small>
+                            <strong class="text-success">{{ vip.alerts_delivered or 0 }}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted d-block">Billed</small>
+                            <strong class="text-info">${{ "%.2f"|format(vip.total_billed or 0) }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-mobile-alt me-1"></i>{{ vip.mobile_number }}
+                        </small>
+                    </div>
+
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1"></i>Alert Hours:
+                            {% if vip.alert_hours_start %}
+                                {{ (vip.alert_hours_start | string)[:5] }}
+                            {% else %}
+                                08:00
+                            {% endif %}
+                            -
+                            {% if vip.alert_hours_end %}
+                                {{ (vip.alert_hours_end | string)[:5] }}
+                            {% else %}
+                                22:00
+                            {% endif %}
+                        </small>
+                    </div>
+
+                    {% if vip.last_alert_at %}
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-history me-1"></i>Last Alert: {{ vip.last_alert_at.strftime('%b %d, %Y %I:%M %p') }}
+                        </small>
+                    </div>
+                    {% endif %}
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-sm btn-outline-primary flex-grow-1 edit-vip-btn"
+                                data-vip-id="{{ vip.id }}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-vip-btn"
+                                data-vip-id="{{ vip.id }}"
+                                data-vip-email="{{ vip.vip_sender_email }}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-5">
+        <i class="fas fa-bell-slash fa-4x text-muted mb-3"></i>
+        <h5 class="text-muted">No VIP Senders Configured</h5>
+        <p class="text-muted">Add your first VIP sender to start receiving instant SMS alerts</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVipModal">
+            <i class="fas fa-plus me-1"></i>Add VIP Sender
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add VIP Modal -->
+<div class="modal fade" id="addVipModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i>Add VIP Sender</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addVipForm" method="POST" action="{{ url_for('vip_alerts_add') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">VIP Sender Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" name="vip_sender_email" required
+                               placeholder="john@example.com">
+                        <small class="text-muted">Email address to monitor</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Friendly Name (Optional)</label>
+                        <input type="text" class="form-control" name="vip_sender_name"
+                               placeholder="John Smith">
+                        <small class="text-muted">Display name for this contact</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Your Mobile Number <span class="text-danger">*</span></label>
+                        <input type="tel" class="form-control" id="mobile_number" name="mobile_number" required
+                               placeholder="7025551234 or +17025551234" pattern="\+1[0-9]{10}">
+                        <small class="text-muted">Enter 10-digit number (area code + number). +1 will be added automatically.</small>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Alert Hours Start</label>
+                            <input type="time" class="form-control" name="alert_hours_start" value="08:00">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Alert Hours End</label>
+                            <input type="time" class="form-control" name="alert_hours_end" value="22:00">
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info mb-0">
+                        <small>
+                            <i class="fas fa-info-circle me-1"></i>
+                            <strong>Pricing:</strong> $0.20 per alert sent. Only successful deliveries are billed.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Add VIP Sender
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit VIP Modal -->
+<div class="modal fade" id="editVipModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit VIP Sender</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editVipForm" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" id="edit_vip_id" name="vip_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">VIP Sender Email</label>
+                        <input type="email" class="form-control" id="edit_vip_sender_email" disabled>
+                        <small class="text-muted">Cannot change email address</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Friendly Name</label>
+                        <input type="text" class="form-control" id="edit_vip_sender_name" name="vip_sender_name">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mobile Number <span class="text-danger">*</span></label>
+                        <input type="tel" class="form-control" id="edit_mobile_number" name="mobile_number" required pattern="\+1[0-9]{10}">
+                        <small class="text-muted">Enter 10-digit number (area code + number). +1 will be added automatically.</small>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Alert Hours Start</label>
+                            <input type="time" class="form-control" id="edit_alert_hours_start" name="alert_hours_start">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Alert Hours End</label>
+                            <input type="time" class="form-control" id="edit_alert_hours_end" name="alert_hours_end">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-format phone numbers - add +1 if just 10 digits entered
+    function formatPhoneNumber(input) {
+        input.addEventListener('blur', function() {
+            let value = this.value.trim();
+            // Remove any spaces, dashes, or parentheses
+            value = value.replace(/[\s\-\(\)]/g, '');
+
+            // If it's exactly 10 digits (no +1), prepend +1
+            if (/^[0-9]{10}$/.test(value)) {
+                this.value = '+1' + value;
+            }
+            // If it's 11 digits starting with 1, prepend +
+            else if (/^1[0-9]{10}$/.test(value)) {
+                this.value = '+' + value;
+            }
+            // Otherwise leave it as-is (could be international or already formatted)
+        });
+    }
+
+    // Apply to both add and edit forms
+    const addPhoneInput = document.getElementById('mobile_number');
+    const editPhoneInput = document.getElementById('edit_mobile_number');
+
+    if (addPhoneInput) {
+        formatPhoneNumber(addPhoneInput);
+    }
+    if (editPhoneInput) {
+        formatPhoneNumber(editPhoneInput);
+    }
+
+    // Toggle VIP alert on/off
+    document.querySelectorAll('.vip-toggle').forEach(function(toggle) {
+        toggle.addEventListener('change', function() {
+            const vipId = this.getAttribute('data-vip-id');
+            const enabled = this.checked;
+
+            fetch('/vip-alerts/toggle/' + vipId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                alert('Error toggling alert: ' + error);
+                location.reload();
+            });
+        });
+    });
+
+    // Edit VIP sender
+    document.querySelectorAll('.edit-vip-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const vipId = this.getAttribute('data-vip-id');
+
+            fetch('/vip-alerts/get/' + vipId)
+            .then(response => response.json())
+            .then(data => {
+                console.log('VIP data received:', data);
+                if (data.success) {
+                    const vip = data.vip;
+                    console.log('alert_hours_start:', vip.alert_hours_start);
+                    console.log('alert_hours_end:', vip.alert_hours_end);
+                    document.getElementById('edit_vip_id').value = vip.id;
+                    document.getElementById('edit_vip_sender_email').value = vip.vip_sender_email;
+                    document.getElementById('edit_vip_sender_name').value = vip.vip_sender_name || '';
+                    document.getElementById('edit_mobile_number').value = vip.mobile_number;
+                    document.getElementById('edit_alert_hours_start').value = vip.alert_hours_start || '08:00';
+                    document.getElementById('edit_alert_hours_end').value = vip.alert_hours_end || '22:00';
+
+                    document.getElementById('editVipForm').action = '/vip-alerts/edit/' + vipId;
+
+                    const editModal = new bootstrap.Modal(document.getElementById('editVipModal'));
+                    editModal.show();
+                } else {
+                    alert('Error loading VIP data: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('Error: ' + error);
+            });
+        });
+    });
+
+    // Delete VIP sender
+    document.querySelectorAll('.delete-vip-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const vipId = this.getAttribute('data-vip-id');
+            const email = this.getAttribute('data-vip-email');
+
+            if (confirm('Are you sure you want to delete VIP alert for ' + email + '?')) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                fetch('/vip-alerts/delete/' + vipId, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting VIP: ' + error);
+                });
+            }
+        });
+    });
+});
+</script>
+
+{% endblock %}

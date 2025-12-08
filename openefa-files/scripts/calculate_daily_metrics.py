@@ -12,6 +12,10 @@ from datetime import datetime, timedelta, date
 from typing import Dict, Any, Optional, Tuple
 import pymysql
 from pymysql.cursors import DictCursor
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/etc/spacy-server/.env')
 
 # Add parent directory to path
 sys.path.insert(0, '/opt/spacyserver')
@@ -50,18 +54,18 @@ class EffectivenessCalculator:
                             config[key.strip()] = value.strip().strip('"')
                 
                 return {
-                    'host': config.get('host', 'localhost'),
-                    'user': config.get('user', 'spacy_user'),
+                    'host': config.get('host', os.getenv('DB_HOST', 'localhost')),
+                    'user': config.get('user', os.getenv('DB_USER', 'spacy_user')),
                     'password': config.get('password', ''),
-                    'database': config.get('database', 'spacy_email_db')
+                    'database': config.get('database', os.getenv('DB_NAME', 'spacy_email_db'))
                 }
             else:
-                # Fallback to defaults
+                # Fallback to environment variables
                 return {
-                    'host': 'localhost',
-                    'user': 'spacy_user',
-                    'password': '',
-                    'database': 'spacy_email_db'
+                    'host': os.getenv('DB_HOST', 'localhost'),
+                    'user': os.getenv('DB_USER', 'spacy_user'),
+                    'password': os.getenv('DB_PASSWORD', ''),
+                    'database': os.getenv('DB_NAME', 'spacy_email_db')
                 }
         except Exception as e:
             logger.error(f"Error loading DB config: {e}")
@@ -121,11 +125,12 @@ class EffectivenessCalculator:
                     return metrics
                 
                 # Count emails by spam score categories
+                # Using spam threshold of 7.0 to match quarantine threshold
                 cursor.execute("""
                     SELECT
-                        SUM(CASE WHEN spam_score >= 5.0 THEN 1 ELSE 0 END) as spam_caught,
+                        SUM(CASE WHEN spam_score >= 7.0 THEN 1 ELSE 0 END) as spam_caught,
                         SUM(CASE WHEN spam_score < 2.0 THEN 1 ELSE 0 END) as clean_passed,
-                        SUM(CASE WHEN spam_score >= 2.0 AND spam_score < 5.0 THEN 1 ELSE 0 END) as gray_area
+                        SUM(CASE WHEN spam_score >= 2.0 AND spam_score < 7.0 THEN 1 ELSE 0 END) as gray_area
                     FROM email_analysis
                     WHERE DATE(timestamp) = %s
                 """, (target_date,))
@@ -134,11 +139,14 @@ class EffectivenessCalculator:
                 metrics['clean_passed'] = int(result['clean_passed'] or 0)
                 metrics['gray_area'] = int(result['gray_area'] or 0)
                 
-                # Get false positives (emails that were released from quarantine)
+                # Get false positives (clean emails incorrectly quarantined/deleted)
+                # Clean emails are those with spam_score < 2.0
                 cursor.execute("""
-                    SELECT COUNT(DISTINCT message_id) as count
-                    FROM false_positive_tracking
-                    WHERE DATE(release_timestamp) = %s
+                    SELECT COUNT(*) as count
+                    FROM email_analysis
+                    WHERE DATE(timestamp) = %s
+                    AND spam_score < 2.0
+                    AND disposition IN ('quarantined', 'deleted')
                 """, (target_date,))
                 result = cursor.fetchone()
                 metrics['false_positives'] = result['count'] or 0
@@ -162,18 +170,14 @@ class EffectivenessCalculator:
                 result = cursor.fetchone()
                 metrics['auto_whitelists_added'] = result['count'] or 0
                 
-                # Estimate false negatives (spam that got through)
-                # This is harder to measure - we'll use emails with spam indicators that scored < 5
+                # Get false negatives (spam emails that were delivered)
+                # Spam emails are those with spam_score >= 7.0
                 cursor.execute("""
                     SELECT COUNT(*) as count
                     FROM email_analysis
                     WHERE DATE(timestamp) = %s
-                    AND spam_score < 5.0
-                    AND (
-                        COALESCE(suspicious_links, '') != ''
-                        OR sender LIKE '%%noreply%%'
-                        OR sender LIKE '%%no-reply%%'
-                    )
+                    AND spam_score >= 7.0
+                    AND disposition = 'delivered'
                 """, (target_date,))
                 result = cursor.fetchone()
                 metrics['false_negatives'] = result['count'] or 0
