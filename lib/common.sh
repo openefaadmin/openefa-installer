@@ -179,15 +179,70 @@ save_state() {
 # Args: $1=step_name
 # Returns: 0 if completed, 1 if not
 #
+# Also validates that critical artifacts exist - if state says complete
+# but files are missing, clears stale state and returns 1 (not completed)
+#
 is_step_completed() {
     local step_name="$1"
 
     if [[ -f "${STATE_FILE}" ]]; then
-        grep -q "^${step_name}:" "${STATE_FILE}"
-        return $?
+        if grep -q "^${step_name}:" "${STATE_FILE}"; then
+            # State says complete - validate critical artifacts exist
+            if ! validate_step_artifacts "${step_name}"; then
+                log_message "Stale state detected for ${step_name} - artifacts missing, will redo" "WARN"
+                # Remove this step from state file
+                sed -i "/^${step_name}:/d" "${STATE_FILE}"
+                return 1
+            fi
+            return 0
+        fi
     fi
 
     return 1
+}
+
+#
+# Validate that critical artifacts exist for a completed step
+# Args: $1=step_name
+# Returns: 0 if artifacts exist (or no validation needed), 1 if missing
+#
+validate_step_artifacts() {
+    local step_name="$1"
+
+    case "${step_name}" in
+        python_packages_installed|all_packages_installed)
+            # Check venv exists
+            [[ -d "/opt/spacyserver/venv/bin" ]] || return 1
+            [[ -x "/opt/spacyserver/venv/bin/python3" ]] || return 1
+            ;;
+        modules_installed)
+            # Check critical module files exist
+            [[ -d "/opt/spacyserver/modules" ]] || return 1
+            [[ -d "/opt/spacyserver/web" ]] || return 1
+            [[ -f "/opt/spacyserver/email_filter.py" ]] || return 1
+            ;;
+        database_setup_complete)
+            # Check database config exists
+            [[ -f "/etc/spacy-server/.env" ]] || return 1
+            ;;
+        postfix_configured)
+            # Check postfix main.cf has our config
+            grep -q "content_filter.*spacy" /etc/postfix/main.cf 2>/dev/null || return 1
+            ;;
+        env_file_created)
+            [[ -f "/etc/spacy-server/.env" ]] || return 1
+            ;;
+        schema_imported)
+            # Check database tables exist
+            mysql -u root -e "SELECT 1 FROM spacy_email_db.emails LIMIT 1" &>/dev/null || return 1
+            ;;
+        *)
+            # No validation for other steps - trust the state
+            return 0
+            ;;
+    esac
+
+    return 0
 }
 
 #
@@ -356,6 +411,6 @@ download_file() {
 
 # Export functions for use in other scripts
 export -f init_logging log_message info success warn error debug section
-export -f show_banner progress_bar save_state is_step_completed cleanup_state
+export -f show_banner progress_bar save_state is_step_completed validate_step_artifacts cleanup_state
 export -f die require_root run_cmd confirm show_summary backup_file
 export -f create_directory download_file
