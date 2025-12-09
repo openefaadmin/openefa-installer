@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash, session
 from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 from auth import init_auth, get_db_connection, extract_domains_from_recipients, get_domain_filter_condition, admin_required, domain_admin_required, superadmin_required
 import smtplib
 from email.message import EmailMessage
+from email.utils import parseaddr
 
 # Import security validators for SQL injection prevention
 from security_validators import validate_email, validate_domain, validate_email_list, validate_date_string, get_user_email_filter_conditions
@@ -64,26 +65,19 @@ import bcrypt
 # Enhanced report system import
 from enhanced_report_system import EnhancedEmailReportGenerator
 
-# VIP Alert system import (optional - premium module)
-try:
-    from modules.vip_alerts import VIPAlertSystem
-    VIP_ALERTS_AVAILABLE = True
-except ImportError:
-    VIP_ALERTS_AVAILABLE = False
-    VIPAlertSystem = None
+# VIP Alert system import
+from modules.vip_alerts import VIPAlertSystem
 
 # Configuration paths
 MY_CNF_PATH = "/etc/spacy-server/.my.cnf"
 APP_CONFIG_PATH = "/opt/spacyserver/config/.app_config.ini"
-DB_NAME = os.getenv('DB_NAME', 'spacy_email_db')
-DB_USER = os.getenv('DB_USER', 'spacy_user')
-DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_NAME = "spacy_email_db"
 HOST = "localhost"
 
 # Centralized hosted domains configuration
 # This will be populated from database at startup via get_hosted_domains()
-# Empty default - domains are loaded dynamically from database
-HOSTED_DOMAINS = []
+# Updated during installation with configured domains
+HOSTED_DOMAINS = ['openefa.org']
 
 def get_hosted_domains():
     """
@@ -353,7 +347,7 @@ csrf = CSRFProtect(app)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["2000 per day", "500 per hour"],
+    default_limits=["20000 per day", "5000 per hour"],
     storage_uri="redis://localhost:6379"
 )
 
@@ -533,11 +527,8 @@ def csp_violation_report():
 # Initialize authentication with rate limiter
 login_manager = init_auth(app, limiter)
 
-# Initialize VIP Alert System (if available - premium module)
-if VIP_ALERTS_AVAILABLE:
-    vip_alert_system = VIPAlertSystem()
-else:
-    vip_alert_system = None
+# Initialize VIP Alert System
+vip_alert_system = VIPAlertSystem()
 
 # Register blueprints
 from whitelist_import import whitelist_import_bp
@@ -564,18 +555,28 @@ def manage_session_timeout():
     current_ip = request.remote_addr
     current_ua = request.headers.get('User-Agent', '')
 
+    # Detect mobile device from User-Agent
+    is_mobile = any(device in current_ua.lower() for device in ['iphone', 'ipad', 'android', 'mobile'])
+
     session_ip = session.get('_session_ip')
     session_ua = session.get('_session_ua')
+    session_is_mobile = session.get('_session_is_mobile', False)
 
     if session_ip and session_ua:
-        # Verify session hasn't been hijacked (IP or UA mismatch)
-        if session_ip != current_ip:
-            logger.warning(f"Session hijacking attempt detected for {current_user.email}: IP mismatch ({session_ip} != {current_ip})")
-            from flask_login import logout_user
-            logout_user()
-            session.clear()
-            flash('Session security error: Please log in again.', 'error')
-            return redirect(url_for('auth.login'))
+        # Verify session hasn't been hijacked
+        # Skip IP validation for mobile devices as they frequently change IPs (WiFi/cellular switching)
+        if not is_mobile and not session_is_mobile:
+            if session_ip != current_ip:
+                logger.warning(f"Session hijacking attempt detected for {current_user.email}: IP mismatch ({session_ip} != {current_ip})")
+                from flask_login import logout_user
+                logout_user()
+                session.clear()
+                flash('Session security error: Please log in again.', 'error')
+                return redirect(url_for('auth.login'))
+        elif is_mobile or session_is_mobile:
+            # For mobile sessions, only log IP changes for monitoring
+            if session_ip != current_ip:
+                logger.info(f"Mobile IP change detected for {current_user.email}: {session_ip} -> {current_ip}")
 
         # Note: User-Agent can change legitimately (browser updates), so we only log mismatches
         if session_ua != current_ua:
@@ -585,7 +586,8 @@ def manage_session_timeout():
         # First time binding session to IP and UA
         session['_session_ip'] = current_ip
         session['_session_ua'] = current_ua
-        logger.info(f"Session bound to IP {current_ip} for user {current_user.email}")
+        session['_session_is_mobile'] = is_mobile
+        logger.info(f"Session bound to IP {current_ip} for user {current_user.email} (mobile: {is_mobile})")
 
     # Get role-specific timeout
     user_role = current_user.role if hasattr(current_user, 'role') else 'client'
@@ -594,10 +596,6 @@ def manage_session_timeout():
     # Check last activity time
     now = datetime.now()
     last_activity = session.get('last_activity')
-
-    # Detect mobile device from User-Agent
-    user_agent = request.headers.get('User-Agent', '')
-    is_mobile = any(device in user_agent.lower() for device in ['iphone', 'ipad', 'android', 'mobile'])
 
     if last_activity:
         # Convert string back to datetime if needed
@@ -1310,6 +1308,165 @@ def get_user_authorized_domains(user):
     print(f"DEBUG: Falling back to primary domain: {user.domain}")
     return [user.domain] if user.domain else []
 
+def get_training_domains_for_user(user):
+    """
+    Get domains in training window (< 7 days old) that user can manage
+
+    Args:
+        user: Current user object
+
+    Returns:
+        List of training domain dictionaries with progress
+    """
+    user_role = user.role
+    authorized_domains = get_user_authorized_domains(user)
+
+    # For client role without authorized domains, return empty
+    if not authorized_domains and user_role == 'client':
+        return []
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Query domains in training window with pattern counts
+        placeholders = ','.join(['%s'] * len(authorized_domains))
+        query = f"""
+            SELECT
+                cd.domain,
+                cd.id as domain_id,
+                dts.training_started_at,
+                DATEDIFF(NOW(), dts.training_started_at) + 1 as training_day,
+                dts.spam_patterns_learned,
+                dts.ham_patterns_learned,
+                (SELECT COUNT(*) FROM spam_pattern_weights WHERE client_domain_id = cd.id AND spam_count > 0) as spam_pattern_count,
+                (SELECT COUNT(*) FROM spam_pattern_weights WHERE client_domain_id = cd.id AND ham_count > 0) as ham_pattern_count,
+                (SELECT COUNT(*) FROM email_analysis WHERE SUBSTRING_INDEX(recipients, '@', -1) = cd.domain AND disposition = 'quarantined' AND timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as quarantined_count
+            FROM client_domains cd
+            LEFT JOIN domain_training_status dts ON cd.id = dts.client_domain_id
+            WHERE cd.active = 1
+              AND cd.domain IN ({placeholders})
+              AND dts.training_started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+              AND dts.training_completed_at IS NULL
+        """
+
+        cursor.execute(query, authorized_domains)
+        training_domains = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Calculate progress for each domain
+        for domain in training_domains:
+            domain['spam_progress'] = min(100, int((domain['spam_pattern_count'] / 10) * 100))
+            domain['ham_progress'] = min(100, int((domain['ham_pattern_count'] / 10) * 100))
+            domain['needs_training'] = (domain['spam_pattern_count'] < 10 or domain['ham_pattern_count'] < 10)
+            domain['days_remaining'] = max(0, 7 - domain['training_day'])
+
+        return training_domains
+
+    except Exception as e:
+        logger.error(f"Error getting training domains for user {user.id}: {e}")
+        return []
+
+def should_show_continuous_training_reminder(user):
+    """
+    Check if continuous training reminder banner should be shown to user.
+    Uses randomized interval (5-9 days) and contextual awareness (quarantined emails exist).
+
+    Logic:
+    - Minimum 5 days since last shown
+    - Probability increases from day 5 (20%) to day 9+ (100%)
+    - Only shows if quarantined emails exist
+
+    Args:
+        user: Current user object
+
+    Returns:
+        Boolean indicating if reminder should be shown
+    """
+    import random
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get user's authorized domains
+        authorized_domains = get_user_authorized_domains(user)
+
+        # Check if there are any quarantined emails for user's domains
+        if authorized_domains:
+            placeholders = ','.join(['%s'] * len(authorized_domains))
+            cursor.execute(f"""
+                SELECT COUNT(*) as count
+                FROM email_analysis
+                WHERE disposition = 'quarantined'
+                  AND SUBSTRING_INDEX(recipients, '@', -1) IN ({placeholders})
+                  AND timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            """, authorized_domains)
+
+            quarantine_count = cursor.fetchone()
+
+            # If no quarantined emails, don't show banner
+            if not quarantine_count or quarantine_count['count'] == 0:
+                cursor.close()
+                conn.close()
+                return False
+
+        # Check when banner was last shown
+        cursor.execute("""
+            SELECT last_shown_at,
+                   DATEDIFF(NOW(), last_shown_at) as days_since
+            FROM continuous_training_reminders
+            WHERE user_id = %s
+            ORDER BY last_shown_at DESC
+            LIMIT 1
+        """, (user.id,))
+
+        last_shown = cursor.fetchone()
+
+        # If shown within last 5 days, don't show again
+        if last_shown and last_shown['days_since'] < 5:
+            cursor.close()
+            conn.close()
+            return False
+
+        # Randomized probability based on days since last shown
+        if last_shown:
+            days = last_shown['days_since']
+            if days < 5:
+                show_probability = 0.0
+            elif days < 6:
+                show_probability = 0.2  # Day 5: 20%
+            elif days < 7:
+                show_probability = 0.4  # Day 6: 40%
+            elif days < 8:
+                show_probability = 0.6  # Day 7: 60%
+            elif days < 9:
+                show_probability = 0.8  # Day 8: 80%
+            else:
+                show_probability = 1.0  # Day 9+: 100%
+
+            # Random check - don't show if we don't hit probability
+            if random.random() > show_probability:
+                cursor.close()
+                conn.close()
+                return False
+
+        # Track that we're showing the banner now
+        cursor.execute("""
+            INSERT INTO continuous_training_reminders (user_id, last_shown_at)
+            VALUES (%s, NOW())
+        """, (user.id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error checking continuous training reminder for user {user.id}: {e}")
+        return False
+
 @cache.memoize(timeout=120)  # Cache for 2 minutes per user/domain combination
 def get_enhanced_dashboard_stats_for_domain(user, domain):
     """Enhanced stats for a specific domain"""
@@ -1779,6 +1936,12 @@ def dashboard():
     except Exception as e:
         print(f"Error fetching recent emails: {e}")
 
+    # Get training domains for banner
+    training_domains = get_training_domains_for_user(current_user)
+
+    # Check if continuous training reminder should be shown
+    show_continuous_training_reminder = should_show_continuous_training_reminder(current_user)
+
     return render_template('enhanced_dashboard.html',
                          stats=stats,
                          schema_info=schema_info,
@@ -1786,7 +1949,9 @@ def dashboard():
                          user_domains=user_domains,
                          selected_domain=selected_domain,
                          overall_stats=overall_stats,
-                         recent_emails=recent_emails)
+                         recent_emails=recent_emails,
+                         training_domains=training_domains,
+                         show_continuous_training_reminder=show_continuous_training_reminder)
 
 @app.route('/debug/stats')
 @login_required
@@ -2191,29 +2356,23 @@ def emails_legacy():
 
             # Get emails with receiving domains and delivery status (parameterized)
             # Note: LIMIT and OFFSET must be literal integers, not parameters in SQLAlchemy text()
+            # Consolidated to use email_analysis only (2025-11-19)
             email_query = text(f"""
                 SELECT
                     ea.id, ea.message_id, ea.timestamp, ea.sender, ea.recipients, ea.subject,
                     ea.detected_language, ea.email_category, ea.sentiment_polarity,
                     ea.sentiment_manipulation, ea.spam_score, ea.disposition,
                     CASE
-                        -- Check for released status FIRST (both disposition and quarantine_status)
+                        -- Map disposition to delivery status code
                         WHEN ea.disposition = 'released' THEN 'R'
-                        WHEN eq.quarantine_status = 'released' THEN 'R'
-                        -- Then check other disposition states
                         WHEN ea.disposition = 'quarantined' THEN 'Q'
                         WHEN ea.disposition = 'deleted' THEN 'X'
                         WHEN ea.disposition = 'rejected' THEN 'B'
                         WHEN ea.disposition = 'delivered' THEN 'D'
-                        -- Fallback to quarantine table for legacy data
-                        WHEN eq.quarantine_status = 'held' THEN 'Q'
-                        WHEN eq.quarantine_status = 'deleted' THEN 'X'
-                        WHEN eq.quarantine_status = 'expired' THEN 'B'
                         -- Default to delivered if no status found
                         ELSE 'D'
                     END as delivery_status
                 FROM email_analysis ea
-                LEFT JOIN email_quarantine eq ON ea.message_id = eq.message_id
                 WHERE {where_clause}
                 {order_by_clause}
                 LIMIT {int(per_page)} OFFSET {int(offset)}
@@ -2267,6 +2426,7 @@ def emails():
         search_content = request.args.get('search_content', '0')
         receiving_domain = request.args.get('receiving_domain', '')
         mail_direction = request.args.get('mail_direction', 'inbound')
+        score_range = request.args.get('score_range', '')
         tab = request.args.get('tab', 'all')
         show_deleted = request.args.get('show_deleted', '0')
 
@@ -2408,9 +2568,22 @@ def emails():
                 query_params.append(f'%@{receiving_domain}%')
 
         # Mail direction filter
-        if mail_direction and mail_direction in ('inbound', 'outbound'):
+        if mail_direction and mail_direction in ('inbound', 'outbound', 'internal'):
             where_conditions.append("ea.mail_direction = %s")
             query_params.append(mail_direction)
+
+        # Score range filter
+        if score_range:
+            try:
+                # Use rsplit to handle negative numbers correctly (e.g., "-50-0" -> ["-50", "0"])
+                parts = score_range.rsplit('-', 1)
+                if len(parts) == 2:
+                    min_score = float(parts[0])
+                    max_score = float(parts[1])
+                    where_conditions.append("ea.spam_score >= %s AND ea.spam_score <= %s")
+                    query_params.extend([min_score, max_score])
+            except (ValueError, AttributeError, IndexError):
+                logger.warning(f"Invalid score_range parameter: {score_range}")
 
         # Tab filtering
         if tab == 'spam':
@@ -2623,6 +2796,7 @@ def emails():
                              search_content=search_content,
                              receiving_domain=receiving_domain,
                              mail_direction=mail_direction,
+                             score_range=score_range,
                              tab=tab,
                              show_deleted=show_deleted,
                              page=page,
@@ -3017,15 +3191,25 @@ def email_detail(email_id):
                         received_headers.append(current_header)
 
                     # Look for the first Received header with an IP address (before our server processed it)
-                    my_hostname = os.getenv('MAIL_HOSTNAME', os.getenv('HOSTNAME', 'mailguard'))
                     for header in received_headers:
-                        if my_hostname.lower() in header.lower() or 'by mailguard' in header.lower() or 'by openspacy' in header.lower():
+                        if 'mailguard.openefa.com' in header or 'by mailguard' in header or 'openspacy.covereddata.com' in header or 'by openspacy' in header:
                             # This is our server's header, look for the IP in it
                             # Pattern: "from hostname (hostname [IP])" or "from [IP]"
-                            ip_match = re.search(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]', header)
-                            if ip_match:
-                                email['source_ip'] = ip_match.group(1)
-                                break
+                            # Find ALL IPs in the header and skip private ones
+                            ip_matches = re.findall(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]', header)
+                            if ip_matches:
+                                # Check each IP and use the first public one
+                                import ipaddress
+                                for candidate_ip in ip_matches:
+                                    try:
+                                        ip_obj = ipaddress.ip_address(candidate_ip)
+                                        if not ip_obj.is_private and not ip_obj.is_loopback:
+                                            email['source_ip'] = candidate_ip
+                                            break
+                                    except:
+                                        pass
+                                if email.get('source_ip'):
+                                    break
 
                     # If not found in Received headers, try X-Originating-IP
                     if not email.get('source_ip'):
@@ -3349,6 +3533,7 @@ def api_release_email(email_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        upstream_queue_id = None  # Initialize for later capture from SMTP response
 
         # Get email data for learning - try email_analysis first, then email_quarantine
         cursor.execute("""
@@ -3564,11 +3749,48 @@ def api_release_email(email_id):
                     logger.error(f"Email address validation failed for release {email_id}: {ve}")
                     raise  # Re-raise to trigger outer exception handler
 
-                # Relay email using SMTP
+                # Relay email using SMTP and capture upstream queue ID from DATA response
+                upstream_queue_id = None
+                import re
                 with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
-                    smtp.sendmail(sanitized_sender, sanitized_recipients, raw_email_for_relay)
+                    smtp.ehlo_or_helo_if_needed()
+                    smtp.mail(sanitized_sender)
+                    for recipient in sanitized_recipients:
+                        smtp.rcpt(recipient)
 
-                logger.info(f"Email {email_id} released and relayed by {current_user.email} to {relay_host}:{relay_port} for {len(recipients)} recipient(s)")
+                    # Send DATA and capture response which contains queue ID
+                    code, response = smtp.data(raw_email_for_relay)
+
+                    # Extract upstream queue ID from DATA response
+                    try:
+                        response_str = response.decode('utf-8', errors='ignore') if isinstance(response, bytes) else str(response)
+                        logger.info(f"SMTP DATA response: code={code}, response='{response_str}'")
+
+                        # Try multiple extraction patterns for different mail servers
+                        if "queued as" in response_str.lower():
+                            # Postfix format: "250 2.0.0 Ok: queued as ABC123"
+                            parts = response_str.split("queued as")
+                            if len(parts) > 1:
+                                upstream_queue_id = parts[1].strip().split()[0].rstrip(')')
+                        elif re.search(r'\b[A-Za-z0-9]{10,}[-.]?[A-Za-z0-9]*\b', response_str):
+                            # Flexible format: Match queue IDs
+                            queue_match = re.search(r'\b[A-Za-z0-9]{10,}[-.]?[A-Za-z0-9]*\b', response_str)
+                            if queue_match:
+                                upstream_queue_id = queue_match.group(0)
+                        elif re.search(r'[A-F0-9]{8,}', response_str):
+                            # Hex queue ID format
+                            queue_match = re.search(r'[A-F0-9]{8,}', response_str)
+                            if queue_match:
+                                upstream_queue_id = queue_match.group(0)
+
+                        if upstream_queue_id:
+                            logger.info(f"Captured upstream queue ID: {upstream_queue_id}")
+                        else:
+                            logger.warning(f"Could not extract queue ID from response: {response_str}")
+                    except Exception as e:
+                        logger.error(f"Error extracting queue ID: {e}")
+
+                logger.info(f"Email {email_id} released and relayed by {current_user.email} to {relay_host}:{relay_port} for {len(recipients)} recipient(s), upstream_queue_id={upstream_queue_id}")
 
             except smtplib.SMTPException as smtp_err:
                 logger.error(f"SMTP error relaying released email {email_id}: {smtp_err}")
@@ -3617,6 +3839,24 @@ def api_release_email(email_id):
         except Exception as learn_err:
             logger.error(f"Error during ham learning on release: {learn_err}")
             # Don't fail the whole operation if learning fails
+
+        # Update database to record who released the email and when
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE email_analysis
+                SET disposition = 'released',
+                    quarantine_status = 'released',
+                    released_by = %s,
+                    released_at = NOW(),
+                    upstream_queue_id = %s
+                WHERE id = %s
+            """, (current_user.email, upstream_queue_id, email_id))
+            conn.commit()
+            logger.info(f"Updated email {email_id} release status: released_by={current_user.email}, upstream_queue_id={upstream_queue_id}")
+        except Exception as update_err:
+            logger.error(f"Error updating release status for email {email_id}: {update_err}")
+            # Don't fail the operation if status update fails
 
         cursor.close()
         conn.close()
@@ -3920,39 +4160,159 @@ def api_bulk_release_emails():
 @admin_required
 @limiter.limit("20 per hour")  # Prevent whitelist abuse
 def api_whitelist_sender():
-    """Add a sender to the whitelist"""
+    """Add a sender to the whitelist using the blocking_rules table"""
     try:
         data = request.get_json()
         sender = data.get('sender')
+        email_id = data.get('email_id')  # Optional: to extract recipient domain
+        priority = data.get('priority', 10)  # Default priority 10, can be set to 100
+        is_global = data.get('is_global', 0)  # 1 for global whitelist, 0 for domain-specific
 
         if not sender:
             return jsonify({'success': False, 'error': 'Sender required'}), 400
 
-        # Load bec_config.json
-        config_path = '/opt/spacyserver/config/bec_config.json'
-        with open(config_path, 'r') as f:
-            bec_config = json.load(f)
+        # Extract just the email address from "Display Name <email@domain.com>" format
+        from email.utils import parseaddr
+        display_name, email_address = parseaddr(sender)
+        if email_address:
+            sender = email_address.lower()  # Use just the email address, lowercase
+        else:
+            sender = sender.lower()  # Use as-is if parsing fails
 
-        # Add to authentication_aware whitelist
-        if 'whitelist' not in bec_config:
-            bec_config['whitelist'] = {}
-        if 'authentication_aware' not in bec_config['whitelist']:
-            bec_config['whitelist']['authentication_aware'] = {}
-        if 'senders' not in bec_config['whitelist']['authentication_aware']:
-            bec_config['whitelist']['authentication_aware']['senders'] = {}
+        # Validate priority
+        try:
+            priority = int(priority)
+            if priority < 1 or priority > 100:
+                priority = 10  # Default to 10 if invalid
+        except:
+            priority = 10
 
-        # Add sender with default trust settings
-        bec_config['whitelist']['authentication_aware']['senders'][sender] = {
-            "trust_score_bonus": 5,
-            "description": f"Whitelisted via admin panel",
-            "bypass_bec_checks": True
-        }
+        # Validate is_global
+        try:
+            is_global = int(is_global)
+            if is_global not in [0, 1]:
+                is_global = 0
+        except:
+            is_global = 0
 
-        # Save back to file
-        with open(config_path, 'w') as f:
-            json.dump(bec_config, f, indent=2)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
 
-        return jsonify({'success': True, 'message': f'Sender {sender} added to whitelist'})
+        # Try to determine the recipient domain from the email if email_id provided
+        # (only needed for domain-specific whitelists)
+        client_domain_id = None
+        domain = None
+
+        if not is_global and email_id:
+            # Try to get recipient domain from the email
+            cursor.execute("SELECT recipients FROM email_analysis WHERE id = %s", (email_id,))
+            email_data = cursor.fetchone()
+
+            if email_data and email_data.get('recipients'):
+                recipients = email_data['recipients']
+                # Extract domain from first recipient
+                if '@' in recipients:
+                    domain = recipients.split('@')[-1].split(',')[0].strip().rstrip('>')
+
+                    # Look up client_domain_id
+                    cursor.execute("SELECT id FROM client_domains WHERE domain = %s", (domain,))
+                    domain_result = cursor.fetchone()
+                    if domain_result:
+                        client_domain_id = domain_result['id']
+
+        # If no domain found from email and not global, check user's authorized domains
+        if not is_global and not client_domain_id:
+            user_domains = get_user_authorized_domains(current_user)
+            if user_domains:
+                # Use first authorized domain
+                domain = user_domains[0]
+                cursor.execute("SELECT id FROM client_domains WHERE domain = %s", (domain,))
+                domain_result = cursor.fetchone()
+                if domain_result:
+                    client_domain_id = domain_result['id']
+
+        # Check if this sender is already whitelisted
+        if is_global:
+            # Check for existing global whitelist
+            cursor.execute("""
+                SELECT id FROM blocking_rules
+                WHERE is_global = 1
+                AND rule_type = 'sender'
+                AND rule_value = %s
+                AND whitelist = 1
+                AND active = 1
+            """, (sender,))
+
+            existing_rule = cursor.fetchone()
+            if existing_rule:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f'Sender {sender} is already whitelisted globally'}), 400
+        elif client_domain_id:
+            # Check for existing domain-specific whitelist
+            cursor.execute("""
+                SELECT id FROM blocking_rules
+                WHERE client_domain_id = %s
+                AND rule_type = 'sender'
+                AND rule_value = %s
+                AND whitelist = 1
+                AND active = 1
+            """, (client_domain_id, sender))
+
+            existing_rule = cursor.fetchone()
+            if existing_rule:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f'Sender {sender} is already whitelisted for domain {domain}'}), 400
+
+        # Insert the whitelist rule into blocking_rules table
+        # Priority determines trust level: 10=standard, 100=absolute bypass
+        scope_label = 'GLOBAL (all domains)' if is_global else (domain if domain else 'this domain')
+        description = f'Whitelisted via email details page (Priority {priority})'
+        if priority >= 100:
+            description += ' - ABSOLUTE BYPASS: Skips ALL security checks'
+        if is_global:
+            description += ' - GLOBAL WHITELIST'
+
+        cursor.execute("""
+            INSERT INTO blocking_rules
+            (client_domain_id, rule_type, rule_value, rule_pattern, description,
+             created_at, created_by, active, priority, whitelist, is_global)
+            VALUES (%s, %s, %s, %s, %s, NOW(), %s, 1, %s, 1, %s)
+        """, (client_domain_id, 'sender', sender, 'exact', description,
+              current_user.email, priority, is_global))
+
+        rule_id = cursor.lastrowid
+
+        # Log the action in audit_log
+        scope = 'GLOBAL (all domains)' if is_global else (domain if domain else 'system-wide')
+        priority_label = 'PRIORITY 100 (ABSOLUTE BYPASS)' if priority >= 100 else f'Priority {priority}'
+        cursor.execute("""
+            INSERT INTO audit_log (user_id, action, details, ip_address)
+            VALUES (%s, 'WHITELIST_RULE_ADDED', %s, %s)
+        """, (current_user.id,
+              f'Added whitelist rule ({priority_label}) for {scope}: sender={sender}',
+              request.remote_addr))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Whitelist rule added by {current_user.email}: sender={sender} for {scope} (Priority {priority})")
+
+        # Create appropriate success message
+        if priority >= 100:
+            message = f'⚡ ABSOLUTE BYPASS whitelist created for {sender}\nScope: {scope_label}\nPriority: 100\n\nFuture emails will skip ALL security checks!'
+        else:
+            message = f'Sender {sender} added to whitelist\nScope: {scope_label}\nPriority: {priority}'
+
+        return jsonify({
+            'success': True,
+            'rule_id': rule_id,
+            'priority': priority,
+            'message': message
+        })
+
     except Exception as e:
         logger.error(f"Error whitelisting sender: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -4179,7 +4539,7 @@ def api_undelete_email(email_id):
 @login_required
 @admin_required
 def api_bulk_mark_spam():
-    """Mark multiple emails as spam"""
+    """Mark multiple emails as spam and train the filter"""
     try:
         data = request.get_json()
         email_ids = data.get('email_ids', [])
@@ -4188,26 +4548,126 @@ def api_bulk_mark_spam():
             return jsonify({'success': False, 'error': 'No emails selected'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
-        # Update spam scores for all selected emails
         # Security: Validate all IDs are integers to prevent injection
         email_ids = [int(eid) for eid in email_ids]
-        placeholders = ','.join(['%s'] * len(email_ids))
-        query = """
-            UPDATE email_analysis
-            SET spam_score = GREATEST(spam_score + 5.0, 10.0),
-                email_category = 'spam'
-            WHERE id IN ({})
-        """.format(placeholders)
-        cursor.execute(query, email_ids)
 
-        affected = cursor.rowcount
+        trained_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        # Import spam learner
+        from modules.spam_learner import spam_learner
+
+        for email_id in email_ids:
+            try:
+                # Get email data for learning
+                cursor.execute("""
+                    SELECT sender, subject, content_summary, raw_email, raw_email_path,
+                           recipients, spam_train_count
+                    FROM email_analysis
+                    WHERE id = %s
+                """, (email_id,))
+                email = cursor.fetchone()
+
+                if not email:
+                    error_count += 1
+                    continue
+
+                # Check if already at max training (3)
+                spam_train_count = email.get('spam_train_count', 0) or 0
+                if spam_train_count >= 3:
+                    skipped_count += 1
+                    continue
+
+                # Extract body text
+                body_text = email.get('content_summary', '')
+                raw_email_for_body = get_raw_email_content(email)
+                if not body_text and raw_email_for_body:
+                    try:
+                        from email import message_from_string
+                        msg = message_from_string(raw_email_for_body)
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == 'text/plain':
+                                    body_text = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            body_text = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    except:
+                        body_text = email.get('content_summary', '')
+
+                # Increment spam train count
+                spam_train_count += 1
+
+                # Update email with new spam score and training count
+                cursor.execute("""
+                    UPDATE email_analysis
+                    SET spam_score = GREATEST(spam_score + 5.0, 10.0),
+                        email_category = 'spam',
+                        spam_train_count = %s
+                    WHERE id = %s
+                """, (spam_train_count, email_id))
+
+                # Extract recipient domains for learning
+                recipient_domains = extract_receiving_domains(email.get('recipients', ''))
+
+                # Learn for each recipient domain
+                for recipient_domain in recipient_domains:
+                    # Get client_domain_id
+                    cursor.execute("""
+                        SELECT id FROM client_domains WHERE domain = %s AND active = 1
+                    """, (recipient_domain,))
+                    domain_result = cursor.fetchone()
+
+                    if domain_result:
+                        client_domain_id = domain_result['id']
+
+                        # Prepare email data for learning
+                        email_data = {
+                            'subject': email.get('subject', ''),
+                            'body': body_text,
+                            'sender': email.get('sender', '')
+                        }
+
+                        # Learn from spam
+                        result = spam_learner.learn_from_spam(
+                            email_data,
+                            client_domain_id,
+                            current_user.email
+                        )
+
+                        if result.get('success'):
+                            logger.info(f"Learned {result.get('patterns_learned', 0)} spam patterns from email {email_id} for domain {recipient_domain}")
+
+                trained_count += 1
+
+            except Exception as email_err:
+                logger.error(f"Error processing email {email_id} in bulk mark spam: {email_err}")
+                error_count += 1
+
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({'success': True, 'count': affected, 'message': f'Marked {affected} emails as spam'})
+        message_parts = []
+        if trained_count > 0:
+            message_parts.append(f'Trained on {trained_count} email(s)')
+        if skipped_count > 0:
+            message_parts.append(f'{skipped_count} skipped (already trained 3 times)')
+        if error_count > 0:
+            message_parts.append(f'{error_count} error(s)')
+
+        message = ', '.join(message_parts) if message_parts else 'No emails processed'
+
+        return jsonify({
+            'success': True,
+            'trained': trained_count,
+            'skipped': skipped_count,
+            'errors': error_count,
+            'message': message
+        })
     except Exception as e:
         logger.error(f"Error bulk marking spam: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -4216,7 +4676,7 @@ def api_bulk_mark_spam():
 @login_required
 @admin_required
 def api_bulk_mark_not_spam():
-    """Mark multiple emails as not spam (training the filter)"""
+    """Mark multiple emails as not spam and train the filter"""
     try:
         data = request.get_json()
         email_ids = data.get('email_ids', [])
@@ -4225,28 +4685,128 @@ def api_bulk_mark_not_spam():
             return jsonify({'success': False, 'error': 'No emails selected'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
-        # Update spam scores for all selected emails - reduce score and mark as clean
         # Security: Validate all IDs are integers to prevent injection
         email_ids = [int(eid) for eid in email_ids]
-        placeholders = ','.join(['%s'] * len(email_ids))
-        query = """
-            UPDATE email_analysis
-            SET spam_score = LEAST(spam_score - 5.0, 0.0),
-                email_category = 'clean'
-            WHERE id IN ({})
-        """.format(placeholders)
-        cursor.execute(query, email_ids)
 
-        affected = cursor.rowcount
+        trained_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        # Import spam learner
+        from modules.spam_learner import spam_learner
+
+        for email_id in email_ids:
+            try:
+                # Get email data for learning
+                cursor.execute("""
+                    SELECT sender, subject, content_summary, raw_email, raw_email_path,
+                           recipients, not_spam_train_count
+                    FROM email_analysis
+                    WHERE id = %s
+                """, (email_id,))
+                email = cursor.fetchone()
+
+                if not email:
+                    error_count += 1
+                    continue
+
+                # Check if already at max training (3)
+                not_spam_train_count = email.get('not_spam_train_count', 0) or 0
+                if not_spam_train_count >= 3:
+                    skipped_count += 1
+                    continue
+
+                # Extract body text
+                body_text = email.get('content_summary', '')
+                raw_email_for_body = get_raw_email_content(email)
+                if not body_text and raw_email_for_body:
+                    try:
+                        from email import message_from_string
+                        msg = message_from_string(raw_email_for_body)
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == 'text/plain':
+                                    body_text = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            body_text = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    except:
+                        body_text = email.get('content_summary', '')
+
+                # Increment not spam train count
+                not_spam_train_count += 1
+
+                # Update email with reduced spam score and training count
+                cursor.execute("""
+                    UPDATE email_analysis
+                    SET spam_score = LEAST(spam_score - 5.0, 0.0),
+                        email_category = 'clean',
+                        not_spam_train_count = %s
+                    WHERE id = %s
+                """, (not_spam_train_count, email_id))
+
+                # Extract recipient domains for learning
+                recipient_domains = extract_receiving_domains(email.get('recipients', ''))
+
+                # Learn for each recipient domain
+                for recipient_domain in recipient_domains:
+                    # Get client_domain_id
+                    cursor.execute("""
+                        SELECT id FROM client_domains WHERE domain = %s AND active = 1
+                    """, (recipient_domain,))
+                    domain_result = cursor.fetchone()
+
+                    if domain_result:
+                        client_domain_id = domain_result['id']
+
+                        # Prepare email data for learning
+                        email_data = {
+                            'subject': email.get('subject', ''),
+                            'body': body_text,
+                            'sender': email.get('sender', '')
+                        }
+
+                        # Learn from ham (false positive)
+                        result = spam_learner.learn_from_ham(
+                            email_data,
+                            client_domain_id,
+                            current_user.email
+                        )
+
+                        if result.get('success'):
+                            logger.info(f"Learned {result.get('patterns_learned', 0)} ham patterns from email {email_id} for domain {recipient_domain}")
+
+                trained_count += 1
+
+            except Exception as email_err:
+                logger.error(f"Error processing email {email_id} in bulk mark not spam: {email_err}")
+                error_count += 1
+
         conn.commit()
         cursor.close()
         conn.close()
 
-        logger.info(f"Bulk marked {affected} emails as not spam by {current_user.email}")
+        message_parts = []
+        if trained_count > 0:
+            message_parts.append(f'Trained on {trained_count} email(s)')
+        if skipped_count > 0:
+            message_parts.append(f'{skipped_count} skipped (already trained 3 times)')
+        if error_count > 0:
+            message_parts.append(f'{error_count} error(s)')
 
-        return jsonify({'success': True, 'count': affected, 'message': f'Marked {affected} emails as not spam'})
+        message = ', '.join(message_parts) if message_parts else 'No emails processed'
+
+        logger.info(f"Bulk marked emails as not spam by {current_user.email}: {message}")
+
+        return jsonify({
+            'success': True,
+            'trained': trained_count,
+            'skipped': skipped_count,
+            'errors': error_count,
+            'message': message
+        })
     except Exception as e:
         logger.error(f"Error bulk marking not spam: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5108,7 +5668,7 @@ def admin_edit_user(user_id):
                 flash('Valid email is required', 'error')
                 return redirect(url_for('admin_edit_user', user_id=user_id))
 
-            if role not in ['admin', 'domain_admin', 'client', 'viewer']:
+            if role not in ['superadmin', 'admin', 'domain_admin', 'client', 'viewer']:
                 role = 'client'
             
             # Update user including authorized_domains
@@ -5164,11 +5724,11 @@ def admin_reset_password(user_id):
             WHERE id = %s
         """, (password_hash, user_id))
         
-        # Log the action with the temporary password (securely in audit log only)
+        # Log the action (without storing cleartext password - security)
         cursor.execute("""
             INSERT INTO audit_log (user_id, action, details, ip_address)
             VALUES (%s, 'PASSWORD_RESET_BY_ADMIN', %s, %s)
-        """, (current_user.id, f'Reset password for user {email}. Temp password: {new_password}', request.remote_addr))
+        """, (current_user.id, f'Reset password for user {email}', request.remote_addr))
 
         conn.commit()
         conn.close()
@@ -5636,8 +6196,47 @@ def effectiveness_domain_admin():
         flash(f"Error loading dashboard: {e}", "danger")
         return redirect(url_for('dashboard'))
 
+@app.route('/nlp-intelligence')
+@login_required
+@superadmin_required
+def nlp_intelligence_dashboard():
+    """Advanced NLP Learning Intelligence Dashboard - Superadmin Only"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get country statistics for spam emails (spam_score >= 10)
+        cursor.execute("""
+            SELECT
+                source_country,
+                source_country_code,
+                COUNT(*) as email_count,
+                SUM(CASE WHEN spam_score >= 10 THEN 1 ELSE 0 END) as spam_count,
+                AVG(spam_score) as avg_spam_score
+            FROM email_analysis
+            WHERE source_country IS NOT NULL
+            AND timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY source_country, source_country_code
+            ORDER BY spam_count DESC, email_count DESC
+            LIMIT 20
+        """)
+        country_stats = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        return render_template('nlp_learning_dashboard.html',
+                             show_learning_link=True,
+                             country_stats=country_stats)
+    except Exception as e:
+        logger.error(f"Error loading NLP intelligence dashboard: {e}")
+        return render_template('nlp_learning_dashboard.html',
+                             show_learning_link=True,
+                             country_stats=[])
+
 @app.route('/learning')
 @login_required
+@superadmin_required
 def learning_dashboard():
     """Conversation Learning Statistics Dashboard with domain filtering"""
     try:
@@ -6176,10 +6775,10 @@ def backup_management():
         engine = get_db_engine()
         if engine:
             with engine.connect() as conn:
-                result = conn.execute(text(f"""
+                result = conn.execute(text("""
                     SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'size_mb'
                     FROM information_schema.tables
-                    WHERE table_schema='{DB_NAME}'
+                    WHERE table_schema='spacy_email_db'
                 """)).fetchone()
                 if result and result[0]:
                     db_size = f"{result[0]} MB"
@@ -6192,10 +6791,10 @@ def backup_management():
         engine = get_db_engine()
         if engine:
             with engine.connect() as conn:
-                results = conn.execute(text(f"""
+                results = conn.execute(text("""
                     SELECT table_name, table_rows
                     FROM information_schema.tables
-                    WHERE table_schema='{DB_NAME}'
+                    WHERE table_schema='spacy_email_db'
                     ORDER BY table_rows DESC
                     LIMIT 10
                 """)).fetchall()
@@ -6237,7 +6836,7 @@ def create_backup():
             '--routines',
             '--triggers',
             '--events',
-            DB_NAME
+            'spacy_email_db'
         ]
 
         with open(backup_file, 'w') as f:
@@ -6423,13 +7022,13 @@ def create_full_backup():
                 '/opt/spacyserver/config/email_filter_config.json',
                 '/opt/spacyserver/config/authentication_config.json',
                 '/opt/spacyserver/config/threshold_config.json',
-                '/opt/spacyserver/config/trusted_domains.json',
+                '/opt/spacyserver/config/trust_policy.json',
                 '/opt/spacyserver/config/rbl_config.json',
                 '/opt/spacyserver/config/notification_config.json',
                 '/opt/spacyserver/config/antivirus_config.json',
                 '/opt/spacyserver/config/quarantine_config.json',
                 '/opt/spacyserver/config/alias_mappings.json',
-                '/opt/spacyserver/config/dns_whitelist.json'
+                # '/opt/spacyserver/config/dns_whitelist.json'  # Deprecated - merged into trust_policy.json
             ]
 
             for config_file in config_files:
@@ -6494,7 +7093,7 @@ def create_full_backup():
             '--routines',
             '--triggers',
             '--events',
-            DB_NAME
+            'spacy_email_db'
         ]
 
         with open(db_backup_file, 'w') as f:
@@ -6649,7 +7248,7 @@ def create_full_backup():
             f.write(f"Created By: {current_user.email}\n")
             f.write(f"Backup Type: Customized System Backup\n\n")
             f.write(f"Contents:\n")
-            f.write(f"  - Database: {DB_NAME} (compressed)\n")
+            f.write(f"  - Database: spacy_email_db (compressed)\n")
             f.write(f"    * All 56+ tables including quarantine, notifications, effectiveness metrics\n")
             f.write(f"    * Stored procedures, triggers, and events\n")
             if include_config:
@@ -6678,7 +7277,7 @@ def create_full_backup():
                 f.write(f"     - Set permissions: sudo chmod 600 /etc/spacy-server/.env /etc/spacy-server/.my.cnf\n")
                 f.write(f"  3a. Restore systemd service files: sudo cp systemd/*.service /etc/systemd/system/\n")
                 f.write(f"     - Reload systemd: sudo systemctl daemon-reload\n")
-            f.write(f"  4. Restore database: gunzip spacy_database.sql.gz && mysql {DB_NAME} < spacy_database.sql\n")
+            f.write(f"  4. Restore database: gunzip spacy_database.sql.gz && mysql spacy_email_db < spacy_database.sql\n")
             if include_webapp:
                 f.write(f"  5. Restore Python modules, scripts, and web app to /opt/spacyserver/\n")
             if include_attachments:
@@ -7450,29 +8049,34 @@ def delete_domain(domain_id):
 @superadmin_required
 def trusted_domains_config():
     """Trusted domains configuration page (superadmin only)"""
-    trusted_domains_file = '/opt/spacyserver/config/trusted_domains.json'
+    trust_policy_file = '/opt/spacyserver/config/trust_policy.json'
 
     try:
-        with open(trusted_domains_file, 'r') as f:
+        with open(trust_policy_file, 'r') as f:
             config = json.load(f)
 
-        # Extract main list and notes
-        domains = config.get('trusted_domains', [])
-        notes = config.get('trusted_domains_notes', {})
-        configuration = config.get('configuration', {})
+        # Extract trusted domains from unified trust policy structure
+        trusted_domains_dict = config.get('trusted_domains', {})
 
-        # Combine domains with their notes
+        # Convert to list with notes from new structure
         domains_with_notes = []
-        for domain in domains:
+        for domain, settings in trusted_domains_dict.items():
             domains_with_notes.append({
                 'domain': domain,
-                'note': notes.get(domain, '')
+                'note': settings.get('notes', '')
             })
+
+        # Extract configuration from behavior section
+        behavior = config.get('behavior', {})
+        configuration = {
+            'version': config.get('version', '1.0'),
+            'last_updated': config.get('last_updated', 'Unknown')
+        }
 
         return render_template('trusted_domains_config.html',
                              domains=domains_with_notes,
                              configuration=configuration,
-                             total_domains=len(domains))
+                             total_domains=len(domains_with_notes))
 
     except Exception as e:
         logger.error(f"Error loading trusted domains config: {e}")
@@ -7492,30 +8096,28 @@ def add_trusted_domain():
         if not domain:
             return jsonify({'success': False, 'error': 'Domain is required'}), 400
 
-        trusted_domains_file = '/opt/spacyserver/config/trusted_domains.json'
+        trust_policy_file = '/opt/spacyserver/config/trust_policy.json'
 
         # Read current config
-        with open(trusted_domains_file, 'r') as f:
+        with open(trust_policy_file, 'r') as f:
             config = json.load(f)
 
         # Check if domain already exists
-        if domain in config.get('trusted_domains', []):
+        if domain in config.get('trusted_domains', {}):
             return jsonify({'success': False, 'error': 'Domain already in trusted list'}), 400
 
-        # Add domain
+        # Add domain as dict entry
         if 'trusted_domains' not in config:
-            config['trusted_domains'] = []
-        config['trusted_domains'].append(domain)
-        config['trusted_domains'].sort()
+            config['trusted_domains'] = {}
 
-        # Add note if provided
-        if note:
-            if 'trusted_domains_notes' not in config:
-                config['trusted_domains_notes'] = {}
-            config['trusted_domains_notes'][domain] = note
+        config['trusted_domains'][domain] = {
+            'trust_level': 'skip_dns',
+            'skip_dns_validation': True,
+            'notes': note if note else ''
+        }
 
         # Write back to file
-        with open(trusted_domains_file, 'w') as f:
+        with open(trust_policy_file, 'w') as f:
             json.dump(config, f, indent=2)
 
         # Log the action
@@ -7552,25 +8154,21 @@ def remove_trusted_domain():
         if not domain:
             return jsonify({'success': False, 'error': 'Domain is required'}), 400
 
-        trusted_domains_file = '/opt/spacyserver/config/trusted_domains.json'
+        trust_policy_file = '/opt/spacyserver/config/trust_policy.json'
 
         # Read current config
-        with open(trusted_domains_file, 'r') as f:
+        with open(trust_policy_file, 'r') as f:
             config = json.load(f)
 
         # Check if domain exists
-        if domain not in config.get('trusted_domains', []):
+        if domain not in config.get('trusted_domains', {}):
             return jsonify({'success': False, 'error': 'Domain not found in trusted list'}), 404
 
         # Remove domain
-        config['trusted_domains'].remove(domain)
-
-        # Remove note if exists
-        if 'trusted_domains_notes' in config and domain in config['trusted_domains_notes']:
-            del config['trusted_domains_notes'][domain]
+        del config['trusted_domains'][domain]
 
         # Write back to file
-        with open(trusted_domains_file, 'w') as f:
+        with open(trust_policy_file, 'w') as f:
             json.dump(config, f, indent=2)
 
         # Log the action
@@ -7608,10 +8206,10 @@ def update_trusted_domain_note():
         if not domain:
             return jsonify({'success': False, 'error': 'Domain is required'}), 400
 
-        trusted_domains_file = '/opt/spacyserver/config/trusted_domains.json'
+        trust_policy_file = '/opt/spacyserver/config/trust_policy.json'
 
         # Read current config
-        with open(trusted_domains_file, 'r') as f:
+        with open(trust_policy_file, 'r') as f:
             config = json.load(f)
 
         # Check if domain exists
@@ -7630,7 +8228,7 @@ def update_trusted_domain_note():
                 del config['trusted_domains_notes'][domain]
 
         # Write back to file
-        with open(trusted_domains_file, 'w') as f:
+        with open(trust_policy_file, 'w') as f:
             json.dump(config, f, indent=2)
 
         logger.info(f"Trusted domain note updated: {domain} by {current_user.email}")
@@ -8464,45 +9062,104 @@ def update_whitelist_rule(rule_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================================
-# SENDER WHITELIST API ROUTES (JSON-based)
+# SENDER WHITELIST API ROUTES (Database-based via trusted_entities table)
 # ============================================================================
+
+@app.route('/api/sender-whitelist/get', methods=['GET'])
+@login_required
+def get_sender_whitelist():
+    """Get whitelists for a domain (includes global + per-domain from trusted_entities table)"""
+    if not current_user.has_admin_access():
+        return jsonify({'success': False, 'error': 'Administrator privileges required'}), 403
+
+    try:
+        domain = request.args.get('domain')
+
+        if not domain:
+            return jsonify({'success': False, 'error': 'Domain parameter is required'}), 400
+
+        # Verify user has access to this domain
+        user_domains = get_user_authorized_domains(current_user)
+        if domain not in user_domains and not current_user.is_superadmin():
+            return jsonify({'success': False, 'error': 'Access denied to this domain'}), 403
+
+        # Get whitelists from database
+        from whitelist_manager import WhitelistManager
+        wl_manager = WhitelistManager()
+        whitelists = wl_manager.get_domain_trusted_entities(domain)
+
+        return jsonify({
+            'success': True,
+            'whitelists': whitelists
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting whitelists: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sender-whitelist/add', methods=['POST'])
 @login_required
 def add_sender_whitelist():
-    """Add a sender to the JSON-based whitelist"""
-    # SECURITY: Only admins can modify whitelist
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Only administrators can modify whitelist'}), 403
+    """Add a sender to the database-based whitelist (trusted_entities table)"""
+    # SECURITY: Only admins and domain_admins can modify whitelist
+    if not current_user.has_admin_access():
+        return jsonify({'success': False, 'error': 'Administrator privileges required'}), 403
 
     try:
         data = request.get_json()
-        domain = data.get('domain')
         sender_email = data.get('sender_email', '').strip()
-        trust_bonus = data.get('trust_bonus', 3)
-        require_auth = data.get('require_auth', ['spf'])
-
-        # Verify user has access to this domain
-        user_domains = get_user_authorized_domains(current_user)
-        if domain not in user_domains and not current_user.is_admin():
-            return jsonify({'success': False, 'error': 'Access denied to this domain'}), 403
+        entity_type = data.get('entity_type', 'sender')  # Default to sender (most restrictive)
+        domain = data.get('domain')  # For per_domain scope
+        scope = data.get('scope', 'per_domain')  # Default to per_domain
+        trust_level = data.get('trust_level', 'reduce_scoring')
+        notes = data.get('notes', '')
 
         if not sender_email:
             return jsonify({'success': False, 'error': 'Sender email is required'}), 400
 
-        # Use whitelist_manager to add sender
+        # SECURITY: Domain admins can ONLY whitelist specific senders, NOT entire domains
+        if entity_type != 'sender' and current_user.is_domain_admin() and not current_user.is_superadmin():
+            return jsonify({'success': False, 'error': 'Domain admins can only whitelist specific sender email addresses, not entire domains or IPs'}), 403
+
+        # PERMISSION CHECKS
+        user_domains = get_user_authorized_domains(current_user)
+
+        # Domain admins can ONLY add per_domain whitelists for their own domains
+        if current_user.is_domain_admin() and not current_user.is_superadmin():
+            if scope != 'per_domain':
+                return jsonify({'success': False, 'error': 'Domain admins can only add per-domain whitelists'}), 403
+
+            if not domain:
+                return jsonify({'success': False, 'error': 'Domain is required for per-domain whitelists'}), 400
+
+            if domain not in user_domains:
+                return jsonify({'success': False, 'error': f'Access denied to domain {domain}'}), 403
+
+        # Superadmins can add global OR per_domain
+        if current_user.is_superadmin():
+            if scope == 'per_domain' and not domain:
+                return jsonify({'success': False, 'error': 'Domain is required for per-domain scope'}), 400
+        else:
+            # Non-superadmin must have domain access
+            if not domain or domain not in user_domains:
+                return jsonify({'success': False, 'error': 'Access denied to this domain'}), 403
+
+        # Use whitelist_manager to add to database
         from whitelist_manager import WhitelistManager
         wl_manager = WhitelistManager()
-        success, message = wl_manager.add_sender_whitelist(
-            domain=domain,
-            sender_email=sender_email,
-            trust_bonus=trust_bonus,
-            require_auth=require_auth,
-            added_by=current_user.email
+        success, message = wl_manager.add_trusted_entity_db(
+            entity_type=entity_type,
+            entity_value=sender_email,
+            scope=scope,
+            recipient_domain=domain if scope == 'per_domain' else None,
+            trust_level=trust_level,
+            added_by=current_user.email,
+            notes=notes
         )
 
         if success:
-            logger.info(f"Sender {sender_email} added to whitelist for {domain} by {current_user.email}")
+            scope_desc = f"globally" if scope == 'global' else f"for domain {domain}"
+            logger.info(f"Sender {sender_email} added to whitelist {scope_desc} by {current_user.email}")
             return jsonify({
                 'success': True,
                 'message': message
@@ -8517,35 +9174,52 @@ def add_sender_whitelist():
 @app.route('/api/sender-whitelist/remove', methods=['POST'])
 @login_required
 def remove_sender_whitelist():
-    """Remove a sender from the JSON-based whitelist"""
-    # SECURITY: Only admins can modify whitelist
-    if not current_user.is_admin():
-        return jsonify({'success': False, 'error': 'Only administrators can modify whitelist'}), 403
+    """Remove a sender from the database-based whitelist (trusted_entities table)"""
+    # SECURITY: Only admins and domain_admins can modify whitelist
+    if not current_user.has_admin_access():
+        return jsonify({'success': False, 'error': 'Administrator privileges required'}), 403
 
     try:
         data = request.get_json()
-        domain = data.get('domain')
-        sender_email = data.get('sender_email', '').strip()
+        entity_id = data.get('entity_id')
 
-        # Verify user has access to this domain
-        user_domains = get_user_authorized_domains(current_user)
-        if domain not in user_domains and not current_user.is_admin():
-            return jsonify({'success': False, 'error': 'Access denied to this domain'}), 403
+        if not entity_id:
+            return jsonify({'success': False, 'error': 'Entity ID is required'}), 400
 
-        if not sender_email:
-            return jsonify({'success': False, 'error': 'Sender email is required'}), 400
-
-        # Use whitelist_manager to remove sender
+        # Verify user has permission to remove this entity
+        # First get the entity to check domain
         from whitelist_manager import WhitelistManager
         wl_manager = WhitelistManager()
-        success, message = wl_manager.remove_sender_whitelist(
-            domain=domain,
-            sender_email=sender_email,
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT scope, recipient_domain FROM trusted_entities WHERE id = %s
+        """, (entity_id,))
+        entity = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not entity:
+            return jsonify({'success': False, 'error': 'Entity not found'}), 404
+
+        # Permission check
+        if entity['scope'] == 'global' and not current_user.is_superadmin():
+            return jsonify({'success': False, 'error': 'Only superadmins can remove global whitelists'}), 403
+
+        if entity['scope'] == 'per_domain':
+            user_domains = get_user_authorized_domains(current_user)
+            if entity['recipient_domain'] not in user_domains and not current_user.is_superadmin():
+                return jsonify({'success': False, 'error': 'Access denied to this domain'}), 403
+
+        # Remove the entity
+        success, message = wl_manager.remove_trusted_entity_db(
+            entity_id=entity_id,
             removed_by=current_user.email
         )
 
         if success:
-            logger.info(f"Sender {sender_email} removed from whitelist for {domain} by {current_user.email}")
+            logger.info(f"Entity ID {entity_id} removed from whitelist by {current_user.email}")
             return jsonify({
                 'success': True,
                 'message': message
@@ -8597,14 +9271,23 @@ def update_sender_whitelist():
             if not success:
                 return jsonify({'success': False, 'error': f'Failed to remove old entry: {message}'}), 400
 
-        # Add or update the entry
-        success, message = wl_manager.add_sender_whitelist(
-            domain=domain,
-            sender_email=sender_email,
-            trust_bonus=trust_bonus,
-            require_auth=require_auth,
-            added_by=current_user.email
-        )
+            # Add the new entry
+            success, message = wl_manager.add_sender_whitelist(
+                domain=domain,
+                sender_email=sender_email,
+                trust_bonus=trust_bonus,
+                require_auth=require_auth,
+                added_by=current_user.email
+            )
+        else:
+            # Email hasn't changed, use update function
+            success, message = wl_manager.update_sender_whitelist(
+                domain=domain,
+                sender_email=sender_email,
+                trust_bonus=trust_bonus,
+                require_auth=require_auth,
+                updated_by=current_user.email
+            )
 
         if success:
             logger.info(f"Sender {sender_email} updated in whitelist for {domain} by {current_user.email}")
@@ -8911,7 +9594,6 @@ def run_spam_cleanup():
         logger.error(f"Error running spam cleanup: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/release-to-superadmin', methods=['POST'])
 @login_required
 @superadmin_required
@@ -9068,386 +9750,6 @@ ORIGINAL EMAIL FOLLOWS BELOW
 
     except Exception as e:
         logger.error(f"Error releasing email to superadmin: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/report-to-collective', methods=['POST'])
-@login_required
-@superadmin_required
-def report_to_collective():
-    """Report an email to EFA Collective for analysis and community improvement"""
-    import json
-    import uuid
-
-    try:
-        data = request.get_json() or {}
-        message_id = data.get('message_id')
-        report_type = data.get('report_type', 'spam_missed')
-        notes = data.get('notes', '')
-        include_headers = data.get('include_headers', True)
-        include_body = data.get('include_body', True)
-        include_ml = data.get('include_ml', True)
-        include_modules = data.get('include_modules', True)
-
-        if not message_id:
-            return jsonify({'success': False, 'error': 'Message ID is required'}), 400
-
-        # Get or create system ID
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        # Check if system is approved for EFA Collective reporting
-        cursor.execute("""
-            SELECT setting_value FROM system_settings
-            WHERE setting_key = 'collective_status'
-        """)
-        status_result = cursor.fetchone()
-        collective_status = status_result['setting_value'] if status_result else None
-
-        if collective_status != 'approved':
-            cursor.close()
-            conn.close()
-            status_msg = collective_status if collective_status else 'not registered'
-            return jsonify({
-                'success': False,
-                'error': f'System not approved for EFA Collective (status: {status_msg}). Please register at Cleanup Settings and wait for approval.'
-            }), 403
-
-        cursor.execute("""
-            SELECT setting_value FROM system_settings
-            WHERE setting_key = 'openefa_system_id'
-        """)
-        result = cursor.fetchone()
-
-        if result:
-            system_id = result['setting_value']
-        else:
-            # Generate new system ID
-            system_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO system_settings (setting_key, setting_value, description)
-                VALUES ('openefa_system_id', %s, 'Unique system identifier for EFA Collective')
-                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-            """, (system_id,))
-            conn.commit()
-
-        # Get OpenEFA version
-        openefa_version = "Unknown"
-        try:
-            with open('/opt/spacyserver/VERSION', 'r') as f:
-                for line in f:
-                    if line.startswith('VERSION='):
-                        openefa_version = line.split('=', 1)[1].strip()
-                        break
-        except Exception:
-            pass
-
-        # Fetch email from email_analysis (primary) or email_quarantine
-        cursor.execute("""
-            SELECT
-                id, message_id as msg_id, sender, recipients, subject,
-                raw_email, spam_score, disposition,
-                spam_modules_detail, auth_score,
-                original_spf as spf_result, original_dkim as dkim_result, original_dmarc as dmarc_result,
-                classification_scores as ml_classification_scores,
-                detected_language, language_confidence,
-                sentiment_score, sentiment_polarity, sentiment_subjectivity,
-                entities, email_category, content_summary,
-                timestamp,
-                'analysis' as source
-            FROM email_analysis
-            WHERE id = %s
-        """, (message_id,))
-        email = cursor.fetchone()
-
-        # Try quarantine if not found
-        if not email:
-            cursor.execute("""
-                SELECT
-                    id, message_id as msg_id, sender, recipients, subject,
-                    raw_email, spam_score, quarantine_reason as disposition,
-                    NULL as spam_modules_detail, NULL as auth_score,
-                    NULL as spf_result, NULL as dkim_result, NULL as dmarc_result,
-                    NULL as ml_classification_scores,
-                    NULL as detected_language, NULL as language_confidence,
-                    NULL as sentiment_score, NULL as sentiment_polarity, NULL as sentiment_subjectivity,
-                    NULL as entities, NULL as email_category, NULL as content_summary,
-                    timestamp,
-                    'quarantine' as source
-                FROM email_quarantine
-                WHERE id = %s
-            """, (message_id,))
-            email = cursor.fetchone()
-
-        if not email:
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'error': f'Email ID {message_id} not found'}), 404
-
-        raw_email = email.get('raw_email', '')
-        if not raw_email:
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'error': 'No raw email content found'}), 404
-
-        # Build forensic metadata
-        forensic_data = {
-            'report_info': {
-                'report_type': report_type,
-                'reporter_notes': notes,
-                'reported_at': datetime.now().isoformat(),
-                'reported_by': current_user.email,
-            },
-            'system_info': {
-                'system_id': system_id,
-                'openefa_version': openefa_version,
-            },
-            'email_info': {
-                'email_id': email['id'],
-                'message_id': email['msg_id'],
-                'sender': email['sender'],
-                'recipients': email['recipients'],
-                'subject': email['subject'],
-                'timestamp': email['timestamp'].isoformat() if email['timestamp'] else None,
-                'source_table': email['source'],
-            },
-            'scoring': {
-                'spam_score': email['spam_score'],
-                'disposition': email['disposition'],
-                'auth_score': email['auth_score'],
-            },
-            'authentication': {
-                'spf_result': email['spf_result'],
-                'dkim_result': email['dkim_result'],
-                'dmarc_result': email['dmarc_result'],
-            },
-        }
-
-        # Add optional data based on checkboxes
-        if include_modules and email.get('spam_modules_detail'):
-            try:
-                forensic_data['module_breakdown'] = json.loads(email['spam_modules_detail']) if isinstance(email['spam_modules_detail'], str) else email['spam_modules_detail']
-            except Exception:
-                forensic_data['module_breakdown'] = str(email['spam_modules_detail'])
-
-        if include_ml and email.get('ml_classification_scores'):
-            try:
-                forensic_data['ml_scores'] = json.loads(email['ml_classification_scores']) if isinstance(email['ml_classification_scores'], str) else email['ml_classification_scores']
-            except Exception:
-                forensic_data['ml_scores'] = str(email['ml_classification_scores'])
-
-        # Add content analysis
-        forensic_data['content_analysis'] = {
-            'detected_language': email['detected_language'],
-            'language_confidence': email['language_confidence'],
-            'sentiment_score': email['sentiment_score'],
-            'sentiment_polarity': email['sentiment_polarity'],
-            'sentiment_subjectivity': email['sentiment_subjectivity'],
-            'email_category': email['email_category'],
-            'content_summary': email['content_summary'],
-        }
-
-        if email.get('entities'):
-            try:
-                forensic_data['entities'] = json.loads(email['entities']) if isinstance(email['entities'], str) else email['entities']
-            except Exception:
-                forensic_data['entities'] = str(email['entities'])
-
-        # Parse raw email to extract forensic headers
-        import email as email_lib
-        import re
-        original_msg = email_lib.message_from_string(raw_email)
-
-        # Extract source IP from Received headers
-        source_ip = None
-        received_headers = original_msg.get_all('Received', [])
-        if received_headers:
-            # First Received header typically has the originating IP
-            first_received = received_headers[0] if received_headers else ''
-            ip_match = re.search(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]', first_received)
-            if ip_match:
-                source_ip = ip_match.group(1)
-
-        # Extract all X-SpaCy-* and X-Spam-* headers
-        spacy_headers = {}
-        for header_name, header_value in original_msg.items():
-            header_lower = header_name.lower()
-            if header_lower.startswith('x-spacy-') or header_lower.startswith('x-spam-') or \
-               header_lower.startswith('x-ml-') or header_lower.startswith('x-url-') or \
-               header_lower.startswith('x-auth-') or header_lower.startswith('x-phishing-') or \
-               header_lower.startswith('x-ner-') or header_lower.startswith('x-virus-') or \
-               header_lower.startswith('x-thread-') or header_lower.startswith('x-high-risk-') or \
-               header_lower.startswith('x-trusted-') or header_lower.startswith('x-analysis-') or \
-               header_lower.startswith('x-email-') or header_lower.startswith('x-content-') or \
-               header_lower.startswith('x-arc-'):
-                # Normalize header name to lowercase with underscores
-                key = header_name.lower().replace('-', '_')
-                spacy_headers[key] = header_value
-
-        # Add forensic headers to the data
-        forensic_data['network_info'] = {
-            'source_ip': source_ip,
-            'received_chain': received_headers[:3] if received_headers else [],  # First 3 hops
-        }
-
-        forensic_data['spacy_headers'] = spacy_headers
-
-        # Build the report email
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.base import MIMEBase
-        from email.mime.message import MIMEMessage
-        from email import encoders
-        import smtplib
-
-        # Parse original email
-        original_msg = email_lib.message_from_string(raw_email)
-
-        # Create report message
-        report_msg = MIMEMultipart('mixed')
-        report_msg['From'] = f'openefa-report@{os.getenv("MAIL_DOMAIN", "openefa.com")}'
-        report_msg['To'] = 'efacollective@openefa.com'
-        report_msg['Subject'] = f'[EFA-REPORT] [{report_type.upper()}] {email["subject"][:50]}'
-
-        # Add custom headers for validation
-        report_msg['X-OpenEFA-System-ID'] = system_id
-        report_msg['X-OpenEFA-Version'] = openefa_version
-        report_msg['X-OpenEFA-Report-Type'] = report_type
-        report_msg['X-OpenEFA-Email-ID'] = str(message_id)
-        report_msg['X-OpenEFA-Reporter'] = current_user.email
-
-        # Build report body text
-        report_type_labels = {
-            'spam_missed': 'Spam Got Through',
-            'false_positive': 'False Positive',
-            'new_pattern': 'New Spam Pattern',
-            'bug': 'Bug / Unexpected Behavior'
-        }
-
-        # Extract key SpaCy headers for quick summary
-        url_risk = spacy_headers.get('x_url_risk_score', 'N/A')
-        ml_status = spacy_headers.get('x_ml_status', 'N/A')
-        score_breakdown = spacy_headers.get('x_spam_score_breakdown', 'N/A')
-        high_risk_domains = spacy_headers.get('x_high_risk_random_domains', 'None')
-
-        report_body = f"""
-========================================
-EFA COLLECTIVE REPORT
-========================================
-
-Report Type: {report_type_labels.get(report_type, report_type)}
-Reported By: {current_user.email}
-Report Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-System ID: {system_id}
-OpenEFA Version: {openefa_version}
-
-----------------------------------------
-EMAIL DETAILS
-----------------------------------------
-Email ID: {email['id']}
-Message-ID: {email['msg_id']}
-From: {email['sender']}
-To: {email['recipients']}
-Subject: {email['subject']}
-Received: {email['timestamp']}
-Source IP: {source_ip or 'Unknown'}
-
-----------------------------------------
-SCORING
-----------------------------------------
-Spam Score: {email['spam_score']}
-Disposition: {email['disposition']}
-Auth Score: {email['auth_score']}
-
-SPF: {email['spf_result']}
-DKIM: {email['dkim_result']}
-DMARC: {email['dmarc_result']}
-
-----------------------------------------
-SPACY ANALYSIS SUMMARY
-----------------------------------------
-URL Risk Score: {url_risk}
-Score Breakdown: {score_breakdown}
-High Risk Domains: {high_risk_domains}
-ML Status: {ml_status}
-
-----------------------------------------
-REPORTER NOTES
-----------------------------------------
-{notes if notes else '(No additional notes provided)'}
-
-========================================
-ATTACHMENTS:
-1. forensic_data.json - Complete analysis + all X-SpaCy headers
-2. original_email.eml - Full original email
-3. headers.txt - All headers (easy to read)
-========================================
-"""
-
-        # Add report body
-        body_part = MIMEText(report_body, 'plain')
-        report_msg.attach(body_part)
-
-        # Add forensic data as JSON attachment
-        json_data = json.dumps(forensic_data, indent=2, default=str)
-        json_part = MIMEBase('application', 'json')
-        json_part.set_payload(json_data.encode('utf-8'))
-        encoders.encode_base64(json_part)
-        json_part.add_header('Content-Disposition', 'attachment', filename=f'forensic_data_{message_id}.json')
-        report_msg.attach(json_part)
-
-        # Add original email as attachment (if body included)
-        if include_body:
-            original_part = MIMEMessage(original_msg)
-            original_part.add_header('Content-Disposition', 'attachment', filename=f'original_email_{message_id}.eml')
-            report_msg.attach(original_part)
-
-        # Always add headers.txt for easy reading (when headers checkbox is checked)
-        if include_headers:
-            headers_only = '\n'.join(f'{k}: {v}' for k, v in original_msg.items())
-            headers_part = MIMEText(headers_only, 'plain')
-            headers_part.add_header('Content-Disposition', 'attachment', filename=f'headers_{message_id}.txt')
-            report_msg.attach(headers_part)
-
-        # Send via local SMTP
-        try:
-            smtp = smtplib.SMTP('localhost', 25)
-            smtp.sendmail(
-                report_msg['From'],
-                ['efacollective@openefa.com'],
-                report_msg.as_string()
-            )
-            smtp.quit()
-        except Exception as smtp_err:
-            logger.error(f"SMTP error sending to EFA Collective: {smtp_err}")
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'error': f'Failed to send report: {str(smtp_err)}'}), 500
-
-        # Log the action
-        cursor.execute("""
-            INSERT INTO audit_log (user_id, action, details, ip_address)
-            VALUES (%s, %s, %s, %s)
-        """, (
-            current_user.id,
-            'report_to_collective',
-            f'Reported email ID {message_id} to EFA Collective. Type: {report_type}. Subject: {email["subject"][:100]}',
-            request.remote_addr
-        ))
-        conn.commit()
-
-        cursor.close()
-        conn.close()
-
-        logger.info(f"Superadmin {current_user.email} reported email ID {message_id} to EFA Collective (type: {report_type})")
-
-        return jsonify({
-            'success': True,
-            'message': f'Email ID {message_id} successfully reported to EFA Collective. Thank you for contributing!'
-        })
-
-    except Exception as e:
-        logger.error(f"Error reporting to EFA Collective: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -9801,6 +10103,387 @@ def collective_check_status():
 
     except Exception as e:
         logger.error(f"Error checking collective status: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/report-to-collective', methods=['POST'])
+@login_required
+@superadmin_required
+def report_to_collective():
+    """Report an email to EFA Collective for analysis and community improvement"""
+    import json
+    import uuid
+
+    try:
+        data = request.get_json() or {}
+        message_id = data.get('message_id')
+        report_type = data.get('report_type', 'spam_missed')
+        notes = data.get('notes', '')
+        include_headers = data.get('include_headers', True)
+        include_body = data.get('include_body', True)
+        include_ml = data.get('include_ml', True)
+        include_modules = data.get('include_modules', True)
+
+        if not message_id:
+            return jsonify({'success': False, 'error': 'Message ID is required'}), 400
+
+        # Get or create system ID
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Check if system is approved for EFA Collective reporting
+        cursor.execute("""
+            SELECT setting_value FROM system_settings
+            WHERE setting_key = 'collective_status'
+        """)
+        status_result = cursor.fetchone()
+        collective_status = status_result['setting_value'] if status_result else None
+
+        if collective_status != 'approved':
+            cursor.close()
+            conn.close()
+            status_msg = collective_status if collective_status else 'not registered'
+            return jsonify({
+                'success': False,
+                'error': f'System not approved for EFA Collective (status: {status_msg}). Please register at Cleanup Settings and wait for approval.'
+            }), 403
+
+        cursor.execute("""
+            SELECT setting_value FROM system_settings
+            WHERE setting_key = 'openefa_system_id'
+        """)
+        result = cursor.fetchone()
+
+        if result:
+            system_id = result['setting_value']
+        else:
+            # Generate new system ID
+            system_id = str(uuid.uuid4())
+            cursor.execute("""
+                INSERT INTO system_settings (setting_key, setting_value, description)
+                VALUES ('openefa_system_id', %s, 'Unique system identifier for EFA Collective')
+                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+            """, (system_id,))
+            conn.commit()
+
+        # Get OpenEFA version
+        openefa_version = "Unknown"
+        try:
+            with open('/opt/spacyserver/VERSION', 'r') as f:
+                for line in f:
+                    if line.startswith('VERSION='):
+                        openefa_version = line.split('=', 1)[1].strip()
+                        break
+        except Exception:
+            pass
+
+        # Fetch email from email_analysis (primary) or email_quarantine
+        cursor.execute("""
+            SELECT
+                id, message_id as msg_id, sender, recipients, subject,
+                raw_email, spam_score, disposition,
+                spam_modules_detail, auth_score,
+                original_spf as spf_result, original_dkim as dkim_result, original_dmarc as dmarc_result,
+                classification_scores as ml_classification_scores,
+                detected_language, language_confidence,
+                sentiment_score, sentiment_polarity, sentiment_subjectivity,
+                entities, email_category, content_summary,
+                timestamp,
+                'analysis' as source
+            FROM email_analysis
+            WHERE id = %s
+        """, (message_id,))
+        email = cursor.fetchone()
+
+        # Try quarantine if not found
+        if not email:
+            cursor.execute("""
+                SELECT
+                    id, message_id as msg_id, sender, recipients, subject,
+                    raw_email, spam_score, quarantine_reason as disposition,
+                    NULL as spam_modules_detail, NULL as auth_score,
+                    NULL as spf_result, NULL as dkim_result, NULL as dmarc_result,
+                    NULL as ml_classification_scores,
+                    NULL as detected_language, NULL as language_confidence,
+                    NULL as sentiment_score, NULL as sentiment_polarity, NULL as sentiment_subjectivity,
+                    NULL as entities, NULL as email_category, NULL as content_summary,
+                    timestamp,
+                    'quarantine' as source
+                FROM email_quarantine
+                WHERE id = %s
+            """, (message_id,))
+            email = cursor.fetchone()
+
+        if not email:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'error': f'Email ID {message_id} not found'}), 404
+
+        raw_email = email.get('raw_email', '')
+        if not raw_email:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'error': 'No raw email content found'}), 404
+
+        # Build forensic metadata
+        forensic_data = {
+            'report_info': {
+                'report_type': report_type,
+                'reporter_notes': notes,
+                'reported_at': datetime.now().isoformat(),
+                'reported_by': current_user.email,
+            },
+            'system_info': {
+                'system_id': system_id,
+                'openefa_version': openefa_version,
+            },
+            'email_info': {
+                'email_id': email['id'],
+                'message_id': email['msg_id'],
+                'sender': email['sender'],
+                'recipients': email['recipients'],
+                'subject': email['subject'],
+                'timestamp': email['timestamp'].isoformat() if email['timestamp'] else None,
+                'source_table': email['source'],
+            },
+            'scoring': {
+                'spam_score': email['spam_score'],
+                'disposition': email['disposition'],
+                'auth_score': email['auth_score'],
+            },
+            'authentication': {
+                'spf_result': email['spf_result'],
+                'dkim_result': email['dkim_result'],
+                'dmarc_result': email['dmarc_result'],
+            },
+        }
+
+        # Add optional data based on checkboxes
+        if include_modules and email.get('spam_modules_detail'):
+            try:
+                forensic_data['module_breakdown'] = json.loads(email['spam_modules_detail']) if isinstance(email['spam_modules_detail'], str) else email['spam_modules_detail']
+            except Exception:
+                forensic_data['module_breakdown'] = str(email['spam_modules_detail'])
+
+        if include_ml and email.get('ml_classification_scores'):
+            try:
+                forensic_data['ml_scores'] = json.loads(email['ml_classification_scores']) if isinstance(email['ml_classification_scores'], str) else email['ml_classification_scores']
+            except Exception:
+                forensic_data['ml_scores'] = str(email['ml_classification_scores'])
+
+        # Add content analysis
+        forensic_data['content_analysis'] = {
+            'detected_language': email['detected_language'],
+            'language_confidence': email['language_confidence'],
+            'sentiment_score': email['sentiment_score'],
+            'sentiment_polarity': email['sentiment_polarity'],
+            'sentiment_subjectivity': email['sentiment_subjectivity'],
+            'email_category': email['email_category'],
+            'content_summary': email['content_summary'],
+        }
+
+        if email.get('entities'):
+            try:
+                forensic_data['entities'] = json.loads(email['entities']) if isinstance(email['entities'], str) else email['entities']
+            except Exception:
+                forensic_data['entities'] = str(email['entities'])
+
+        # Parse raw email to extract forensic headers
+        import email as email_lib
+        import re
+        original_msg = email_lib.message_from_string(raw_email)
+
+        # Extract source IP from Received headers
+        source_ip = None
+        received_headers = original_msg.get_all('Received', [])
+        if received_headers:
+            # First Received header typically has the originating IP
+            first_received = received_headers[0] if received_headers else ''
+            ip_match = re.search(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]', first_received)
+            if ip_match:
+                source_ip = ip_match.group(1)
+
+        # Extract all X-SpaCy-* and X-Spam-* headers
+        spacy_headers = {}
+        for header_name, header_value in original_msg.items():
+            header_lower = header_name.lower()
+            if header_lower.startswith('x-spacy-') or header_lower.startswith('x-spam-') or \
+               header_lower.startswith('x-ml-') or header_lower.startswith('x-url-') or \
+               header_lower.startswith('x-auth-') or header_lower.startswith('x-phishing-') or \
+               header_lower.startswith('x-ner-') or header_lower.startswith('x-virus-') or \
+               header_lower.startswith('x-thread-') or header_lower.startswith('x-high-risk-') or \
+               header_lower.startswith('x-trusted-') or header_lower.startswith('x-analysis-') or \
+               header_lower.startswith('x-email-') or header_lower.startswith('x-content-') or \
+               header_lower.startswith('x-arc-'):
+                # Normalize header name to lowercase with underscores
+                key = header_name.lower().replace('-', '_')
+                spacy_headers[key] = header_value
+
+        # Add forensic headers to the data
+        forensic_data['network_info'] = {
+            'source_ip': source_ip,
+            'received_chain': received_headers[:3] if received_headers else [],  # First 3 hops
+        }
+
+        forensic_data['spacy_headers'] = spacy_headers
+
+        # Build the report email
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base import MIMEBase
+        from email.mime.message import MIMEMessage
+        from email import encoders
+        import smtplib
+
+        # Parse original email
+        original_msg = email_lib.message_from_string(raw_email)
+
+        # Create report message
+        report_msg = MIMEMultipart('mixed')
+        report_msg['From'] = f'openefa-report@{os.getenv("MAIL_DOMAIN", "openefa.com")}'
+        report_msg['To'] = 'efacollective@openefa.com'
+        report_msg['Subject'] = f'[EFA-REPORT] [{report_type.upper()}] {email["subject"][:50]}'
+
+        # Add custom headers for validation
+        report_msg['X-OpenEFA-System-ID'] = system_id
+        report_msg['X-OpenEFA-Version'] = openefa_version
+        report_msg['X-OpenEFA-Report-Type'] = report_type
+        report_msg['X-OpenEFA-Email-ID'] = str(message_id)
+        report_msg['X-OpenEFA-Reporter'] = current_user.email
+
+        # Build report body text
+        report_type_labels = {
+            'spam_missed': 'Spam Got Through',
+            'false_positive': 'False Positive',
+            'new_pattern': 'New Spam Pattern',
+            'bug': 'Bug / Unexpected Behavior'
+        }
+
+        # Extract key SpaCy headers for quick summary
+        url_risk = spacy_headers.get('x_url_risk_score', 'N/A')
+        ml_status = spacy_headers.get('x_ml_status', 'N/A')
+        score_breakdown = spacy_headers.get('x_spam_score_breakdown', 'N/A')
+        high_risk_domains = spacy_headers.get('x_high_risk_random_domains', 'None')
+
+        report_body = f"""
+========================================
+EFA COLLECTIVE REPORT
+========================================
+
+Report Type: {report_type_labels.get(report_type, report_type)}
+Reported By: {current_user.email}
+Report Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+System ID: {system_id}
+OpenEFA Version: {openefa_version}
+
+----------------------------------------
+EMAIL DETAILS
+----------------------------------------
+Email ID: {email['id']}
+Message-ID: {email['msg_id']}
+From: {email['sender']}
+To: {email['recipients']}
+Subject: {email['subject']}
+Received: {email['timestamp']}
+Source IP: {source_ip or 'Unknown'}
+
+----------------------------------------
+SCORING
+----------------------------------------
+Spam Score: {email['spam_score']}
+Disposition: {email['disposition']}
+Auth Score: {email['auth_score']}
+
+SPF: {email['spf_result']}
+DKIM: {email['dkim_result']}
+DMARC: {email['dmarc_result']}
+
+----------------------------------------
+SPACY ANALYSIS SUMMARY
+----------------------------------------
+URL Risk Score: {url_risk}
+Score Breakdown: {score_breakdown}
+High Risk Domains: {high_risk_domains}
+ML Status: {ml_status}
+
+----------------------------------------
+REPORTER NOTES
+----------------------------------------
+{notes if notes else '(No additional notes provided)'}
+
+========================================
+ATTACHMENTS:
+1. forensic_data.json - Complete analysis + all X-SpaCy headers
+2. original_email.eml - Full original email
+3. headers.txt - All headers (easy to read)
+========================================
+"""
+
+        # Add report body
+        body_part = MIMEText(report_body, 'plain')
+        report_msg.attach(body_part)
+
+        # Add forensic data as JSON attachment
+        json_data = json.dumps(forensic_data, indent=2, default=str)
+        json_part = MIMEBase('application', 'json')
+        json_part.set_payload(json_data.encode('utf-8'))
+        encoders.encode_base64(json_part)
+        json_part.add_header('Content-Disposition', 'attachment', filename=f'forensic_data_{message_id}.json')
+        report_msg.attach(json_part)
+
+        # Add original email as attachment (if body included)
+        if include_body:
+            original_part = MIMEMessage(original_msg)
+            original_part.add_header('Content-Disposition', 'attachment', filename=f'original_email_{message_id}.eml')
+            report_msg.attach(original_part)
+
+        # Always add headers.txt for easy reading (when headers checkbox is checked)
+        if include_headers:
+            headers_only = '\n'.join(f'{k}: {v}' for k, v in original_msg.items())
+            headers_part = MIMEText(headers_only, 'plain')
+            headers_part.add_header('Content-Disposition', 'attachment', filename=f'headers_{message_id}.txt')
+            report_msg.attach(headers_part)
+
+        # Send directly to upstream relay (bypass local spacyfilter which treats localhost as internal)
+        # External mail flows correctly, but internal mail gets "delivered" locally without relay
+        try:
+            smtp = smtplib.SMTP('192.168.50.114', 25)
+            smtp.sendmail(
+                report_msg['From'],
+                ['efacollective@openefa.com'],
+                report_msg.as_string()
+            )
+            smtp.quit()
+        except Exception as smtp_err:
+            logger.error(f"SMTP error sending to EFA Collective: {smtp_err}")
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'error': f'Failed to send report: {str(smtp_err)}'}), 500
+
+        # Log the action
+        cursor.execute("""
+            INSERT INTO audit_log (user_id, action, details, ip_address)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            current_user.id,
+            'report_to_collective',
+            f'Reported email ID {message_id} to EFA Collective. Type: {report_type}. Subject: {email["subject"][:100]}',
+            request.remote_addr
+        ))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Superadmin {current_user.email} reported email ID {message_id} to EFA Collective (type: {report_type})")
+
+        return jsonify({
+            'success': True,
+            'message': f'Email ID {message_id} successfully reported to EFA Collective. Thank you for contributing!'
+        })
+
+    except Exception as e:
+        logger.error(f"Error reporting to EFA Collective: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -10263,7 +10946,7 @@ def config_dashboard():
 
     # Count trusted domains
     try:
-        with open('/opt/spacyserver/config/trusted_domains.json', 'r') as f:
+        with open('/opt/spacyserver/config/trust_policy.json', 'r') as f:
             trusted_domains = json.load(f)
             stats['trusted_domains'] = len(trusted_domains.get('trusted_domains', []))
     except Exception as e:
@@ -10277,6 +10960,75 @@ def config_dashboard():
                          user_domains=user_domains,
                          stats=stats,
                          recent_changes=recent_changes)
+
+@app.route('/whitelist/global')
+@login_required
+@superadmin_required
+def global_whitelist_view():
+    """View global whitelist entries (SuperAdmin only)"""
+    from whitelist_manager import WhitelistManager
+    whitelist_mgr = WhitelistManager()
+
+    # Get global whitelists
+    global_data = whitelist_mgr.get_global_whitelist()
+
+    # Calculate stats
+    stats = {
+        'total_senders': len(global_data['senders']),
+        'total_domains': len(global_data['domains']),
+        'total_entries': len(global_data['senders']) + len(global_data['domains'])
+    }
+
+    return render_template('global_whitelist.html',
+                         whitelist=global_data,
+                         stats=stats)
+
+@app.route('/whitelist/global/remove_sender', methods=['POST'])
+@login_required
+@superadmin_required
+def remove_global_sender():
+    """Remove a sender from the global whitelist"""
+    from whitelist_manager import WhitelistManager
+    whitelist_mgr = WhitelistManager()
+
+    sender_email = request.form.get('sender_email', '').strip().lower()
+
+    if not sender_email:
+        return jsonify({'success': False, 'error': 'Sender email required'}), 400
+
+    success, message = whitelist_mgr.remove_global_sender(
+        sender_email=sender_email,
+        removed_by=current_user.email
+    )
+
+    return jsonify({'success': success, 'message': message})
+
+@app.route('/whitelist/global/update_sender', methods=['POST'])
+@login_required
+@superadmin_required
+def update_global_sender():
+    """Update a global sender whitelist entry"""
+    from whitelist_manager import WhitelistManager
+    whitelist_mgr = WhitelistManager()
+
+    sender_email = request.form.get('sender_email', '').strip().lower()
+    trust_bonus = int(request.form.get('trust_bonus', 5))
+    require_auth = request.form.getlist('require_auth')
+
+    if not sender_email:
+        return jsonify({'success': False, 'error': 'Sender email required'}), 400
+
+    if not require_auth:
+        require_auth = ['spf', 'dmarc']
+
+    success, message = whitelist_mgr.update_global_sender(
+        sender_email=sender_email,
+        trust_bonus=trust_bonus,
+        require_auth=require_auth,
+        updated_by=current_user.email
+    )
+
+    return jsonify({'success': success, 'message': message})
 
 @app.route('/whitelist/<domain>')
 @login_required
@@ -10294,7 +11046,7 @@ def whitelist_management(domain):
     whitelist_mgr = WhitelistManager()
 
     # If user has multiple domains, show whitelists for all their domains
-    # This allows domain admins to see entries across all their managed domains
+    # This allows Rob to see both rdjohnsonlaw.com and escudolaw.com entries
     if len(user_domains) > 1:
         whitelist_data = whitelist_mgr.get_multi_domain_whitelist(user_domains)
         # Combine stats for all domains
@@ -10480,6 +11232,68 @@ def add_whitelist_domain(domain):
 
     return jsonify({'success': success, 'message': message})
 
+@app.route('/whitelist/<domain>/update_domain', methods=['POST'])
+@login_required
+def update_whitelist_domain(domain):
+    """Update an existing domain whitelist entry"""
+    # Check authorization - only admins can update domain-level whitelists
+    if not current_user.is_admin():
+        return jsonify({'success': False, 'error': 'Admin access required'}), 403
+
+    # Lazy import to avoid module-level initialization issues
+    from whitelist_manager import WhitelistManager
+    whitelist_mgr = WhitelistManager()
+
+    # Get form data
+    original_domain = request.form.get('original_domain', '').strip().lower()
+    target_domain = request.form.get('target_domain', '').strip().lower()
+    trust_level = int(request.form.get('trust_level', 5))
+    require_auth = request.form.getlist('require_auth')
+    bypass_checks = request.form.get('bypass_checks', 'false').lower() == 'true'
+
+    if not original_domain or not target_domain:
+        return jsonify({'success': False, 'error': 'Original and target domain required'}), 400
+
+    # If domain changed, remove old and add new
+    if original_domain != target_domain:
+        # Remove old entry
+        success, message = whitelist_mgr.remove_domain_whitelist(
+            domain=domain,
+            target_domain=original_domain,
+            removed_by=current_user.email
+        )
+
+        if not success:
+            return jsonify({'success': False, 'error': f'Failed to remove old entry: {message}'}), 400
+
+        # Add new entry
+        success, message = whitelist_mgr.add_domain_whitelist(
+            domain=domain,
+            target_domain=target_domain,
+            trust_level=trust_level,
+            require_auth=require_auth if require_auth else ['spf'],
+            bypass_checks=bypass_checks,
+            added_by=current_user.email
+        )
+    else:
+        # Domain hasn't changed, use update function
+        success, message = whitelist_mgr.update_domain_whitelist(
+            domain=domain,
+            target_domain=target_domain,
+            trust_level=trust_level,
+            require_auth=require_auth if require_auth else ['spf'],
+            bypass_checks=bypass_checks,
+            updated_by=current_user.email
+        )
+
+    if success:
+        logger.info(f"Domain {target_domain} updated in whitelist for {domain} by {current_user.email}")
+        return jsonify({
+            'success': True,
+            'message': 'Domain whitelist entry updated successfully'
+        })
+    else:
+        return jsonify({'success': False, 'error': message}), 400
 
 
 # ============================================================================
@@ -10499,6 +11313,7 @@ def quarantine_view():
         status_filter = request.args.get('status', 'all')  # Default to 'all' emails
         search_query = request.args.get('search', '')
         search_content = request.args.get('search_content', '0')
+        score_range = request.args.get('score_range', '')
         show_deleted = request.args.get('show_deleted', '')  # show_deleted=1 to show ONLY deleted
 
         # Validate pagination parameters to prevent SQL injection
@@ -10521,12 +11336,11 @@ def quarantine_view():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Query email_analysis as primary table with LEFT JOIN to email_quarantine for status
+        # Query email_analysis as single source of truth (consolidated 2025-11-19)
         # PERFORMANCE OPTIMIZED:
         # 1. Exclude heavy blob columns (raw_email, text_content, html_content) from list view
-        # 2. Use LEFT JOIN to email_quarantine for quarantine status
+        # 2. All quarantine data now in email_analysis table
         # 3. Leverages indexes on message_id, timestamp, spam_score
-        # 4. Uses unified ID system from email_analysis
         query = """
             SELECT
                 ea.id, ea.message_id, ea.timestamp, ea.sender,
@@ -10538,30 +11352,29 @@ def quarantine_view():
                 ea.raw_email,
                 ea.not_spam_train_count,
                 ea.spam_train_count,
-                COALESCE(eq.sender_domain, '') as sender_domain,
-                COALESCE(eq.quarantine_status, 'delivered') as quarantine_status,
-                COALESCE(eq.quarantine_reason, 'N/A') as quarantine_reason,
-                COALESCE(eq.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)) as quarantine_expires_at,
+                COALESCE(ea.sender_domain, '') as sender_domain,
+                COALESCE(ea.quarantine_status, 'delivered') as quarantine_status,
+                COALESCE(ea.quarantine_reason, 'N/A') as quarantine_reason,
+                COALESCE(ea.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)) as quarantine_expires_at,
                 ea.has_attachments,
-                COALESCE(eq.attachment_count, 0) as attachment_count,
-                COALESCE(eq.virus_detected, 0) as virus_detected,
-                COALESCE(eq.phishing_detected, CASE WHEN ea.email_category = 'phishing' THEN 1 ELSE 0 END) as phishing_detected,
-                eq.reviewed_by,
-                eq.reviewed_at,
-                COALESCE(DATEDIFF(eq.quarantine_expires_at, NOW()), DATEDIFF(DATE_ADD(ea.timestamp, INTERVAL 30 DAY), NOW())) as days_until_expiry,
+                COALESCE(ea.attachment_count, 0) as attachment_count,
+                COALESCE(ea.virus_detected, 0) as virus_detected,
+                COALESCE(ea.phishing_detected, CASE WHEN ea.email_category = 'phishing' THEN 1 ELSE 0 END) as phishing_detected,
+                ea.reviewed_by,
+                ea.reviewed_at,
+                DATEDIFF(COALESCE(ea.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)), NOW()) as days_until_expiry,
                 COALESCE(ea.is_deleted, 0) as is_deleted,
                 ea.disposition,
-                CASE WHEN eq.id IS NOT NULL THEN 'quarantine' ELSE 'analysis' END as source_table
+                'analysis' as source_table
             FROM email_analysis ea
-            LEFT JOIN email_quarantine eq ON ea.message_id = eq.message_id
             WHERE 1=1
         """
         params = []
 
         # Filter by spam score (status filter) - matches /emails page logic
         if status_filter == 'quarantined':
-            # Quarantined = emails that are actually in quarantine (disposition='quarantined' OR eq.quarantine_status='held')
-            query += " AND (ea.disposition = 'quarantined' OR eq.quarantine_status = 'held')"
+            # Quarantined = emails with disposition='quarantined' and status='held'
+            query += " AND ea.disposition = 'quarantined' AND ea.quarantine_status = 'held'"
         elif status_filter == 'spam':
             # Spam = emails with spam_score >= threshold OR categorized as spam/phishing
             query += f" AND (ea.spam_score >= {spam_threshold} OR ea.email_category IN ('spam', 'phishing'))"
@@ -10653,16 +11466,29 @@ def quarantine_view():
                     search_param = f'%{search_query}%'
                     params.extend([search_param, search_param, search_param, search_param])
 
+        # Score range filter
+        if score_range:
+            try:
+                # Use rsplit to handle negative numbers correctly (e.g., "-50-0" -> ["-50", "0"])
+                parts = score_range.rsplit('-', 1)
+                if len(parts) == 2:
+                    min_score = float(parts[0])
+                    max_score = float(parts[1])
+                    query += " AND ea.spam_score >= %s AND ea.spam_score <= %s"
+                    params.extend([min_score, max_score])
+            except (ValueError, AttributeError, IndexError):
+                logger.warning(f"Invalid score_range parameter: {score_range}")
+
         # Add deleted filter - show_deleted=1 means show ONLY deleted, otherwise exclude deleted
-        # Check quarantine_status, is_deleted, AND disposition fields
+        # Check quarantine_status, is_deleted, AND disposition fields (consolidated to email_analysis)
         logger.info(f"QUARANTINE VIEW FILTER: show_deleted='{show_deleted}'")
         if show_deleted == '1':
             # Show ONLY deleted items: either quarantine_status = 'deleted' OR is_deleted = 1 OR disposition = 'deleted'
-            query += " AND (eq.quarantine_status = 'deleted' OR ea.is_deleted = 1 OR ea.disposition = 'deleted')"
+            query += " AND (ea.quarantine_status = 'deleted' OR ea.is_deleted = 1 OR ea.disposition = 'deleted')"
             logger.info("QUARANTINE VIEW: Applying SHOW ONLY DELETED filter")
         else:
             # Hide deleted items: quarantine_status != 'deleted' AND is_deleted = 0 AND disposition != 'deleted'
-            query += " AND (eq.quarantine_status IS NULL OR eq.quarantine_status != 'deleted') AND ea.is_deleted = 0 AND (ea.disposition IS NULL OR ea.disposition != 'deleted')"
+            query += " AND (ea.quarantine_status IS NULL OR ea.quarantine_status != 'deleted') AND ea.is_deleted = 0 AND (ea.disposition IS NULL OR ea.disposition != 'deleted')"
             logger.info("QUARANTINE VIEW: Applying HIDE DELETED filter")
 
         # Order by timestamp (newest first)
@@ -10831,6 +11657,7 @@ def quarantine_view():
                              status_filter=status_filter,
                              domain_filter=domain_filter,
                              search_query=search_query,
+                             score_range=score_range,
                              show_deleted=show_deleted,
                              user_domains=user_domains,
                              selected_domain=domain_filter or (user_domains[0] if user_domains else ''),
@@ -10850,7 +11677,7 @@ def quarantine_detail(email_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Try email_analysis table first (primary table shown in quarantine view)
+        # Query email_analysis (consolidated table as of 2025-11-19)
         query_analysis = """
             SELECT
                 ea.id, ea.message_id, ea.timestamp, ea.sender,
@@ -10860,16 +11687,15 @@ def quarantine_detail(email_id):
                 ea.spam_score, ea.email_category,
                 ea.detected_language, ea.sentiment_polarity,
                 ea.original_spf, ea.original_dkim, ea.original_dmarc,
-                ea.disposition, ea.is_deleted, ea.quarantine_status as ea_quarantine_status,
+                ea.disposition, ea.is_deleted,
                 ea.not_spam_train_count,
-                COALESCE(eq.quarantine_status, ea.quarantine_status, 'delivered') as quarantine_status,
-                COALESCE(eq.quarantine_reason, 'N/A') as quarantine_reason,
-                COALESCE(eq.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)) as quarantine_expires_at,
-                eq.reviewed_by,
-                eq.reviewed_at,
-                COALESCE(DATEDIFF(eq.quarantine_expires_at, NOW()), DATEDIFF(DATE_ADD(ea.timestamp, INTERVAL 30 DAY), NOW())) as days_until_expiry
+                COALESCE(ea.quarantine_status, 'delivered') as quarantine_status,
+                COALESCE(ea.quarantine_reason, 'N/A') as quarantine_reason,
+                COALESCE(ea.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)) as quarantine_expires_at,
+                ea.reviewed_by,
+                ea.reviewed_at,
+                DATEDIFF(COALESCE(ea.quarantine_expires_at, DATE_ADD(ea.timestamp, INTERVAL 30 DAY)), NOW()) as days_until_expiry
             FROM email_analysis ea
-            LEFT JOIN email_quarantine eq ON ea.message_id = eq.message_id
             WHERE ea.id = %s
         """
 
@@ -11320,7 +12146,8 @@ def api_quarantine_release(email_id):
                 # First try recipient_domains field (newer format)
                 if email.get('recipient_domains'):
                     try:
-                        recipient_domains = json_module.loads(email.get('recipient_domains', '[]'))
+                        # Normalize to lowercase for case-insensitive comparison
+                        recipient_domains = [d.lower() for d in json_module.loads(email.get('recipient_domains', '[]'))]
                     except:
                         pass
 
@@ -11358,7 +12185,7 @@ def api_quarantine_release(email_id):
 
         # Parse recipients - handle both table formats
         if table_name == 'email_analysis':
-            # email_analysis stores recipients as string like '"user@example.com" <user@example.com>'
+            # email_analysis stores recipients as string like '"contact@openefa.org" <contact@openefa.org>'
             recipients_str = email.get('recipients', '')
             # Extract email addresses using regex - prefer addresses in angle brackets
             import re
@@ -11428,6 +12255,14 @@ def api_quarantine_release(email_id):
 
             # Connect and send using domain-specific relay configuration
             with smtplib.SMTP(actual_relay_host, actual_relay_port, timeout=30) as smtp:
+                # Try to use STARTTLS for encryption
+                try:
+                    smtp.starttls()
+                    smtp.ehlo()  # Must send EHLO again after STARTTLS
+                    logger.info(f"TLS enabled for quarantine release to {actual_relay_host}:{actual_relay_port}")
+                except Exception as tls_err:
+                    logger.warning(f"TLS not available for {actual_relay_host} - continuing: {tls_err}")
+
                 smtp.sendmail(sanitized_sender, sanitized_recipients, raw_email_bytes)
 
             # Update database (only for email_quarantine table)
@@ -11953,6 +12788,14 @@ def api_quarantine_mark_not_spam(email_id):
 
         conn.commit()
 
+        # Re-fetch email to get updated train count
+        if table_name == 'email_analysis':
+            cursor.execute("SELECT not_spam_train_count FROM email_analysis WHERE id = %s", (email_id,))
+            updated_email = cursor.fetchone()
+            if updated_email:
+                new_train_count = updated_email['not_spam_train_count']
+                logger.info(f"Re-fetched train count for email {email_id}: {new_train_count}/3")
+
         # Extract body text based on table
         if table_name == 'email_quarantine':
             body_text = email.get('text_content', '') or email.get('body_plain', '') or email.get('body_html', '')
@@ -12029,6 +12872,8 @@ def api_quarantine_mark_not_spam(email_id):
         train_count = email.get('not_spam_train_count', 0) or 0
         if table_name == 'email_analysis':
             train_count = new_train_count if 'new_train_count' in locals() else train_count
+
+        logger.info(f"Returning API response for email {email_id}: train_count={train_count}, max_count=3, can_train_more={train_count < 3}")
 
         return jsonify({
             'success': True,
@@ -12510,6 +13355,7 @@ def emails_status_view():
                              status_filter=status_filter,
                              domain_filter=domain_filter,
                              search_query=search_query,
+                             score_range=score_range,
                              show_deleted=show_deleted,
                              user_domains=user_domains,
                              selected_domain=domain_filter or (user_domains[0] if user_domains else ''),
@@ -12527,10 +13373,6 @@ def emails_status_view():
 @login_required
 def vip_alerts_page():
     """VIP Alerts management page"""
-    if not VIP_ALERTS_AVAILABLE or vip_alert_system is None:
-        flash('VIP Alerts is a premium module. Contact support to enable this feature.', 'info')
-        return redirect(url_for('dashboard'))
-
     try:
         user_email = current_user.email
         conn = get_db_connection()
@@ -12556,7 +13398,11 @@ def vip_alerts_page():
         conn.close()
 
         # Check if ClickSend is configured
-        clicksend_configured = bool(os.getenv('CLICKSEND_USERNAME')) and bool(os.getenv('CLICKSEND_API_KEY'))
+        clicksend_configured = bool(
+            os.environ.get('CLICKSEND_USERNAME') and
+            os.environ.get('CLICKSEND_API_KEY') and
+            os.environ.get('CLICKSEND_USERNAME') != 'your_username_here'
+        )
 
         return render_template('vip_alerts.html',
                              vip_senders=vip_senders,
@@ -12801,10 +13647,6 @@ def vip_alerts_delete(vip_id):
 @login_required
 def vip_billing():
     """VIP Alerts billing dashboard"""
-    if not VIP_ALERTS_AVAILABLE or vip_alert_system is None:
-        flash('VIP Alerts is a premium module. Contact support to enable this feature.', 'info')
-        return redirect(url_for('dashboard'))
-
     try:
         user_email = current_user.email
         client_domain_id = get_client_domain_id(user_email)
@@ -13666,12 +14508,14 @@ def digest_action(token):
                             config = json.load(f)
                         release_config = config.get('release_destination', {})
                         dest = release_config.get('mailguard', {})
-                        relay_host = dest.get('host', 'localhost')
+                        relay_host = dest.get('host', '192.168.50.114')
                         relay_port = dest.get('port', 25)
 
                     # SECURITY: Sanitize sender and recipients to prevent SMTP header injection
                     try:
-                        sanitized_sender = sanitize_email_address(email['sender'])
+                        # Extract just the email address from "Display Name <email@domain.com>" format
+                        sender_name, sender_email = parseaddr(email['sender'])
+                        sanitized_sender = sanitize_email_address(sender_email if sender_email else email['sender'])
                         sanitized_recipients = [sanitize_email_address(r) for r in recipients]
                     except ValueError as ve:
                         logger.error(f"Email address validation failed for digest release {email['id']}: {ve}")
@@ -13681,6 +14525,14 @@ def digest_action(token):
 
                     # Relay via SMTP
                     with smtplib.SMTP(relay_host, relay_port, timeout=30) as smtp:
+                        # Try to use STARTTLS for encryption
+                        try:
+                            smtp.starttls()
+                            smtp.ehlo()  # Must send EHLO again after STARTTLS
+                            logger.info(f"TLS enabled for digest release to {relay_host}:{relay_port}")
+                        except Exception as tls_err:
+                            logger.warning(f"TLS not available for digest release - continuing: {tls_err}")
+
                         smtp.sendmail(sanitized_sender, sanitized_recipients, raw_email_content)
 
                     logger.info(f"Digest release: Email {email['id']} relayed to {relay_host}:{relay_port}")
@@ -13754,6 +14606,102 @@ def digest_action(token):
                              message=f'Error: {str(e)}'), 500
 
 
+# ============================================================================
+# NLP LEARNING STATISTICS API
+# ============================================================================
+
+@app.route('/api/nlp-learning-stats')
+@login_required
+@superadmin_required
+def api_nlp_learning_stats():
+    """Get advanced NLP learning statistics - Superadmin Only"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        stats = {}
+
+        # Top Business Phrases (more ham than spam)
+        cursor.execute("""
+            SELECT phrase, frequency, ham_count, spam_count,
+                   ROUND((ham_count / NULLIF(ham_count + spam_count, 0)) * 100, 1) as legitimacy_pct,
+                   last_seen
+            FROM conversation_phrases
+            WHERE ham_count > spam_count
+            ORDER BY frequency DESC
+            LIMIT 20
+        """)
+        stats['top_business_phrases'] = cursor.fetchall()
+
+        # Top Spam Phrases (more spam than ham)
+        cursor.execute("""
+            SELECT phrase, frequency, ham_count, spam_count,
+                   ROUND((spam_count / NULLIF(ham_count + spam_count, 0)) * 100, 1) as spam_pct,
+                   last_seen
+            FROM conversation_phrases
+            WHERE spam_count > ham_count
+            ORDER BY frequency DESC
+            LIMIT 20
+        """)
+        stats['top_spam_phrases'] = cursor.fetchall()
+
+        # Auto-Discovered Business Noun Chunks
+        cursor.execute("""
+            SELECT chunk_text, frequency, ham_count, spam_count,
+                   ROUND(avg_business_score, 2) as business_score,
+                   last_seen
+            FROM conversation_noun_chunks
+            WHERE ham_count > spam_count
+            ORDER BY frequency DESC
+            LIMIT 30
+        """)
+        stats['business_noun_chunks'] = cursor.fetchall()
+
+        # Auto-Discovered Spam Noun Chunks
+        cursor.execute("""
+            SELECT chunk_text, frequency, ham_count, spam_count,
+                   last_seen
+            FROM conversation_noun_chunks
+            WHERE spam_count > ham_count
+            ORDER BY frequency DESC
+            LIMIT 20
+        """)
+        stats['spam_noun_chunks'] = cursor.fetchall()
+
+        # Top Legitimate Lemmas
+        cursor.execute("""
+            SELECT lemma, frequency, ham_count, spam_count,
+                   last_seen
+            FROM conversation_lemmas
+            WHERE ham_count > spam_count
+            ORDER BY frequency DESC
+            LIMIT 30
+        """)
+        stats['top_business_lemmas'] = cursor.fetchall()
+
+        # Summary Statistics
+        cursor.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM conversation_noun_chunks WHERE ham_count > 0) as noun_chunks_count,
+                (SELECT COUNT(*) FROM conversation_lemmas WHERE ham_count > 0) as lemmas_count,
+                (SELECT COUNT(*) FROM conversation_phrases WHERE ham_count > 0) as phrases_count,
+                (SELECT SUM(ham_count) FROM conversation_phrases) as total_ham_phrase_uses,
+                (SELECT SUM(spam_count) FROM conversation_phrases) as total_spam_phrase_uses,
+                (SELECT SUM(ham_count) FROM conversation_noun_chunks) as total_ham_chunk_uses,
+                (SELECT SUM(spam_count) FROM conversation_noun_chunks) as total_spam_chunk_uses
+        """)
+        stats['summary'] = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify(stats)
+
+    except Exception as e:
+        logger.error(f"Error getting NLP stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     import ssl
     import os
@@ -13795,15 +14743,15 @@ if __name__ == '__main__':
                 logger.info(f"Access via: https://<server-ip>:5500")
 
                 # Run with SSL on localhost only (Apache reverse proxy handles external access)
-                app.run(host='0.0.0.0', port=5500, debug=False, ssl_context=context)
+                app.run(host='127.0.0.1', port=5500, debug=False, ssl_context=context)
             except Exception as e:
                 logger.error(f"Failed to start HTTPS server: {e}")
                 logger.info("Falling back to HTTP mode")
-                app.run(host='0.0.0.0', port=5500, debug=False)
+                app.run(host='127.0.0.1', port=5500, debug=False)
         else:
             logger.warning(f"SSL certificates not found at {cert_path}")
             logger.info(f"Running in HTTP mode on port 5500")
-            app.run(host='0.0.0.0', port=5500, debug=False)
+            app.run(host='127.0.0.1', port=5500, debug=False)
     except Exception as e:
         logger.error(f"Failed to start Flask application: {e}")
         logger.error(traceback.format_exc())

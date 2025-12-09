@@ -38,11 +38,16 @@
         <div class="d-flex align-items-center">
             <i class="fas fa-exclamation-triangle fa-2x text-warning me-3"></i>
             <div class="flex-grow-1">
-                <strong>Setup Required:</strong> VIP Alerts require a <a href="https://www.clicksend.com/" target="_blank" class="alert-link">ClickSend</a> account for SMS delivery.
-                <br><small class="text-muted">
-                    1. Add API credentials to <code>/etc/spacy-server/.env</code>: <code>CLICKSEND_USERNAME</code> and <code>CLICKSEND_API_KEY</code><br>
-                    2. Configure notification settings in <code>/opt/spacyserver/config/notification_config.json</code> (see file for detailed setup instructions)
-                </small>
+                <strong><i class="fas fa-cog me-1"></i>Setup Required:</strong> VIP Alerts are <strong>not functional</strong> until ClickSend is configured.
+                <hr class="my-2">
+                <div class="small">
+                    <strong>Step 1:</strong> Create a free <a href="https://www.clicksend.com/" target="_blank" class="alert-link">ClickSend</a> account and get your API credentials<br>
+                    <strong>Step 2:</strong> Edit <code>/etc/spacy-server/.env</code> and update these values:
+                    <pre class="bg-light p-2 mt-1 mb-1 rounded small">CLICKSEND_USERNAME=your_actual_username
+CLICKSEND_API_KEY=your_actual_api_key
+CLICKSEND_ENABLED=true</pre>
+                    <strong>Step 3:</strong> Restart SpacyWeb: <code>sudo systemctl restart spacyweb</code>
+                </div>
             </div>
         </div>
     </div>
