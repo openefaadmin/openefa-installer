@@ -3,7 +3,7 @@
 # install.sh - OpenEFA Email Security System Installer
 # Part of the OpenEFA project (https://openefa.com)
 #
-# Licensed under GPL - Successor to the EFA Project
+# Licensed under GPL v3 - Successor to the EFA Project
 # Copyright (C) 2025 OpenEFA Community
 #
 # This script performs a complete installation of OpenEFA including:
@@ -19,6 +19,12 @@ set -u  # Exit on undefined variable
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load version info
+if [[ -f "${SCRIPT_DIR}/VERSION" ]]; then
+    source "${SCRIPT_DIR}/VERSION"
+    export OPENEFA_VERSION="${VERSION:-1.6.1}"
+fi
 
 # Source all library functions
 source "${SCRIPT_DIR}/lib/common.sh"

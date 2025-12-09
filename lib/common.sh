@@ -132,7 +132,7 @@ show_banner() {
         |_|    https://openefa.com
 EOF
     echo -e "${COLOR_RESET}"
-    echo "  Version 1.0.0 - GPL Licensed"
+    echo "  Version ${OPENEFA_VERSION:-1.6.1} - GPL v3 Licensed"
     echo "  Successor to the EFA Project"
     echo ""
 }
