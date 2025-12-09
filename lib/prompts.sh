@@ -174,6 +174,63 @@ prompt_domain() {
 }
 
 #
+# Prompt for DNS server configuration
+#
+prompt_dns_server() {
+    section "DNS Server Configuration"
+
+    echo ""
+    info "DNS Server Selection"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "OpenEFA uses DNS for SPF, DKIM, and DMARC validation."
+    echo "You can use your system's default DNS or specify a custom server."
+    echo ""
+    echo "  1) Use system default DNS (recommended)"
+    echo "  2) Google DNS (8.8.8.8)"
+    echo "  3) Cloudflare DNS (1.1.1.1)"
+    echo "  4) Custom DNS server"
+    echo ""
+
+    local dns_choice
+    read -p "Select option [1-4, default=1]: " dns_choice
+    dns_choice="${dns_choice:-1}"
+
+    case "${dns_choice}" in
+        1)
+            DNS_SERVER="system"
+            info "Using system default DNS"
+            ;;
+        2)
+            DNS_SERVER="8.8.8.8"
+            info "Using Google DNS (8.8.8.8)"
+            ;;
+        3)
+            DNS_SERVER="1.1.1.1"
+            info "Using Cloudflare DNS (1.1.1.1)"
+            ;;
+        4)
+            while true; do
+                read -p "Enter DNS server IP address: " DNS_SERVER
+                if validate_ip "${DNS_SERVER}"; then
+                    info "Using custom DNS: ${DNS_SERVER}"
+                    break
+                else
+                    error "Invalid IP address format"
+                fi
+            done
+            ;;
+        *)
+            DNS_SERVER="system"
+            info "Using system default DNS"
+            ;;
+    esac
+
+    export DNS_SERVER
+    echo ""
+}
+
+#
 # Prompt for database configuration
 #
 prompt_database() {
@@ -533,6 +590,7 @@ EOF
     else
         # Interactive mode - prompt for everything
         prompt_domain
+        prompt_dns_server
         prompt_database
         prompt_admin_account
         prompt_relay_server
@@ -561,6 +619,7 @@ save_installation_config() {
 # Generated: $(date)
 
 INSTALL_DOMAIN="${INSTALL_DOMAIN}"
+DNS_SERVER="${DNS_SERVER:-system}"
 DB_NAME="${DB_NAME}"
 DB_USER="${DB_USER}"
 DB_PASSWORD="${DB_PASSWORD}"
@@ -579,7 +638,7 @@ EOF
 
 # Export functions
 export -f validate_email validate_domain validate_ip validate_password
-export -f prompt_domain prompt_database prompt_admin_account
+export -f prompt_domain prompt_dns_server prompt_database prompt_admin_account
 export -f prompt_relay_server prompt_module_tier
 export -f prompt_logging confirm_configuration gather_installation_config
 export -f save_installation_config is_non_interactive load_config_from_env

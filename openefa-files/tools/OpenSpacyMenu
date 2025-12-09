@@ -21,6 +21,7 @@ NC='\033[0m'
 
 # Config paths
 SPACY_ROOT="/opt/spacyserver"
+PYTHON="$SPACY_ROOT/venv/bin/python3"
 BEC_CONFIG="$SPACY_ROOT/config/bec_config.json"
 MODULE_CONFIG="$SPACY_ROOT/config/module_config.json"
 FILTER_CONFIG="$SPACY_ROOT/config/email_filter_config.json"
@@ -58,8 +59,8 @@ show_main_menu() {
     echo -e "${WHITE}Main Menu:${NC}"
     echo ""
     echo -e "${GREEN}Security Management:${NC}"
-    echo -e "${GREEN}1.${NC} BEC Sender Whitelist Management (with Trust Levels)"
-    echo -e "${GREEN}2.${NC} BEC Domain Whitelist Management (with Trust Levels)"
+    echo -e "${YELLOW}1.${NC} BEC Sender Whitelist Management ${RED}[DEPRECATED - Use SpacyWeb]${NC}"
+    echo -e "${YELLOW}2.${NC} BEC Domain Whitelist Management ${RED}[DEPRECATED - Use SpacyWeb]${NC}"
     echo -e "${GREEN}3.${NC} Executive Protection Management"
     echo -e "${GREEN}4.${NC} Company Impersonation Protection"
     echo ""
@@ -230,7 +231,7 @@ attempt_json_fix() {
         temp_file=$(mktemp)
         
         # Try to fix the travelers.com trust_level issue
-        python3 -c "
+        $PYTHON -c "
 import json
 import sys
 
@@ -429,7 +430,7 @@ add_bec_domain_whitelist() {
             echo -e "${YELLOW}Attempting alternative method...${NC}"
             
             # Alternative method using Python
-            python3 -c "
+            $PYTHON -c "
 import json
 with open('$BEC_CONFIG', 'r') as f:
     data = json.load(f)
@@ -547,7 +548,7 @@ with open('$temp_file', 'w') as f:
     domain_escaped="${domain//\'/\\\'}"
 
     # Use Python for more reliable JSON manipulation
-    python3 -c "
+    $PYTHON -c "
 import json
 import sys
 
@@ -970,7 +971,7 @@ add_bulk_sender_exception() {
     description_escaped="${description//\'/\\\'}"
     domain_escaped="${domain//\'/\\\'}"
 
-    python3 -c "
+    $PYTHON -c "
 import json
 import sys
 
@@ -1224,7 +1225,7 @@ add_bec_sender_whitelist() {
     sender_email_escaped="${sender_email//\'/\\\'}"
     for_domain_escaped="${for_domain//\'/\\\'}"
 
-    python3 -c "
+    $PYTHON -c "
 import json
 import sys
 
@@ -1421,7 +1422,7 @@ test_sender_auth() {
             echo -e "${BLUE}Testing SPF...${NC}"
             # Get server's primary IP for SPF test
             local server_ip=$(hostname -I | awk '{print $1}')
-            python3 -c "
+            $PYTHON -c "
 import sys
 try:
     import spf
@@ -1441,7 +1442,7 @@ except Exception as e:
         
         if [[ "$auth_req" =~ "dmarc" ]]; then
             echo -e "${BLUE}Testing DMARC policy...${NC}"
-            python3 -c "
+            $PYTHON -c "
 import sys
 try:
     import dns.resolver
@@ -1743,7 +1744,7 @@ add_company_name() {
     create_backup "$BEC_CONFIG" "Before adding company name $company_name"
     
     temp_file=$(mktemp)
-    python3 -c "
+    $PYTHON -c "
 import json
 import sys
 with open('$BEC_CONFIG', 'r') as f:
@@ -2176,7 +2177,7 @@ for factor in result['bec_risk_factors']:
 EOF
     
     chmod +x /tmp/test_impersonation.py
-    python3 /tmp/test_impersonation.py "$test_sender" "$test_display" "$test_subject" 2>/dev/null
+    $PYTHON /tmp/test_impersonation.py "$test_sender" "$test_display" "$test_subject" 2>/dev/null
     
     rm -f /tmp/test_impersonation.py
     
@@ -2627,7 +2628,7 @@ analyze_email_file() {
     echo ""
     
     # Run the email filter analysis
-    analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$eml_path" 2>&1)
+    analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$eml_path" 2>&1)
     
     if [[ $? -eq 0 ]]; then
         echo -e "${GREEN}Analysis Results:${NC}"
@@ -2681,7 +2682,7 @@ analyze_raw_email() {
     echo ""
     
     # Run analysis on temp file
-    analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$temp_email" 2>&1)
+    analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$temp_email" 2>&1)
     
     if [[ $? -eq 0 ]]; then
         echo -e "${GREEN}Analysis Results:${NC}"
@@ -2779,7 +2780,7 @@ batch_analyze_emails() {
         echo "File: $filename" >> "$batch_log"
         echo "-" >> "$batch_log"
         
-        analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$eml_file" 2>&1)
+        analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$eml_file" 2>&1)
         
         if [[ $? -eq 0 ]]; then
             echo "$analysis_output" >> "$batch_log"
@@ -3013,7 +3014,7 @@ EOF
     echo ""
     
     # Run analysis
-    analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$temp_sample" 2>&1)
+    analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$temp_sample" 2>&1)
     
     if [[ $? -eq 0 ]]; then
         echo -e "${GREEN}BEC Detection Results:${NC}"
@@ -3100,7 +3101,7 @@ analyze_mail_queue() {
                 postcat -q "$msg_id" 2>/dev/null > "$temp_msg"
                 
                 if [[ -s "$temp_msg" ]]; then
-                    analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$temp_msg" 2>&1)
+                    analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$temp_msg" 2>&1)
                     
                     if echo "$analysis_output" | grep -q "SUSPICIOUS\|HIGH RISK"; then
                         echo -e "${RED}SUSPICIOUS${NC}"
@@ -3146,7 +3147,7 @@ analyze_mail_queue() {
                 echo -e "${BLUE}Analyzing message $msg_id...${NC}"
                 echo ""
                 
-                analysis_output=$(python3 "$SPACY_ROOT/email_filter.py" analyze "$temp_msg" 2>&1)
+                analysis_output=$($PYTHON "$SPACY_ROOT/email_filter.py" analyze "$temp_msg" 2>&1)
                 echo "$analysis_output"
             else
                 echo -e "${RED}Could not retrieve message.${NC}"
@@ -3286,7 +3287,7 @@ test_dns_resolution() {
     
     echo ""
     echo -e "${GREEN}4. Using Python DNS resolver:${NC}"
-    python3 -c "
+    $PYTHON -c "
 import sys
 try:
     import dns.resolver
@@ -3428,7 +3429,7 @@ check_spf_records() {
     
     echo ""
     echo -e "${BLUE}Testing SPF with Python:${NC}"
-    python3 -c "
+    $PYTHON -c "
 import sys
 try:
     import dns.resolver
@@ -4698,7 +4699,7 @@ system_info() {
     echo ""
 
     echo -e "${GREEN}Python Dependencies:${NC}"
-    python3 -c "
+    $PYTHON -c "
 import sys
 modules = [
     ('spf', 'SPF'),
@@ -6305,8 +6306,38 @@ main() {
         read choice
 
         case $choice in
-            1) bec_sender_menu ;;
-            2) bec_domain_menu ;;
+            1)
+                echo ""
+                echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${RED}⚠️  DEPRECATED: BEC Sender Whitelist (bec_config.json)${NC}"
+                echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${YELLOW}This feature will be removed in v1.7.0${NC}"
+                echo ""
+                echo -e "${BLUE}Please use SpacyWeb for whitelist management:${NC}"
+                echo -e "  • Users/Domain Admins: Whitelist Management in SpacyWeb GUI"
+                echo -e "  • Superadmins: Trusted Domains Management (Option 18)"
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue anyway, or Ctrl+C to go back: ${NC}"
+                read
+                bec_sender_menu
+                ;;
+            2)
+                echo ""
+                echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${RED}⚠️  DEPRECATED: BEC Domain Whitelist (bec_config.json)${NC}"
+                echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${YELLOW}This feature will be removed in v1.7.0${NC}"
+                echo ""
+                echo -e "${BLUE}Please use SpacyWeb for whitelist management:${NC}"
+                echo -e "  • Users/Domain Admins: Whitelist Management in SpacyWeb GUI"
+                echo -e "  • Superadmins: Trusted Domains Management (Option 18)"
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue anyway, or Ctrl+C to go back: ${NC}"
+                read
+                bec_domain_menu
+                ;;
             3) executive_protection_menu ;;
             4) company_impersonation_menu ;;
             5) email_filter_menu ;;
@@ -6404,7 +6435,7 @@ conversation_learning_stats() {
     esac
     
     # Get statistics using external Python script
-    stats_output=$(python3 /opt/spacyserver/scripts/get_learning_stats.py 2>/dev/null)
+    stats_output=$($PYTHON /opt/spacyserver/scripts/get_learning_stats.py 2>/dev/null)
     
     if [[ -z "$stats_output" ]]; then
         echo -e "${RED}Error reading learning statistics${NC}"
@@ -6594,9 +6625,9 @@ feed_email_to_learning() {
     echo ""
     
     if [[ -n "$override_score" ]]; then
-        result=$(python3 /opt/spacyserver/scripts/feed_email_by_id.py "$message_id" "$override_score" 2>&1)
+        result=$($PYTHON /opt/spacyserver/scripts/feed_email_by_id.py "$message_id" "$override_score" 2>&1)
     else
-        result=$(python3 /opt/spacyserver/scripts/feed_email_by_id.py "$message_id" 2>&1)
+        result=$($PYTHON /opt/spacyserver/scripts/feed_email_by_id.py "$message_id" 2>&1)
     fi
     
     echo "$result"
@@ -6688,9 +6719,9 @@ search_and_feed_email() {
     echo ""
     
     if [[ -n "$override_score" ]]; then
-        result=$(python3 /opt/spacyserver/scripts/feed_email_by_id.py "$selected_id" "$override_score" 2>&1)
+        result=$($PYTHON /opt/spacyserver/scripts/feed_email_by_id.py "$selected_id" "$override_score" 2>&1)
     else  
-        result=$(python3 /opt/spacyserver/scripts/feed_email_by_id.py "$selected_id" 2>&1)
+        result=$($PYTHON /opt/spacyserver/scripts/feed_email_by_id.py "$selected_id" 2>&1)
     fi
     
     echo "$result"

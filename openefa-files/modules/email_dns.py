@@ -17,6 +17,14 @@ class DNSValidator:
         self.resolver = dns.resolver.Resolver()
         self.resolver.lifetime = timeout
         self.logger = logging.getLogger('email_dns')
+
+        # Configure custom DNS server if set in environment
+        dns_server = os.environ.get('DNS_SERVER', 'system')
+        if dns_server and dns_server != 'system':
+            self.resolver.nameservers = [dns_server]
+            self.logger.info(f"Using custom DNS server: {dns_server}")
+        else:
+            self.logger.info("Using system default DNS")
         self.config_file = config_file
 
         # Initialize Redis cache

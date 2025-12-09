@@ -151,6 +151,9 @@ CLICKSEND_ENABLED=false
 # Redis Configuration
 REDIS_URL=redis://localhost:6379
 
+# DNS Configuration (system = use system default, or IP address like 8.8.8.8)
+DNS_SERVER=${DNS_SERVER:-system}
+
 # Application Settings
 MAX_CONTENT_LENGTH=16777216
 UPLOAD_FOLDER=/opt/spacyserver/uploads

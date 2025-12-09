@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-08",
+  "description": "Unified trust policy for static/system-level whitelisting. Add trusted domains that need special handling (e.g., government domains that may fail strict DNS checks).",
+  "trusted_domains": {
+    "example.gov": {
+      "trust_level": "skip_dns",
+      "skip_dns_validation": true,
+      "notes": "Example entry - replace with your trusted domains"
+    }
+  },
+  "trusted_esps": {
+    "_description": "Email Service Providers with known multi-tenant infrastructure",
+    "sendgrid.net": {
+      "trust_level": "esp",
+      "notes": "SendGrid email service"
+    },
+    "mailgun.org": {
+      "trust_level": "esp",
+      "notes": "Mailgun email service"
+    },
+    "amazonses.com": {
+      "trust_level": "esp",
+      "notes": "Amazon SES"
+    }
+  },
+  "trust_levels": {
+    "_description": "Available trust levels and their effects",
+    "skip_dns": "Skip DNS validation (SPF/DKIM/DMARC) for this domain",
+    "skip_spoofing": "Skip spoofing detection for this domain",
+    "esp": "Treat as Email Service Provider (multi-tenant infrastructure)",
+    "full_trust": "Skip all security checks for this domain (use sparingly)"
+  }
+}

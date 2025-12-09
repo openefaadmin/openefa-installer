@@ -5,6 +5,7 @@ Tracks normal sender behavior and detects account compromise indicators
 Extends the existing conversation learning system
 """
 
+import os
 import json
 import logging
 from datetime import datetime, timedelta

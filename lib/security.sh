@@ -45,24 +45,24 @@ logpath = /var/log/mail.log
 maxretry = 3
 EOF
 
-    # Create SpacyWeb filter for failed login attempts
+    # Create SpacyWeb filter for failed login attempts (matches Apache access log 401s)
     cat > /etc/fail2ban/filter.d/spacyweb.conf << 'EOF'
 [Definition]
-failregex = ^.*Login failed for .* from <HOST>.*$
-            ^.*Failed login attempt from <HOST>.*$
-            ^.*Authentication failed .* from <HOST>.*$
+# Match 401 responses to /auth/login from Apache access log
+failregex = ^<HOST> .* "POST /auth/login.*" 401 .*$
+            ^<HOST> .* "POST /auth/login.*" 403 .*$
 ignoreregex =
 EOF
 
-    # Create SpacyWeb jail (disabled by default - enable when logging is configured)
+    # SpacyWeb jail - uses Apache access logs
     cat >> /etc/fail2ban/jail.local << 'EOF'
 
-# SpacyWeb web interface protection (enable after configuring logging)
+# SpacyWeb web interface protection via Apache logs
 [spacyweb]
-enabled = false
-port = 5500
+enabled = true
+port = http,https
 filter = spacyweb
-logpath = /var/log/spacyweb/access.log
+logpath = /var/log/apache2/spacyweb-access.log
 maxretry = 5
 bantime = 3600
 EOF

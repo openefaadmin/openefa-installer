@@ -377,44 +377,55 @@ install_uninstall_script() {
 # Install GeoIP2 geographic blocking database (optional)
 #
 install_geoip2_database() {
-    local geoip_db="/opt/spacyserver/data/GeoLite2-Country.mmdb"
-    local geoip_url="https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+    local geoip_country_db="/opt/spacyserver/data/GeoLite2-Country.mmdb"
+    local geoip_city_db="/opt/spacyserver/data/GeoLite2-City.mmdb"
+    local geoip_country_url="https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+    local geoip_city_url="https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 
     echo ""
-    info "GeoIP2 Geographic Blocking (Optional)"
+    info "GeoIP2 Geographic Analysis (Optional)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Enables country-based email blocking using IP geolocation."
+    echo "Enables geographic analysis and country-based email blocking."
     echo ""
     echo "Features:"
     echo "  • Block emails from high-risk countries (Russia, China, etc.)"
-    echo "  • Complementary to domain-based blocking"
-    echo "  • Uses free GeoLite2 database (9.5MB download)"
+    echo "  • Received chain geographic analysis"
+    echo "  • Uses free GeoLite2 databases (~70MB total download)"
     echo ""
     echo "Note: This is optional. System works without it."
     echo ""
 
-    if ! confirm "Enable GeoIP2 geographic blocking?"; then
+    if ! confirm "Enable GeoIP2 geographic analysis?"; then
         warn "Skipping GeoIP2 installation (can be enabled later)"
-        info "To enable later: Download GeoLite2-Country.mmdb to /opt/spacyserver/data/"
+        info "To enable later: Download GeoLite2 databases to /opt/spacyserver/data/"
         return 0
     fi
-
-    info "Downloading GeoLite2 database from community mirror..."
 
     # Create data directory if not exists
     create_directory "/opt/spacyserver/data" "spacy-filter:spacy-filter" "755"
 
-    # Download database
-    if wget -q --show-progress "${geoip_url}" -O "${geoip_db}"; then
-        chown spacy-filter:spacy-filter "${geoip_db}"
-        chmod 644 "${geoip_db}"
-        success "GeoIP2 database installed (9.5MB)"
-        info "Attribution: This product includes GeoLite2 data created by MaxMind"
-        info "Configure country blocking rules in SpacyWeb dashboard"
+    # Download Country database
+    info "Downloading GeoLite2-Country database (~10MB)..."
+    if wget -q --show-progress "${geoip_country_url}" -O "${geoip_country_db}"; then
+        chown spacy-filter:spacy-filter "${geoip_country_db}"
+        chmod 644 "${geoip_country_db}"
+        success "GeoLite2-Country database installed"
     else
-        warn "Failed to download GeoIP2 database (non-fatal)"
-        warn "You can manually install later if needed"
+        warn "Failed to download Country database (non-fatal)"
     fi
+
+    # Download City database
+    info "Downloading GeoLite2-City database (~60MB)..."
+    if wget -q --show-progress "${geoip_city_url}" -O "${geoip_city_db}"; then
+        chown spacy-filter:spacy-filter "${geoip_city_db}"
+        chmod 644 "${geoip_city_db}"
+        success "GeoLite2-City database installed"
+    else
+        warn "Failed to download City database (non-fatal)"
+    fi
+
+    info "Attribution: This product includes GeoLite2 data created by MaxMind"
+    info "Configure country blocking rules in SpacyWeb dashboard"
 
     return 0
 }

@@ -1290,3 +1290,23 @@ CREATE TABLE IF NOT EXISTS `quarantine_digest_tokens` (
   KEY `idx_expires` (`expires_at`),
   KEY `idx_user_action` (`user_id`,`action`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Secure tokens for digest email action links';
+
+-- Spam Pattern Weights table for learning from user feedback
+CREATE TABLE IF NOT EXISTS `spam_pattern_weights` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_domain_id` int(11) NOT NULL,
+  `pattern_type` varchar(50) NOT NULL COMMENT 'phishing_phrase, url_pattern, sender_domain, obfuscation_pattern',
+  `pattern_value` varchar(500) NOT NULL COMMENT 'The actual pattern (e.g., "verify your account", "*.mocha.app")',
+  `weight_adjustment` float DEFAULT 0 COMMENT 'Positive for spam indicators, negative for false positives',
+  `spam_count` int(11) DEFAULT 0 COMMENT 'Times seen in user-marked spam',
+  `ham_count` int(11) DEFAULT 0 COMMENT 'Times seen in user-marked ham/safe emails',
+  `confidence` float DEFAULT 0 COMMENT 'Calculated as spam_count / (spam_count + ham_count)',
+  `first_seen` datetime DEFAULT current_timestamp(),
+  `last_updated` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_by` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_pattern` (`client_domain_id`,`pattern_type`,`pattern_value`(255)),
+  KEY `idx_domain_pattern` (`client_domain_id`,`pattern_type`,`pattern_value`(100)),
+  KEY `idx_confidence` (`confidence`),
+  CONSTRAINT `spam_pattern_weights_ibfk_1` FOREIGN KEY (`client_domain_id`) REFERENCES `client_domains` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

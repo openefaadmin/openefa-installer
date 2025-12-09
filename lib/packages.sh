@@ -92,6 +92,10 @@ install_utility_packages() {
         "certbot"
         "ssl-cert"
         "iputils-ping"
+        "jq"
+        "rsyslog"
+        "apache2"
+        "python3-certbot-apache"
     )
 
     if run_cmd "DEBIAN_FRONTEND=noninteractive apt-get install -y ${packages[*]}" "Failed to install utility packages"; then
@@ -178,6 +182,9 @@ install_python_packages() {
         "matplotlib==3.8.2"
         "seaborn==0.13.0"
         "reportlab==4.0.7"
+
+        # Notifications (SMS alerts via ClickSend - requires account setup)
+        "clicksend-client"
 
         # Antivirus
         "pyclamd==0.4.0"
