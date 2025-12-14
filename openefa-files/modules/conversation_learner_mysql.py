@@ -280,8 +280,8 @@ class ConversationLearner:
         try:
             # Check vocabulary overlap
             if features['word_hashes']:
-                # Security: Validate all hashes are integers to prevent injection
-                word_hashes = [int(h) for h in features['word_hashes']]
+                # Security: Use parameterized queries - hashes are hex strings
+                word_hashes = [str(h) for h in features['word_hashes']]
                 format_strings = ','.join(['%s'] * len(word_hashes))
                 query = """
                     SELECT COUNT(*) FROM conversation_vocabulary

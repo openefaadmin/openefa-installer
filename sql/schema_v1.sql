@@ -135,6 +135,7 @@ CREATE TABLE `blocking_rules` (
   `active` tinyint(1) DEFAULT NULL,
   `priority` int(11) DEFAULT NULL,
   `whitelist` tinyint(1) DEFAULT NULL,
+  `is_global` tinyint(1) DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_blocking_rules_lookup` (`client_domain_id`,`rule_type`,`active`),
   KEY `idx_blocking_rules_priority` (`priority`),
@@ -152,6 +153,7 @@ CREATE TABLE `client_domains` (
   `created_at` datetime DEFAULT NULL,
   `updated_at` datetime DEFAULT NULL,
   `active` tinyint(1) DEFAULT NULL,
+  `quarantine_enabled` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ix_client_domains_domain` (`domain`)
 ) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -433,6 +435,7 @@ CREATE TABLE `email_analysis` (
   `message_id` varchar(255) DEFAULT NULL,
   `timestamp` datetime DEFAULT NULL,
   `sender` varchar(255) DEFAULT NULL,
+  `sender_domain` varchar(255) DEFAULT NULL,
   `recipients` text DEFAULT NULL,
   `subject` text DEFAULT NULL,
   `spam_score` float DEFAULT NULL,
@@ -458,6 +461,11 @@ CREATE TABLE `email_analysis` (
   `secondary_categories` text DEFAULT NULL,
   `classification_scores` text DEFAULT NULL,
   `has_attachments` int(11) DEFAULT NULL,
+  `attachment_count` int(11) DEFAULT 0,
+  `virus_detected` tinyint(1) DEFAULT 0,
+  `phishing_detected` tinyint(1) DEFAULT 0,
+  `reviewed_by` varchar(100) DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
   `text_formatting_score` float DEFAULT NULL,
   `sender_reputation` float DEFAULT NULL,
   `training_data_saved` int(11) DEFAULT NULL,
@@ -488,10 +496,26 @@ CREATE TABLE `email_analysis` (
   `deleted_at` datetime DEFAULT NULL,
   `deleted_by` varchar(255) DEFAULT NULL,
   `spam_train_count` int(11) DEFAULT 0,
+  `recipient_domains` text DEFAULT NULL,
+  `attachment_names` text DEFAULT NULL,
+  `text_content` mediumtext DEFAULT NULL,
+  `html_content` longtext DEFAULT NULL,
+  `email_size` int(11) DEFAULT NULL,
+  `virus_names` text DEFAULT NULL,
+  `spf_result` varchar(20) DEFAULT NULL,
+  `dkim_result` varchar(20) DEFAULT NULL,
+  `dmarc_result` varchar(20) DEFAULT NULL,
+  `auth_score` decimal(5,2) DEFAULT NULL,
+  `released_by` varchar(100) DEFAULT NULL,
+  `released_at` datetime DEFAULT NULL,
+  `released_to` varchar(100) DEFAULT NULL,
+  `admin_notes` text DEFAULT NULL,
+  `spam_modules_detail` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_message_id` (`message_id`),
   KEY `idx_timestamp` (`timestamp`),
   KEY `idx_sender` (`sender`),
+  KEY `idx_sender_domain` (`sender_domain`),
   KEY `idx_recipients` (`recipients`(255)),
   KEY `idx_subject` (`subject`(255)),
   KEY `idx_spam_score` (`spam_score`),
@@ -621,6 +645,7 @@ CREATE TABLE `hosted_domains` (
   `domain` varchar(100) NOT NULL,
   `company_name` varchar(200) DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT 1,
+  `quarantine_enabled` tinyint(1) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `domain` (`domain`)
@@ -892,6 +917,18 @@ CREATE TABLE `trusted_senders` (
   PRIMARY KEY (`sender_email`),
   KEY `idx_trust` (`trust_score`),
   KEY `idx_releases` (`release_count`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `trusted_entities` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `entity_type` varchar(50) NOT NULL,
+  `entity_value` varchar(255) NOT NULL,
+  `domain` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_entity` (`entity_type`,`entity_value`,`domain`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

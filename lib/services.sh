@@ -298,15 +298,45 @@ setup_apache_ssl() {
                 return 0
             fi
 
+            local le_email
+            read -p "Enter email for renewal notices (recommended): " le_email
+
+            # Ensure Apache is running for the challenge
+            info "Starting Apache for Let's Encrypt challenge..."
+            systemctl enable apache2 >/dev/null 2>&1
+            systemctl start apache2 >/dev/null 2>&1
+
+            # Build certbot command with or without email
+            local certbot_cmd="certbot certonly --apache -d ${le_domain} --non-interactive --agree-tos"
+            if [[ -n "${le_email}" ]]; then
+                certbot_cmd="${certbot_cmd} --email ${le_email}"
+            else
+                certbot_cmd="${certbot_cmd} --register-unsafely-without-email"
+                warn "No email provided - you won't receive renewal notices"
+            fi
+
             # Run certbot
-            if certbot certonly --apache -d "${le_domain}" --non-interactive --agree-tos --register-unsafely-without-email 2>/dev/null; then
+            info "Requesting certificate from Let's Encrypt..."
+            if eval "${certbot_cmd}"; then
                 ssl_cert_file="/etc/letsencrypt/live/${le_domain}/fullchain.pem"
                 ssl_key_file="/etc/letsencrypt/live/${le_domain}/privkey.pem"
                 hostname="${le_domain}"
                 success "Let's Encrypt certificate obtained"
             else
                 warn "Let's Encrypt failed - falling back to self-signed"
-                ssl_choice="2"
+                # Generate self-signed as fallback
+                mkdir -p /etc/ssl/spacyweb
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                    -keyout /etc/ssl/spacyweb/spacyweb.key \
+                    -out /etc/ssl/spacyweb/spacyweb.crt \
+                    -subj "/C=US/ST=State/L=City/O=OpenEFA/OU=SpacyWeb/CN=${le_domain}" \
+                    >/dev/null 2>&1
+                chmod 600 /etc/ssl/spacyweb/spacyweb.key
+                chmod 644 /etc/ssl/spacyweb/spacyweb.crt
+                ssl_cert_file="/etc/ssl/spacyweb/spacyweb.crt"
+                ssl_key_file="/etc/ssl/spacyweb/spacyweb.key"
+                hostname="${le_domain}"
+                warn "Using self-signed certificate instead"
             fi
             ;;
         2)
@@ -343,11 +373,57 @@ setup_apache_ssl() {
             success "Using custom certificate"
             ;;
         4|*)
-            info "Skipping SSL setup"
-            info "To configure later:"
-            info "  1. Edit /etc/apache2/sites-available/spacyweb.conf"
-            info "  2. Set SSLCertificateFile and SSLCertificateKeyFile"
-            info "  3. Run: sudo a2ensite spacyweb && sudo systemctl reload apache2"
+            info "Setting up HTTP-only reverse proxy (no SSL)"
+
+            # Create HTTP-only Apache config
+            cat > "${apache_site}" << 'HTTPEOF'
+<VirtualHost *:80>
+    ServerName ${HOSTNAME}
+
+    # Security Headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Proxy to Gunicorn/SpacyWeb
+    ProxyPreserveHost On
+    ProxyPass / http://127.0.0.1:5500/
+    ProxyPassReverse / http://127.0.0.1:5500/
+
+    # Pass real client IP to backend
+    RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
+    RequestHeader set X-Forwarded-Proto "http"
+    RequestHeader set X-Forwarded-Host "%{HTTP_HOST}s"
+
+    # Logging
+    ErrorLog ${APACHE_LOG_DIR}/spacyweb-error.log
+    CustomLog ${APACHE_LOG_DIR}/spacyweb-access.log combined
+</VirtualHost>
+HTTPEOF
+            # Replace hostname placeholder
+            sed -i "s/\${HOSTNAME}/${hostname}/g" "${apache_site}"
+
+            # Enable modules and site
+            a2enmod proxy proxy_http headers >/dev/null 2>&1
+            a2dissite 000-default.conf >/dev/null 2>&1 || true
+            a2ensite spacyweb.conf >/dev/null 2>&1
+
+            # Restart Apache
+            systemctl enable apache2 >/dev/null 2>&1
+            systemctl restart apache2
+
+            if systemctl is-active --quiet apache2; then
+                success "Apache running with HTTP reverse proxy"
+                warn "SSL not configured - access via http://${hostname}"
+                info "To add SSL later, edit ${apache_site}"
+            else
+                error "Apache failed to start"
+                systemctl status apache2 --no-pager
+                return 1
+            fi
+
+            save_state "apache_ssl_configured"
             return 0
             ;;
     esac

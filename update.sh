@@ -500,9 +500,6 @@ restart_services() {
 
     local services=(
         "spacy-db-processor"
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
         "spacyweb"
     )
 
@@ -525,9 +522,6 @@ validate_services() {
     local failed=0
     local services=(
         "spacy-db-processor"
-        "spacy-release-api"
-        "spacy-whitelist-api"
-        "spacy-block-api"
         "spacyweb"
     )
 

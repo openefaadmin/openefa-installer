@@ -161,8 +161,13 @@ apply_security_hardening() {
     # Always apply secure permissions
     secure_permissions
 
-    # Install fail2ban (recommended)
-    install_fail2ban
+    # fail2ban is optional - can cause issues with Tailscale/VPN
+    if [[ "${OPENEFA_CONFIGURE_FAIL2BAN:-false}" == "true" ]]; then
+        install_fail2ban
+    else
+        info "Skipping fail2ban installation (set OPENEFA_CONFIGURE_FAIL2BAN=true to enable)"
+        info "Note: fail2ban can block VPN/Tailscale connections. Configure manually if needed."
+    fi
 
     # UFW is optional and may conflict with existing firewall rules
     # Only configure if explicitly requested or no firewall exists
