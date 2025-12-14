@@ -928,6 +928,7 @@ CREATE TABLE `trusted_entities` (
   `domain` varchar(100) DEFAULT NULL,
   `trust_level` varchar(20) DEFAULT 'full',
   `scope` varchar(20) DEFAULT 'global',
+  `recipient_domain` varchar(100) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_entity` (`entity_type`,`entity_value`,`domain`)
