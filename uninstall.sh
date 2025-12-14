@@ -104,11 +104,13 @@ remove_services() {
 # Backup Postfix configuration
 #
 backup_postfix_config() {
-    local backup_dir="/etc/postfix/backup_$(date +%Y%m%d_%H%M%S)"
+    # Use /var/backups to avoid nested backups inside /etc/postfix
+    local backup_dir="/var/backups/openefa/postfix_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "${backup_dir}"
 
     if [[ -d /etc/postfix ]]; then
-        cp -r /etc/postfix/* "${backup_dir}/" 2>/dev/null || true
+        # Copy config files, excluding any old backup directories
+        find /etc/postfix -maxdepth 1 -type f -exec cp {} "${backup_dir}/" \; 2>/dev/null || true
         success "Postfix config backed up to ${backup_dir}"
     fi
 }
@@ -149,7 +151,7 @@ main() {
     echo "  • System user: spacy-filter"
     echo "  • Postfix will be stopped (config backed up)"
     echo ""
-    echo "Postfix configuration will be backed up to /etc/postfix/backup_*"
+    echo "Postfix configuration will be backed up to /var/backups/openefa/"
     echo ""
 
     if ! confirm "Are you ABSOLUTELY SURE you want to uninstall OpenEFA?"; then
@@ -228,7 +230,7 @@ main() {
     echo "OpenEFA has been removed from your system."
     echo ""
     echo "What remains:"
-    echo "  • Postfix (stopped, config backed up to /etc/postfix/backup_*)"
+    echo "  • Postfix (stopped, config backed up to /var/backups/openefa/)"
     echo "  • MariaDB server (can be removed with: apt remove mariadb-server)"
     echo "  • Redis server (can be removed with: apt remove redis-server)"
     echo "  • System packages (can be cleaned with: apt autoremove)"

@@ -100,9 +100,10 @@ EOTRANSPORT
 
     # Hash the transport map
     if run_cmd "postmap ${transport_file}" "Failed to hash transport map"; then
-        # Set permissions so spacy-filter can update the transport file
-        chown spacy-filter:postfix "${transport_file}" "${transport_file}.db"
-        chmod 660 "${transport_file}" "${transport_file}.db"
+        # Postfix requires root ownership for config files
+        # spacy-filter uses sudo postmap to update transport when needed
+        chown root:root "${transport_file}" "${transport_file}.db"
+        chmod 644 "${transport_file}" "${transport_file}.db"
 
         local domain_count=1
         if [[ -n "${INSTALL_DOMAINS[@]}" ]] && [[ ${#INSTALL_DOMAINS[@]} -gt 0 ]]; then
