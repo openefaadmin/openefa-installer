@@ -295,7 +295,7 @@ class HeaderForgeryDetector:
 
 
 # Module entry point for email_filter.py
-def detect_header_forgery(msg: EmailMessage, from_header: str = None) -> Dict:
+def detect_header_forgery(msg: EmailMessage, from_header: str = None, auth_results: Dict = None) -> Dict:
     """
     Entry point for header forgery detection module
 
