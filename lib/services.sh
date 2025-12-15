@@ -164,6 +164,24 @@ setup_cleanup_cron() {
 }
 
 #
+# Configure cron job for permission fixes (handles root edits from Claude Code, etc.)
+#
+setup_permissions_cron() {
+    info "Configuring permissions fix cron job..."
+
+    # Create cron.d entry (runs as root at 1 AM daily)
+    cat > /etc/cron.d/openefa-permissions << 'EOF'
+# OpenEFA permission fix - repairs ownership after root edits
+# Runs daily at 1 AM
+0 1 * * * root /opt/spacyserver/scripts/fix_permissions.sh >/dev/null 2>&1
+EOF
+    chmod 644 /etc/cron.d/openefa-permissions
+
+    success "Permissions fix cron job configured (daily at 1 AM)"
+    return 0
+}
+
+#
 # Fix notification file permissions (CRITICAL for v1.5.3+ SMS system)
 #
 fix_notification_permissions() {
@@ -488,6 +506,7 @@ setup_services() {
     setup_api_services || return 1
     setup_logrotate || return 1
     setup_cleanup_cron || return 1
+    setup_permissions_cron || return 1
     fix_notification_permissions || return 1
     fix_config_permissions || return 1
 
@@ -499,4 +518,4 @@ setup_services() {
 # Export functions
 export -f install_service_file enable_and_start_service
 export -f setup_db_processor_service setup_spacyweb_service setup_apache_ssl
-export -f setup_api_services setup_logrotate setup_cleanup_cron fix_notification_permissions fix_config_permissions setup_services
+export -f setup_api_services setup_logrotate setup_cleanup_cron setup_permissions_cron fix_notification_permissions fix_config_permissions setup_services
